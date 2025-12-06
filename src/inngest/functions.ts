@@ -877,34 +877,29 @@ const createCodeAgentTools = (sandboxId: string) => [
     parameters: z.object({
       command: z.string(),
     }),
-    handler: async (
-      { command }: { command: string },
-      { step }: Tool.Options<AgentState>,
-    ) => {
-      return await step?.run("terminal", async () => {
-        const buffers: { stdout: string; stderr: string } = {
-          stdout: "",
-          stderr: "",
-        };
+    handler: async ({ command }: { command: string }) => {
+      const buffers: { stdout: string; stderr: string } = {
+        stdout: "",
+        stderr: "",
+      };
 
-        try {
-          const sandbox = await getSandbox(sandboxId);
-          const result = await sandbox.commands.run(command, {
-            onStdout: (data: string) => {
-              buffers.stdout += data;
-            },
-            onStderr: (data: string) => {
-              buffers.stderr += data;
-            },
-          });
-          return result.stdout;
-        } catch (e) {
-          console.error(
-            `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderror: ${buffers.stderr}`,
-          );
-          return `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
-        }
-      });
+      try {
+        const sandbox = await getSandbox(sandboxId);
+        const result = await sandbox.commands.run(command, {
+          onStdout: (data: string) => {
+            buffers.stdout += data;
+          },
+          onStderr: (data: string) => {
+            buffers.stderr += data;
+          },
+        });
+        return result.stdout;
+      } catch (e) {
+        console.error(
+          `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderror: ${buffers.stderr}`,
+        );
+        return `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
+      }
     },
   }),
   createTool({
@@ -918,32 +913,25 @@ const createCodeAgentTools = (sandboxId: string) => [
         }),
       ),
     }),
-    handler: async (
-      { files },
-      { step, network }: Tool.Options<AgentState>,
-    ) => {
-      const newFiles = await step?.run("createOrUpdateFiles", async () => {
-        try {
-          const updatedFiles = {
-            ...(network?.state?.data?.files ?? {}),
-          };
-          const sandbox = await getSandbox(sandboxId);
-          for (const file of files) {
-            await sandbox.files.write(file.path, file.content);
-            updatedFiles[file.path] = file.content;
-          }
-
-          return updatedFiles;
-        } catch (e) {
-          return "Error: " + e;
+    handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
+      try {
+        const updatedFiles = {
+          ...(network?.state?.data?.files ?? {}),
+        };
+        const sandbox = await getSandbox(sandboxId);
+        for (const file of files) {
+          await sandbox.files.write(file.path, file.content);
+          updatedFiles[file.path] = file.content;
         }
-      });
 
-      if (typeof newFiles === "object" && network) {
-        network.state.data.files = newFiles;
+        if (network) {
+          network.state.data.files = updatedFiles;
+        }
+
+        return updatedFiles;
+      } catch (e) {
+        return "Error: " + e;
       }
-
-      return newFiles;
     },
   }),
   createTool({
@@ -952,20 +940,18 @@ const createCodeAgentTools = (sandboxId: string) => [
     parameters: z.object({
       files: z.array(z.string()),
     }),
-    handler: async ({ files }, { step }: Tool.Options<AgentState>) => {
-      return await step?.run("readFiles", async () => {
-        try {
-          const sandbox = await getSandbox(sandboxId);
-          const contents = [];
-          for (const file of files) {
-            const content = await sandbox.files.read(file);
-            contents.push({ path: file, content });
-          }
-          return JSON.stringify(contents);
-        } catch (e) {
-          return "Error: " + e;
+    handler: async ({ files }) => {
+      try {
+        const sandbox = await getSandbox(sandboxId);
+        const contents = [];
+        for (const file of files) {
+          const content = await sandbox.files.read(file);
+          contents.push({ path: file, content });
         }
-      });
+        return JSON.stringify(contents);
+      } catch (e) {
+        return "Error: " + e;
+      }
     },
   }),
 ];
@@ -2284,15 +2270,15 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       if (totalSizeMB > MAX_SIZE_MB) {
         throw new Error(
           `Merged files size (${totalSizeMB.toFixed(2)} MB) exceeds maximum limit (${MAX_SIZE_MB} MB). ` +
-          `This usually indicates that large build artifacts or dependencies were not filtered out. ` +
-          `File count: ${fileCount}. Please review the file filtering logic.`,
+            `This usually indicates that large build artifacts or dependencies were not filtered out. ` +
+            `File count: ${fileCount}. Please review the file filtering logic.`,
         );
       }
 
       if (totalSizeMB > WARN_SIZE_MB) {
         console.warn(
           `[WARN] Merged files size (${totalSizeMB.toFixed(2)} MB) is approaching limit (${MAX_SIZE_MB} MB). ` +
-          `Current file count: ${fileCount}. Consider reviewing file filtering to reduce size.`,
+            `Current file count: ${fileCount}. Consider reviewing file filtering to reduce size.`,
         );
       }
 
@@ -2366,8 +2352,8 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       const warningsNote =
         warningReasons.length > 0
           ? sanitizeTextForDatabase(
-            `\n\nWarnings:\n- ${warningReasons.join("\n- ")}`,
-          )
+              `\n\nWarnings:\n- ${warningReasons.join("\n- ")}`,
+            )
           : "";
       const responseContent = sanitizeTextForDatabase(
         `${baseResponseContent}${warningsNote}`,
@@ -2922,14 +2908,14 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
           backupMetadata ?? initialMetadata;
         const metadataUpdate = supportsMetadata
           ? {
-            ...baseMetadata,
-            previousFiles: originalFiles,
-            fixedAt: new Date().toISOString(),
-            lastFixSuccess: {
-              summary: result.state.data.summary,
-              occurredAt: new Date().toISOString(),
-            },
-          }
+              ...baseMetadata,
+              previousFiles: originalFiles,
+              fixedAt: new Date().toISOString(),
+              lastFixSuccess: {
+                summary: result.state.data.summary,
+                occurredAt: new Date().toISOString(),
+              },
+            }
           : undefined;
 
         return await convex.mutation(api.messages.createFragmentForUser, {
