@@ -3196,7 +3196,6 @@ Remember to wrap your complete specification in <spec>...</spec> tags.`;
 
       const planResult = await planningAgent.run(event.data.value, {
         state,
-        step,
       });
       return planResult;
     });
