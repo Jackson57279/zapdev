@@ -909,13 +909,16 @@ export const codeAgentFunction = inngest.createFunction(
       name: "code-agent",
       description: "An expert coding agent",
       system: getFrameworkPrompt(selectedFramework),
-      model: getModelAdapter(selectedModel, modelConfig.temperature),
+      model: getModelAdapter(selectedModel, 0.1),
       tools: createCodeAgentTools(sandboxId),
       lifecycle: {
         onResponse: async ({ result, network }) => {
           const lastAssistantMessageText = lastAssistantTextMessageContent(result);
           if (lastAssistantMessageText && network) {
-            network.state.data.summary = lastAssistantMessageText;
+            // Only save summary if it contains the task_summary tag (matching old working logic)
+            if (lastAssistantMessageText.includes("<task_summary>")) {
+              network.state.data.summary = lastAssistantMessageText;
+            }
           }
           return result;
         },
@@ -925,14 +928,15 @@ export const codeAgentFunction = inngest.createFunction(
     const network = createNetwork<AgentState>({
       name: "coding-agent-network",
       agents: [codeAgent],
-      maxIter: 12,
+      maxIter: 15,
       defaultState: initialState,
       router: async ({ network }) => {
-        const summaryText = network.state.data.summary ?? "";
-        if (summaryText.trim().length === 0) {
-          return codeAgent;
+        const summary = network.state.data.summary;
+        // Stop when we have a summary (matching old working logic)
+        if (summary) {
+          return;
         }
-        return;
+        return codeAgent;
       },
     });
 
@@ -1508,14 +1512,14 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
           backupMetadata ?? initialMetadata;
         const metadataUpdate = supportsMetadata
           ? {
-              ...baseMetadata,
-              previousFiles: originalFiles,
-              fixedAt: new Date().toISOString(),
-              lastFixSuccess: {
-                summary: result.state.data.summary,
-                occurredAt: new Date().toISOString(),
-              },
-            }
+            ...baseMetadata,
+            previousFiles: originalFiles,
+            fixedAt: new Date().toISOString(),
+            lastFixSuccess: {
+              summary: result.state.data.summary,
+              occurredAt: new Date().toISOString(),
+            },
+          }
           : undefined;
 
         return await convex.mutation(api.messages.createFragmentForUser, {
