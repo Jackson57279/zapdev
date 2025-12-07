@@ -1573,8 +1573,8 @@ Generate code that matches the approved specification.`;
       });
 
     const runNetwork = async (
-      stepContext: typeof step,
-      label: string,
+      _stepContext: typeof step,
+      _label: string,
       agent: ReturnType<typeof createAgent<AgentState>>,
       stateOverride?: AgentStateInstance | any,
       userInput?: string,
@@ -1583,9 +1583,11 @@ Generate code that matches the approved specification.`;
       const stateForRun = stateOverride ?? buildAgentState();
       const inputForRun = userInput ?? event.data.value;
 
-      return await stepContext.run(label, async () => {
-        return await network.run(inputForRun, { state: stateForRun as any });
-      });
+      // Run network directly without wrapping in step.run()
+      // Agent-kit automatically retrieves step tools from Inngest's async context
+      // when asyncContext: true is enabled in the Inngest client config
+      // Wrapping in step.run() can break async context propagation in production builds
+      return await network.run(inputForRun, { state: stateForRun as any });
     };
 
     console.log("[DEBUG] Running network with input:", event.data.value);
