@@ -678,7 +678,7 @@ export const createFragmentInternal = async (
   // Log what we're about to save
   const filesCount = files && typeof files === 'object' ? Object.keys(files).length : 0;
   console.log(`[createFragmentInternal] Saving fragment with ${filesCount} files for message ${messageId}`);
-  
+
   if (filesCount === 0) {
     console.error('[createFragmentInternal] WARNING: files object is empty or invalid!', {
       filesType: typeof files,
@@ -791,12 +791,12 @@ export const createFragmentForUser = mutation({
   },
   handler: async (ctx, args) => {
     // Log fragment creation for debugging
-    const filesCount = args.files && typeof args.files === 'object' 
-      ? Object.keys(args.files).length 
+    const filesCount = args.files && typeof args.files === 'object'
+      ? Object.keys(args.files).length
       : 0;
-    
+
     console.log(`[Convex] Creating fragment for message ${args.messageId} with ${filesCount} files`);
-    
+
     if (filesCount === 0) {
       console.error('[Convex] WARNING: Attempting to create fragment with 0 files!', {
         messageId: args.messageId,
@@ -816,5 +816,58 @@ export const createFragmentForUser = mutation({
       args.framework,
       args.metadata
     );
+  },
+});
+
+/**
+ * System-level query to get any fragment by ID (for Inngest background jobs only)
+ * This bypasses authentication since Inngest is a trusted system
+ */
+export const getFragmentForSystem = query({
+  args: {
+    fragmentId: v.id("fragments"),
+  },
+  handler: async (ctx, args) => {
+    const fragment = await ctx.db.get(args.fragmentId);
+    if (!fragment) {
+      return null;
+    }
+    return fragment;
+  },
+});
+
+/**
+ * System-level mutation to update any fragment (for Inngest background jobs only)
+ * This bypasses authentication since Inngest is a trusted system
+ */
+export const updateFragmentForSystem = mutation({
+  args: {
+    fragmentId: v.id("fragments"),
+    sandboxId: v.optional(v.string()),
+    sandboxUrl: v.optional(v.string()),
+    title: v.optional(v.string()),
+    files: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+    framework: v.optional(frameworkEnum),
+  },
+  handler: async (ctx, args) => {
+    const fragment = await ctx.db.get(args.fragmentId);
+    if (!fragment) {
+      throw new Error("Fragment not found");
+    }
+
+    const updateData: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+
+    if (args.sandboxId !== undefined) updateData.sandboxId = args.sandboxId;
+    if (args.sandboxUrl !== undefined) updateData.sandboxUrl = args.sandboxUrl;
+    if (args.title !== undefined) updateData.title = args.title;
+    if (args.files !== undefined) updateData.files = args.files;
+    if (args.metadata !== undefined) updateData.metadata = args.metadata;
+    if (args.framework !== undefined) updateData.framework = args.framework;
+
+    await ctx.db.patch(args.fragmentId, updateData);
+    return args.fragmentId;
   },
 });

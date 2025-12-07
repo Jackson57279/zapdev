@@ -31,6 +31,11 @@ export const processQueuedJobs = inngest.createFunction(
   { id: "process-queued-jobs", name: "Process Queued E2B Jobs" },
   { cron: "*/2 * * * *" }, // Every 2 minutes
   async ({ step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Checking for queued jobs");
 
     // Check if circuit breaker is closed (service available)
@@ -177,6 +182,11 @@ export const cleanupCompletedJobs = inngest.createFunction(
   { id: "cleanup-completed-jobs", name: "Cleanup Completed Jobs" },
   { cron: "0 2 * * *" }, // Daily at 2 AM
   async ({ step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Starting completed jobs cleanup");
 
     const result = await step.run("cleanup", async () => {
