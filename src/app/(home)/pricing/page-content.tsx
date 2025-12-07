@@ -1,9 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { Check, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -117,7 +116,7 @@ export function PricingPageContent() {
               </ul>
             </CardContent>
             <CardFooter>
-              <Link href="/dashboard" className="w-full">
+              <Link to="/dashboard" className="w-full">
                 <Button className="w-full" variant="default">
                   Get Started with Pro
                 </Button>

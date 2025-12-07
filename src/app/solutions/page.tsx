@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import Link from 'next/link';
+import { Link } from '@tanstack/react-router';
 import { getAllSolutions } from '@/lib/solutions';
 import { generateMetadata as generateSEOMetadata, generateStructuredData } from '@/lib/seo';
 import { StructuredData } from '@/components/seo/structured-data';
@@ -115,12 +115,12 @@ export default function SolutionsPage() {
             Our AI can help you choose the perfect solution based on your specific needs and requirements.
           </p>
           <div className="flex gap-4 justify-center">
-            <Link href="/projects">
+            <Link to="/projects">
               <button className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
                 Get Personalized Recommendation
               </button>
             </Link>
-            <Link href="/frameworks">
+            <Link to="/frameworks">
               <button className="px-6 py-3 border border-border rounded-lg hover:bg-muted transition-colors">
                 Browse by Framework
               </button>

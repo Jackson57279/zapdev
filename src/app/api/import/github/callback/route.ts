@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
@@ -13,16 +12,16 @@ const GITHUB_REDIRECT_URI = process.env.NODE_ENV === "production"
 export async function GET(request: Request) {
   const stackUser = await getUser();
   if (!stackUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = stackUser.id;
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (false) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return Response.redirect(new URL("/", request.url));
   }
 
   const { searchParams } = new URL(request.url);
@@ -31,13 +30,13 @@ export async function GET(request: Request) {
   const error = searchParams.get("error");
 
   if (error) {
-    return NextResponse.redirect(
+    return Response.redirect(
       new URL(`/import?error=${encodeURIComponent(error)}`, request.url)
     );
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(
+    return Response.redirect(
       new URL("/import?error=Missing+authorization+code", request.url)
     );
   }
@@ -106,7 +105,7 @@ export async function GET(request: Request) {
     });
 
     // Redirect to import page
-    return NextResponse.redirect(
+    return Response.redirect(
       new URL(
         "/import?source=github&status=connected",
         request.url
@@ -114,7 +113,7 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error("GitHub OAuth callback error:", error);
-    return NextResponse.redirect(
+    return Response.redirect(
       new URL(
         `/import?error=${encodeURIComponent(error instanceof Error ? error.message : "OAuth failed")}`,
         request.url

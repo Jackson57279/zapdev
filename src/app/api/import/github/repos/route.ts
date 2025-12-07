@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
@@ -19,15 +18,15 @@ interface GitHubRepo {
 export async function GET() {
   const stackUser = await getUser();
   if (!stackUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (!stackUser.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (false) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -38,7 +37,7 @@ export async function GET() {
     });
 
     if (!connection) {
-      return NextResponse.json(
+      return Response.json(
         { error: "GitHub not connected" },
         { status: 401 }
       );
@@ -58,7 +57,7 @@ export async function GET() {
     if (!response.ok) {
       if (response.status === 401) {
         // Token might be expired or revoked
-        return NextResponse.json(
+        return Response.json(
           { error: "GitHub token invalid, please reconnect" },
           { status: 401 }
         );
@@ -68,7 +67,7 @@ export async function GET() {
 
     const repos = await response.json() as GitHubRepo[];
 
-    return NextResponse.json({
+    return Response.json({
       repositories: repos.map((repo) => ({
         id: repo.id,
         name: repo.name,
@@ -83,7 +82,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error fetching GitHub repositories:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to fetch GitHub repositories" },
       { status: 500 }
     );

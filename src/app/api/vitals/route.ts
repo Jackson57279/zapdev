@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
 
 interface WebVitalMetric {
   name: string;
@@ -26,10 +25,10 @@ export async function POST(request: NextRequest) {
       console.log(`Critical metric ${metric.name}: ${metric.value} (${metric.rating})`);
     }
     
-    return NextResponse.json({ success: true });
+    return Response.json({ success: true });
   } catch (error) {
     console.error('Error processing web vital:', error);
-    return NextResponse.json(
+    return Response.json(
       { error: 'Failed to process web vital' },
       { status: 500 }
     );

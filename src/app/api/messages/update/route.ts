@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { checkBotId } from "botid/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
@@ -32,7 +31,7 @@ export async function PATCH(request: Request) {
     const botVerification = await checkBotId();
     if (botVerification.isBot) {
       console.warn("⚠️ BotID blocked a message update attempt");
-      return NextResponse.json(
+      return Response.json(
         { error: "Access denied - suspicious activity detected" },
         { status: 403 }
       );
@@ -40,7 +39,7 @@ export async function PATCH(request: Request) {
 
     const stackUser = await getUser();
     if (!stackUser) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
@@ -52,14 +51,14 @@ export async function PATCH(request: Request) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return Response.json(
         { error: "Invalid JSON body" },
         { status: 400 }
       );
     }
 
     if (!isUpdateMessageRequestBody(body)) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Invalid request body" },
         { status: 400 }
       );
@@ -70,7 +69,7 @@ export async function PATCH(request: Request) {
     const sanitizedContent = sanitizeTextForDatabase(content);
 
     if (sanitizedContent.length === 0) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Message cannot be empty." },
         { status: 400 },
       );
@@ -83,13 +82,13 @@ export async function PATCH(request: Request) {
         status: status || "STREAMING",
       });
 
-      return NextResponse.json({
+      return Response.json({
         success: true,
         message: updatedMessage,
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes("Unauthorized")) {
-        return NextResponse.json(
+        return Response.json(
           { error: "Forbidden" },
           { status: 403 }
         );
@@ -98,7 +97,7 @@ export async function PATCH(request: Request) {
     }
   } catch (error) {
     console.error("[ERROR] Failed to update message:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to update message" },
       { status: 500 }
     );

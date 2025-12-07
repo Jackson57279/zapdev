@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
+import { Link } from "@tanstack/react-router";
 import { useUser } from "@/lib/auth-client";
 import { formatDistanceToNow } from "date-fns";
 import { useQuery } from "convex/react";
@@ -61,7 +60,7 @@ export const ProjectsList = () => {
               className="font-normal h-auto justify-start w-full text-start p-4"
               asChild
             >
-              <Link href={`/projects/${project._id}`}>
+              <Link to={`/projects/${project._id}`}>
                 <div className="flex items-center gap-x-4">
                   <Image
                     src={imageSrc}

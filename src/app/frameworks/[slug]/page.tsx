@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { Link } from '@tanstack/react-router';
 import { getFramework, getRelatedFrameworks, getAllFrameworks } from '@/lib/frameworks';
 import { generateMetadata as generateSEOMetadata, generateStructuredData, generateFAQStructuredData } from '@/lib/seo';
 import { StructuredData } from '@/components/seo/structured-data';

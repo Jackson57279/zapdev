@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { checkBotId } from "botid/server";
 import { getUser } from "@/lib/auth-server";
 
@@ -14,7 +13,7 @@ export async function GET() {
   const botVerification = await checkBotId();
   if (botVerification.isBot) {
     console.warn("⚠️ BotID blocked a GitHub import auth attempt");
-    return NextResponse.json(
+    return Response.json(
       { error: "Access denied - suspicious activity detected" },
       { status: 403 }
     );
@@ -22,17 +21,17 @@ export async function GET() {
 
   const stackUser = await getUser();
   if (!stackUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = stackUser.id;
 
   if (false) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (!GITHUB_CLIENT_ID) {
-    return NextResponse.json(
+    return Response.json(
       { error: "GitHub OAuth not configured" },
       { status: 500 }
     );
@@ -53,5 +52,5 @@ export async function GET() {
 
   const githubAuthUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
 
-  return NextResponse.redirect(githubAuthUrl);
+  return Response.redirect(githubAuthUrl);
 }

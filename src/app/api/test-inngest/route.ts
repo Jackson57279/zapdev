@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
@@ -23,7 +22,7 @@ export async function GET() {
       eventSendTest = `Error: ${error}`;
     }
 
-    return NextResponse.json({
+    return Response.json({
       status: 'ok',
       inngest: config,
       eventSendTest,
@@ -33,7 +32,7 @@ export async function GET() {
       }
     });
   } catch (error) {
-    return NextResponse.json({ 
+    return Response.json({ 
       status: 'error', 
       message: error instanceof Error ? error.message : 'Unknown error' 
     }, { status: 500 });

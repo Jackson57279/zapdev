@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { checkBotId } from "botid/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
@@ -26,7 +25,7 @@ export async function POST(request: Request) {
     const botVerification = await checkBotId();
     if (botVerification.isBot) {
       console.warn("⚠️ BotID blocked an error fix attempt");
-      return NextResponse.json(
+      return Response.json(
         { error: "Access denied - suspicious activity detected" },
         { status: 403 }
       );
@@ -34,7 +33,7 @@ export async function POST(request: Request) {
 
     const stackUser = await getUser();
     if (!stackUser) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
@@ -46,14 +45,14 @@ export async function POST(request: Request) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return Response.json(
         { error: "Invalid JSON body" },
         { status: 400 }
       );
     }
 
     if (!isFixErrorsRequestBody(body)) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Fragment ID is required" },
         { status: 400 }
       );
@@ -76,7 +75,7 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes("Unauthorized")) {
-        return NextResponse.json(
+        return Response.json(
           { error: "Forbidden" },
           { status: 403 }
         );
@@ -84,13 +83,13 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       message: "Error fix initiated",
     });
   } catch (error) {
     console.error("[ERROR] Failed to trigger error fix:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to initiate error fix" },
       { status: 500 }
     );

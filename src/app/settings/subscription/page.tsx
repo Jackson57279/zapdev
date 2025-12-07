@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CrownIcon, CheckIcon } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 
 export default function SubscriptionPage() {
   const user = useUser();
@@ -58,7 +58,7 @@ export default function SubscriptionPage() {
             </div>
 
             {!isPro && (
-              <Link href="/pricing">
+              <Link to="/pricing">
                 <Button>
                   <CrownIcon className="mr-2 h-4 w-4" />
                   Upgrade to Pro

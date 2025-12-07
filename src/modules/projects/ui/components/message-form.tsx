@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { toast } from "sonner";
-import Image from "next/image";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "@tanstack/react-router";
@@ -342,7 +341,7 @@ export const MessageForm = ({ projectId }: Props) => {
                           isLocked && "opacity-50 cursor-not-allowed"
                         )}
                       >
-                        <Image src={option.image} alt={option.name} width={16} height={16} className="size-4 mt-0.5 flex-shrink-0" unoptimized />
+                        <img src={option.image} alt={option.name} width={16} height={16} className="size-4 mt-0.5 flex-shrink-0" unoptimized />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <div className="font-medium text-sm">{option.name}</div>

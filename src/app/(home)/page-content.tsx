@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect } from "react";
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";

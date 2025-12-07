@@ -45,7 +45,7 @@ import { e2bCircuitBreaker } from "./circuit-breaker";
 
 // Get Convex client lazily to avoid build-time errors
 let convexClient: ConvexHttpClient | null = null;
-function getConvexClient() {
+function getConvexClient(): ConvexHttpClient {
   if (!convexClient) {
     const url = process.env.NEXT_PUBLIC_CONVEX_URL;
     if (!url) {
@@ -55,12 +55,6 @@ function getConvexClient() {
   }
   return convexClient;
 }
-
-const convex = new Proxy({} as ConvexHttpClient, {
-  get(_target, prop) {
-    return getConvexClient()[prop as keyof ConvexHttpClient];
-  },
-});
 
 type StepAsyncContext = Partial<AsyncContext> & { ctx?: Record<string, unknown> };
 type AsyncLocalStorageLike = {
@@ -1096,7 +1090,7 @@ export const codeAgentFunction = inngest.createFunction(
 
     // Get project to check if framework is already set
     const project = await step.run("get-project", async () => {
-      return await convex.query(api.projects.getForSystem, {
+      return await getConvexClient().query(api.projects.getForSystem, {
         projectId: event.data.projectId as Id<"projects">,
       });
     });
@@ -1156,7 +1150,7 @@ export const codeAgentFunction = inngest.createFunction(
 
         // Update project with selected framework
         await step.run("update-project-framework", async () => {
-          return await convex.mutation(api.projects.updateForUser, {
+          return await getConvexClient().mutation(api.projects.updateForUser, {
             userId: project.userId,
             projectId: event.data.projectId as Id<"projects">,
             framework: frameworkToConvexEnum(selectedFramework),
@@ -1214,7 +1208,7 @@ export const codeAgentFunction = inngest.createFunction(
     // Enforce Pro plan for Gemini 3 Pro - REMOVED TEMPORARILY
     // if (selectedModel === "google/gemini-3-pro-preview") {
     //   const usage = await step.run("check-user-plan", async () => {
-    //     return await convex.query(api.usage.getUsageForUser, {
+    //     return await getConvexClient().query(api.usage.getUsageForUser, {
     //       userId: project.userId,
     //     });
     //   });
@@ -1245,7 +1239,7 @@ export const codeAgentFunction = inngest.createFunction(
 
       // Check rate limit before attempting creation
       try {
-        const rateLimitStatus = await convex.query(
+        const rateLimitStatus = await getConvexClient().query(
           api.e2bRateLimits.checkRateLimit,
           {
             operation: "sandbox_create",
@@ -1295,7 +1289,7 @@ export const codeAgentFunction = inngest.createFunction(
           });
 
           // Queue the request for later processing
-          const jobId = await convex.mutation(api.jobQueue.enqueue, {
+          const jobId = await getConvexClient().mutation(api.jobQueue.enqueue, {
             type: "code_generation",
             projectId: event.data.projectId as Id<"projects">,
             userId: project.userId,
@@ -1304,7 +1298,7 @@ export const codeAgentFunction = inngest.createFunction(
           });
 
           // Notify user
-          await convex.mutation(api.messages.createForUser, {
+          await getConvexClient().mutation(api.messages.createForUser, {
             userId: project.userId,
             projectId: event.data.projectId as Id<"projects">,
             content:
@@ -1345,7 +1339,7 @@ export const codeAgentFunction = inngest.createFunction(
 
         // Record rate limit usage
         try {
-          await convex.mutation(api.e2bRateLimits.recordRequest, {
+          await getConvexClient().mutation(api.e2bRateLimits.recordRequest, {
             operation: "sandbox_create",
           });
         } catch (recordError) {
@@ -1385,7 +1379,7 @@ export const codeAgentFunction = inngest.createFunction(
           "[DEBUG] Creating sandbox session for sandboxId:",
           sandboxId,
         );
-        await convex.mutation(api.sandboxSessions.create, {
+        await getConvexClient().mutation(api.sandboxSessions.create, {
           sandboxId,
           projectId: event.data.projectId as Id<"projects">,
           userId: project.userId,
@@ -1409,7 +1403,7 @@ export const codeAgentFunction = inngest.createFunction(
         const formattedMessages: Message[] = [];
 
         try {
-          const allMessages = await convex.query(api.messages.listForUser, {
+          const allMessages = await getConvexClient().query(api.messages.listForUser, {
             userId: project.userId,
             projectId: event.data.projectId as Id<"projects">,
           });
@@ -1482,7 +1476,7 @@ export const codeAgentFunction = inngest.createFunction(
           const messageContent =
             content.length > 0 ? content : "Taking screenshot...";
 
-          await convex.mutation(api.messages.createForUser, {
+          await getConvexClient().mutation(api.messages.createForUser, {
             userId: project.userId,
             projectId: event.data.projectId as Id<"projects">,
             content: messageContent,
@@ -1569,7 +1563,7 @@ export const codeAgentFunction = inngest.createFunction(
     // Check if this message has an approved spec
     const currentMessage = await step.run("get-current-message", async () => {
       try {
-        const allMessages = await convex.query(api.messages.listForUser, {
+        const allMessages = await getConvexClient().query(api.messages.listForUser, {
           userId: project.userId,
           projectId: event.data.projectId as Id<"projects">,
         });
@@ -2488,7 +2482,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
             ? errorContent
             : "An unexpected error occurred.";
 
-        return await convex.mutation(api.messages.createForUser, {
+        return await getConvexClient().mutation(api.messages.createForUser, {
           userId: project.userId,
           projectId: event.data.projectId as Id<"projects">,
           content: messageContent,
@@ -2540,7 +2534,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       );
 
       // Create message first
-      const messageId = await convex.mutation(api.messages.createForUser, {
+      const messageId = await getConvexClient().mutation(api.messages.createForUser, {
         userId: project.userId,
         projectId: event.data.projectId as Id<"projects">,
         content: responseContent,
@@ -2554,7 +2548,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       );
 
       // Then create fragment linked to the message
-      const fragmentId = await convex.mutation(
+      const fragmentId = await getConvexClient().mutation(
         api.messages.createFragmentForUser,
         {
           userId: project.userId,
@@ -2592,7 +2586,7 @@ export const sandboxTransferFunction = inngest.createFunction(
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
 
     const fragment = await step.run("get-fragment", async () => {
-      return await convex.query(api.messages.getFragmentById, {
+      return await getConvexClient().query(api.messages.getFragmentById, {
         fragmentId: event.data.fragmentId as Id<"fragments">,
       });
     });
@@ -2607,7 +2601,7 @@ export const sandboxTransferFunction = inngest.createFunction(
 
     // Get the message to extract userId
     const message = await step.run("get-message", async () => {
-      const msg = await convex.query(api.messages.get, {
+      const msg = await getConvexClient().query(api.messages.get, {
         messageId: fragment.messageId as Id<"messages">,
       });
       if (!msg) {
@@ -2618,7 +2612,7 @@ export const sandboxTransferFunction = inngest.createFunction(
 
     // Get the project to verify userId
     const project = await step.run("get-project", async () => {
-      const proj = await convex.query(api.projects.getForSystem, {
+      const proj = await getConvexClient().query(api.projects.getForSystem, {
         projectId: message.projectId as Id<"projects">,
       });
       if (!proj) {
@@ -2693,7 +2687,7 @@ export const sandboxTransferFunction = inngest.createFunction(
 
     await step.run("update-fragment", async () => {
       // Use createFragmentForUser which will update if it already exists
-      return await convex.mutation(api.messages.createFragmentForUser, {
+      return await getConvexClient().mutation(api.messages.createFragmentForUser, {
         userId: project.userId,
         messageId: fragment.messageId,
         sandboxId: fragment.sandboxId || undefined,
@@ -2722,7 +2716,7 @@ export const errorFixFunction = inngest.createFunction(
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
 
     const fragment = await step.run("get-fragment", async () => {
-      return await convex.query(api.messages.getFragmentById, {
+      return await getConvexClient().query(api.messages.getFragmentById, {
         fragmentId: event.data.fragmentId as Id<"fragments">,
       });
     });
@@ -2737,7 +2731,7 @@ export const errorFixFunction = inngest.createFunction(
 
     // Get the message to extract userId
     const message = await step.run("get-message", async () => {
-      const msg = await convex.query(api.messages.get, {
+      const msg = await getConvexClient().query(api.messages.get, {
         messageId: fragment.messageId as Id<"messages">,
       });
       if (!msg) {
@@ -2748,7 +2742,7 @@ export const errorFixFunction = inngest.createFunction(
 
     // Get the project to verify userId
     const project = await step.run("get-project", async () => {
-      const proj = await convex.query(api.projects.getForSystem, {
+      const proj = await getConvexClient().query(api.projects.getForSystem, {
         projectId: message.projectId as Id<"projects">,
       });
       if (!proj) {
@@ -3045,7 +3039,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
             fixedAt: new Date().toISOString(),
           };
 
-          await convex.mutation(api.messages.createFragmentForUser, {
+          await getConvexClient().mutation(api.messages.createFragmentForUser, {
             userId: project.userId,
             messageId: fragment.messageId,
             sandboxId: fragment.sandboxId || undefined,
@@ -3075,7 +3069,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
           }
           : undefined;
 
-        return await convex.mutation(api.messages.createFragmentForUser, {
+        return await getConvexClient().mutation(api.messages.createFragmentForUser, {
           userId: project.userId,
           messageId: fragment.messageId,
           sandboxId: fragment.sandboxId || undefined,
@@ -3122,7 +3116,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
 
           let latestMetadata = initialMetadata;
           try {
-            const latestFragment = await convex.query(
+            const latestFragment = await getConvexClient().query(
               api.messages.getFragmentById,
               {
                 fragmentId: event.data.fragmentId as Id<"fragments">,
@@ -3149,7 +3143,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
           };
 
           try {
-            await convex.mutation(api.messages.createFragmentForUser, {
+            await getConvexClient().mutation(api.messages.createFragmentForUser, {
               userId: project.userId,
               messageId: fragment.messageId,
               sandboxId: fragment.sandboxId || undefined,
@@ -3217,7 +3211,7 @@ export const specPlanningAgentFunction = inngest.createFunction(
 
     // Get project details
     const project = await step.run("get-project", async () => {
-      return await convex.query(api.projects.getForSystem, {
+      return await getConvexClient().query(api.projects.getForSystem, {
         projectId: event.data.projectId as Id<"projects">,
       });
     });
@@ -3231,7 +3225,7 @@ export const specPlanningAgentFunction = inngest.createFunction(
 
     // Update message to PLANNING status
     await step.run("update-planning-status", async () => {
-      await convex.mutation(api.specs.updateSpec, {
+      await getConvexClient().mutation(api.specs.updateSpec, {
         messageId,
         specContent: "",
         status: "PLANNING",
@@ -3277,7 +3271,7 @@ export const specPlanningAgentFunction = inngest.createFunction(
 
       // Update project with selected framework
       await step.run("update-project-framework", async () => {
-        return await convex.mutation(api.projects.updateForUser, {
+        return await getConvexClient().mutation(api.projects.updateForUser, {
           userId: project.userId,
           projectId: event.data.projectId as Id<"projects">,
           framework: frameworkToConvexEnum(selectedFramework),
@@ -3315,7 +3309,7 @@ Remember to wrap your complete specification in <spec>...</spec> tags.`;
       "get-previous-messages",
       async () => {
         try {
-          const allMessages = await convex.query(api.messages.listForUser, {
+          const allMessages = await getConvexClient().query(api.messages.listForUser, {
             userId: project.userId,
             projectId: event.data.projectId as Id<"projects">,
           });
@@ -3367,7 +3361,7 @@ Remember to wrap your complete specification in <spec>...</spec> tags.`;
 
     // Save spec to database with AWAITING_APPROVAL status
     await step.run("save-spec", async () => {
-      await convex.mutation(api.specs.updateSpec, {
+      await getConvexClient().mutation(api.specs.updateSpec, {
         messageId,
         specContent,
         status: "AWAITING_APPROVAL",

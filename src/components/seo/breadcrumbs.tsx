@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
 import { generateBreadcrumbStructuredData } from '@/lib/seo';
 import { StructuredData } from './structured-data';
@@ -20,7 +20,7 @@ export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
     <>
       <StructuredData data={structuredData} />
       <nav aria-label="Breadcrumb" className={`flex items-center space-x-1 text-sm ${className}`}>
-        <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
+        <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
           Home
         </Link>
         {items.map((item, index) => (

@@ -24,20 +24,11 @@
       "@/convex/*": [
         "./convex/*"
       ],
-      "next/*": [
-        "./src/next-compat/*"
-      ],
       "next": [
         "./src/next-compat/index"
       ],
-      "convex/nextjs": [
-        "./src/next-compat/convex-nextjs"
-      ],
-      "@clerk/nextjs": [
-        "./src/next-compat/clerk"
-      ],
-      "@clerk/nextjs/server": [
-        "./src/next-compat/clerk-server"
+      "next/navigation": [
+        "./src/next-compat/navigation"
       ]
     }
   },

@@ -8,10 +8,11 @@ ZapDev is an AI-powered development platform that enables users to create web ap
 
 ## Technology Stack
 
-**Frontend**: Next.js 15 (Turbopack), React 19, TypeScript 5.9, Tailwind CSS v4, Shadcn/ui, React Query
+**Frontend**: TanStack Start + Router, React 19, TypeScript 5.9, Tailwind CSS v4, Shadcn/ui, React Query
 **Backend**: Convex (real-time database), tRPC (type-safe APIs), Clerk (authentication)
-**AI & Execution**: Vercel AI Gateway, Inngest 3.44 (job orchestration), E2B Code Interpreter (sandboxes)
-**Monitoring**: Sentry, OpenTelemetry
+**AI & Execution**: Vercel AI Gateway, Inngest 3.46 (job orchestration), E2B Code Interpreter (sandboxes)
+**Build**: Vite 6.0, @tanstack/router-vite-plugin
+**Monitoring**: Sentry, OpenTelemetry 2.2
 
 ## Development Commands
 
@@ -26,16 +27,16 @@ Always use `bun`, not npm or yarn.
 ### Running the Application
 
 ```bash
-bun run dev              # Start Next.js dev server with Turbopack (http://localhost:3000)
+bun run dev              # Start Vite dev server with SSR (http://localhost:3000)
 bun run convex:dev       # Start Convex backend (run in separate terminal)
 ```
-Both terminals required for local development: Next.js frontend + Convex backend.
+Both terminals required for local development: Vite + TanStack Start frontend + Convex backend.
 
 ### Linting & Building
 
 ```bash
-bun run lint             # Run ESLint (Next.js + TypeScript rules, flat config)
-bun run build            # Build for production (.next/ directory)
+bun run lint             # Run ESLint (TypeScript rules, flat config)
+bun run build            # Build for production (dist/ directory via Vite)
 bun run start            # Start production server (requires prior `build`)
 ```
 
@@ -68,12 +69,17 @@ e2b template build --name your-template-name --cmd "/compile_page.sh"
 
 ```
 src/
-├── app/                    # Next.js App Router
+├── routes/                 # TanStack Router file-based routes
+│   ├── index.tsx           # Home page route
+│   ├── dashboard.tsx       # User projects dashboard
+│   ├── projects.$projectId.tsx  # Project workspace + editor
+│   └── __root.tsx          # Root layout with providers
+├── app/                    # Legacy route handlers (being migrated)
 │   ├── api/                # API routes (tRPC, Inngest webhooks, Convex operations)
-│   ├── (home)/             # Home page
-│   ├── dashboard/          # User projects dashboard
-│   ├── projects/           # Project workspace + editor
-│   └── layout.tsx          # Root layout with providers
+│   ├── robots.ts           # robots.txt generator
+│   └── sitemap.ts          # sitemap.xml generator
+├── server/                 # Server-side utilities
+│   └── api-handler.ts      # Custom API route handler for TanStack Start
 ├── inngest/                # Background job orchestration (59KB)
 │   ├── functions.ts        # Main agent functions & orchestration
 │   └── functions/          # Individual function modules
@@ -191,10 +197,9 @@ CONVEX_DEPLOYMENT
 # Code Execution
 E2B_API_KEY
 
-# Authentication (Stack Auth)
-NEXT_PUBLIC_STACK_PROJECT_ID
-NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
-STACK_SECRET_SERVER_KEY
+# Authentication (Clerk)
+CLERK_SECRET_KEY
+CLERK_PUBLISHABLE_KEY
 
 # File Upload (UploadThing)
 UPLOADTHING_TOKEN  # Get from https://uploadthing.com/dashboard
@@ -220,17 +225,17 @@ NODE_ENV
 - Image optimization (AVIF, WebP)
 - Bundle splitting & code splitting enabled
 
-**Next.js** (`next.config.ts`):
-- Turbopack (dev mode)
-- Image optimization enabled
-- CSS optimization with Critters
-- Strict mode + React strict mode
+**Vite** (`vite.config.ts`):
+- TanStack Router plugin with automatic route generation
+- SSR with TanStack Start
+- React plugin for Fast Refresh
+- TypeScript path resolution
+- SSR externals for optimal bundle splitting
 
 **ESLint** (`eslint.config.mjs` - Flat Config):
 - TypeScript strict mode
-- Next.js plugin
 - Rules: no-explicit-any (warn), no-unused-vars (error with underscore exception)
-- Ignores: `/src/generated/*`
+- Ignores: `/src/generated/*`, `/src/routeTree.gen.ts`
 
 **Jest** (`jest.config.js`):
 - ts-jest preset
@@ -241,13 +246,14 @@ NODE_ENV
 
 | Task | Command | Notes |
 |------|---------|-------|
-| Start dev | `bun run dev` + `bun run convex:dev` (2 terminals) | Turbopack enabled |
+| Start dev | `bun run dev` + `bun run convex:dev` (2 terminals) | Vite + SSR enabled |
 | Type check | Implicit in `bun run build` | Or use `tsc --noEmit` |
 | Add dependency | `bun add <pkg>` | Always use bun |
 | Debug Convex | `bun run convex:dev` → Dashboard | Real-time data viewer |
 | View DB | Convex Dashboard | Tables, subscriptions, indexes |
 | Fix lint errors | `bun run lint` output | ESLint flat config |
 | Build & test | `bun run build && bun run test` | Pre-deployment |
+| Generate routes | Auto on file save | TanStack Router vite plugin |
 
 ## Documentation Location
 
@@ -274,7 +280,7 @@ Root-level:
 
 **Convex over PostgreSQL**: Migration in progress. Use Convex (`src/api/convex/*`) for all new data operations. PostgreSQL schema (`prisma/`) deprecated.
 
-**Framework defaults**: Next.js 15 for web apps unless user specifies otherwise. Check `src/prompts/framework-selector.ts` for detection logic.
+**Framework**: TanStack Start with file-based routing. Routes auto-generated in `src/routeTree.gen.ts`. Check `src/prompts/framework-selector.ts` for sandbox framework detection logic (Next.js, Angular, React, Vue, Svelte).
 
 **E2B sandbox timeout**: 60 minutes max execution time per sandbox instance.
 
@@ -289,5 +295,17 @@ Root-level:
 - Never expose API keys in client-side code (use NEXT_PUBLIC_ prefix only for public values)
 
 
+**Routing**
+- Use TanStack Router file-based routing in `src/routes/`
+- Route files auto-generate type-safe route tree in `src/routeTree.gen.ts`
+- Use `Link` component from `@tanstack/react-router` with `to` prop
+- Use `useNavigate()` from `@tanstack/react-router` for programmatic navigation
+- Navigation shims in `src/next-compat/navigation.ts` provide `notFound()` and deprecated Next.js hooks
+
+**Components**
+- Use native `<img>` tags instead of Next.js Image (no optimization needed with Vite)
+- Use TanStack Router `<Link to="/path">` instead of Next.js `<Link href="/path">`
+- API routes return `Response.json()` instead of `NextResponse.json()`
+
 **Extra Things**
-- Never use 'as' or 'as any'
+- Never use 'as' or 'as any' type assertions (violates strict TypeScript)

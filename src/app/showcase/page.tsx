@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import Link from 'next/link';
+import { Link } from '@tanstack/react-router';
 import { fetchQuery } from 'convex/nextjs';
 import { api } from '@/convex/_generated/api';
 import { generateMetadata as generateSEOMetadata, generateStructuredData } from '@/lib/seo';

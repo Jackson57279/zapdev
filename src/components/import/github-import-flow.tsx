@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { Loader2Icon, AlertCircleIcon, ExternalLinkIcon, CodeIcon, BotIcon, CheckIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

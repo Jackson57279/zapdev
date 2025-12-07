@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import dynamic from "next/dynamic";
 import { Suspense, useMemo, useState } from "react";
 import { EyeIcon, CodeIcon, CrownIcon } from "lucide-react";
@@ -180,7 +180,7 @@ export const ProjectView = ({ projectId }: Props) => {
               <div className="ml-auto flex items-center gap-x-2">
                 {!hasProAccess && (
                   <Button asChild size="sm" variant="tertiary">
-                    <Link href="/pricing">
+                    <Link to="/pricing">
                       <CrownIcon /> Upgrade
                     </Link>
                   </Button>

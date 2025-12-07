@@ -1,6 +1,15 @@
 // Minimal type shims for former Next.js imports
 export type Metadata = Record<string, unknown>;
 
+export interface NextPageContext {
+  err?: Error & { statusCode?: number };
+  req?: unknown;
+  res?: { statusCode?: number };
+  pathname?: string;
+  query?: Record<string, unknown>;
+  asPath?: string;
+}
+
 export namespace MetadataRoute {
   export type Robots = {
     rules:

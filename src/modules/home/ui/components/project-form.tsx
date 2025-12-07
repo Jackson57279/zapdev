@@ -2,7 +2,6 @@
 
 import { z } from "zod";
 import { toast } from "sonner";
-import Image from "next/image";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";

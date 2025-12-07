@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
+import { Link } from "@tanstack/react-router";
 import { SignInButton, SignUpButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useScroll } from "@/hooks/use-scroll";
@@ -38,15 +37,15 @@ export const Navbar = () => {
       >
         <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.svg" alt="ZapDev - AI-Powered Development Platform" width={24} height={24} />
+            <Link to="/" className="flex items-center gap-2">
+              <img src="/logo.svg" alt="ZapDev - AI-Powered Development Platform" width={24} height={24} />
               <span className="font-semibold text-lg">ZapDev</span>
             </Link>
             
             <NavigationMenu className="hidden md:flex">
               <NavigationMenuList>
                 <NavigationMenuItem>
-                  <Link href="/pricing" legacyBehavior passHref>
+                  <Link to="/pricing" legacyBehavior passHref>
                     <NavigationMenuLink className={navigationMenuTriggerStyle()}>
                       Pricing
                     </NavigationMenuLink>

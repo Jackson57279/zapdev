@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
 import { inngest } from "@/inngest/client";
 import { getAgentEventName } from "@/lib/agent-mode";
 
@@ -22,7 +21,7 @@ export async function POST(request: NextRequest) {
         hasProjectId: !!projectId,
         hasValue: !!value,
       });
-      return NextResponse.json(
+      return Response.json(
         { error: "Missing required fields: projectId and value" },
         { status: 400 }
       );
@@ -58,14 +57,14 @@ export async function POST(request: NextRequest) {
     });
 
     console.log("[Inngest Trigger] Event sent successfully");
-    return NextResponse.json({ success: true });
+    return Response.json({ success: true });
   } catch (error) {
     console.error("[Inngest Trigger] Failed to trigger event:", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
     });
-    return NextResponse.json(
+    return Response.json(
       { 
         error: "Failed to trigger event",
         details: error instanceof Error ? error.message : "Unknown error"

@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
@@ -7,15 +6,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const stackUser = await getUser();
   if (!stackUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (!stackUser.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (false) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -26,7 +25,7 @@ export async function GET() {
     });
 
     if (!connection) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Figma not connected" },
         { status: 401 }
       );
@@ -42,7 +41,7 @@ export async function GET() {
     if (!response.ok) {
       if (response.status === 401) {
         // Token might be expired
-        return NextResponse.json(
+        return Response.json(
           { error: "Figma token expired, please reconnect" },
           { status: 401 }
         );
@@ -52,12 +51,12 @@ export async function GET() {
 
     const data = await response.json();
 
-    return NextResponse.json({
+    return Response.json({
       files: data.files || [],
     });
   } catch (error) {
     console.error("Error fetching Figma files:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to fetch Figma files" },
       { status: 500 }
     );

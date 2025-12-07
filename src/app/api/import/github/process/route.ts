@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
@@ -7,15 +6,15 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const stackUser = await getUser();
   if (!stackUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (!stackUser.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (false) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -23,7 +22,7 @@ export async function POST(request: Request) {
     const { repoId, repoName, repoFullName, repoUrl, projectId } = body;
 
     if (!repoId || !projectId || !repoName || !repoFullName) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
@@ -37,7 +36,7 @@ export async function POST(request: Request) {
     });
 
     if (!connection) {
-      return NextResponse.json(
+      return Response.json(
         { error: "GitHub not connected" },
         { status: 401 }
       );
@@ -85,14 +84,14 @@ export async function POST(request: Request) {
     //   data: { importId, projectId, repoFullName, repoUrl }
     // });
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       importId: importRecord,
       message: "GitHub repository import started",
     });
   } catch (error) {
     console.error("Error processing GitHub import:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to process GitHub import" },
       { status: 500 }
     );

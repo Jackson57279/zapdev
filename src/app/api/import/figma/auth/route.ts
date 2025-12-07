@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { checkBotId } from "botid/server";
 import { getUser } from "@/lib/auth-server";
 
@@ -14,7 +13,7 @@ export async function GET() {
   const botVerification = await checkBotId();
   if (botVerification.isBot) {
     console.warn("⚠️ BotID blocked a Figma import auth attempt");
-    return NextResponse.json(
+    return Response.json(
       { error: "Access denied - suspicious activity detected" },
       { status: 403 }
     );
@@ -23,13 +22,13 @@ export async function GET() {
   const stackUser = await getUser();
 
   if (!stackUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = stackUser.id;
 
   if (!FIGMA_CLIENT_ID) {
-    return NextResponse.json(
+    return Response.json(
       { error: "Figma OAuth not configured" },
       { status: 500 }
     );
@@ -50,5 +49,5 @@ export async function GET() {
 
   const figmaAuthUrl = `https://www.figma.com/oauth?${params.toString()}`;
 
-  return NextResponse.redirect(figmaAuthUrl);
+  return Response.redirect(figmaAuthUrl);
 }

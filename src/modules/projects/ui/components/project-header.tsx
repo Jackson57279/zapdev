@@ -1,5 +1,4 @@
-import Link from "next/link";
-import Image from "next/image";
+import { Link } from "@tanstack/react-router";
 import { useTheme } from "next-themes";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -61,14 +60,14 @@ export const ProjectHeader = ({ projectId }: Props) => {
             size="sm"
             className="focus-visible:ring-0 hover:bg-transparent hover:opacity-75 transition-opacity pl-2!"
           >
-            <Image src="/logo.svg" alt="ZapDev" width={18} height={18} />
+            <img src="/logo.svg" alt="ZapDev" width={18} height={18} />
             <span className="text-sm font-medium">{project.name}</span>
             <ChevronDownIcon />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="start">
           <DropdownMenuItem asChild>
-            <Link href="/">
+            <Link to="/">
               <ChevronLeftIcon />
               <span>
                 Go to Dashboard

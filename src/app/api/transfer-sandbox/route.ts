@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { checkBotId } from "botid/server";
 import { inngest } from "@/inngest/client";
 
@@ -10,7 +9,7 @@ export async function POST(request: Request) {
     const botVerification = await checkBotId();
     if (botVerification.isBot) {
       console.warn("⚠️ BotID blocked a sandbox transfer attempt");
-      return NextResponse.json(
+      return Response.json(
         { error: "Access denied - suspicious activity detected" },
         { status: 403 }
       );
@@ -20,7 +19,7 @@ export async function POST(request: Request) {
     const { fragmentId } = body;
 
     if (!fragmentId) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Fragment ID is required" },
         { status: 400 }
       );
@@ -33,13 +32,13 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       message: "Sandbox resume initiated",
     });
   } catch (error) {
     console.error("[ERROR] Failed to resume sandbox:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to resume sandbox" },
       { status: 500 }
     );

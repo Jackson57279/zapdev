@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -15,16 +14,16 @@ export async function GET(
     });
 
     if (!fragment) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Fragment not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(fragment);
+    return Response.json(fragment);
   } catch (error) {
     console.error("[ERROR] Failed to fetch fragment:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to fetch fragment" },
       { status: 500 }
     );

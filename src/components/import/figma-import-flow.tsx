@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import Image from "next/image";
 import { Loader2Icon, CheckCircleIcon, AlertCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

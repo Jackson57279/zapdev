@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { useUser } from "@/lib/auth-client";
 import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 
 export default function SettingsPage() {
@@ -33,7 +33,7 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/settings/profile">
+            <Link to="/settings/profile">
               <Button variant="outline">Manage Profile</Button>
             </Link>
           </CardContent>
@@ -51,7 +51,7 @@ export default function SettingsPage() {
               <p className="text-sm">
                 {usage?.creditsRemaining ?? 0} credits remaining
               </p>
-              <Link href="/settings/subscription">
+              <Link to="/settings/subscription">
                 <Button variant="outline">Manage Subscription</Button>
               </Link>
             </div>
@@ -66,7 +66,7 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/settings/connections">
+            <Link to="/settings/connections">
               <Button variant="outline">Manage Connections</Button>
             </Link>
           </CardContent>

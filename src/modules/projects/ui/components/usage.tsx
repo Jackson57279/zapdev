@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { CrownIcon } from "lucide-react";
 import { formatDuration, intervalToDuration } from "date-fns";
@@ -47,7 +47,7 @@ export const Usage = ({ points, msBeforeNext, planType }: Props) => {
             variant="tertiary"
             className="ml-auto"
           >
-            <Link href="/pricing">
+            <Link to="/pricing">
               <CrownIcon /> Upgrade
             </Link>
           </Button>
