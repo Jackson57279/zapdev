@@ -6,9 +6,11 @@ import {
   createAgent,
   createTool,
   createNetwork,
+  createStepWrapper,
   type Tool,
   type Message,
   createState,
+  getStepTools,
   type NetworkRun,
   type AgentResult,
 } from "@inngest/agent-kit";
@@ -1572,6 +1574,27 @@ Generate code that matches the approved specification.`;
         },
       });
 
+    const resolveStepContext = async () => {
+      try {
+        const contextStep = await getStepTools();
+        if (contextStep?.run) {
+          return { stepTools: contextStep, source: "async-context" };
+        }
+      } catch (contextError) {
+        console.warn(
+          "[WARN] Unable to read step tools from async context:",
+          contextError,
+        );
+      }
+
+      const wrappedStep = createStepWrapper(step, step);
+      if (wrappedStep?.run) {
+        return { stepTools: wrappedStep, source: "direct-step" };
+      }
+
+      return { stepTools: undefined, source: "missing" };
+    };
+
     const runNetwork = async (
       _stepContext: typeof step,
       _label: string,
@@ -1583,11 +1606,21 @@ Generate code that matches the approved specification.`;
       const stateForRun = stateOverride ?? buildAgentState();
       const inputForRun = userInput ?? event.data.value;
 
-      // Run network directly without wrapping in step.run()
-      // Agent-kit automatically retrieves step tools from Inngest's async context
-      // when asyncContext: true is enabled in the Inngest client config
-      // Wrapping in step.run() can break async context propagation in production builds
-      return await network.run(inputForRun, { state: stateForRun as any });
+      const { stepTools, source } = await resolveStepContext();
+
+      if (stepTools?.run) {
+        console.log(
+          `[DEBUG] Running network via step context source: ${source}`,
+        );
+        return stepTools.run(_label, () =>
+          network.run(inputForRun, { state: stateForRun as any }),
+        );
+      }
+
+      console.warn(
+        "[WARN] Step context unavailable; running network without step.run()",
+      );
+      return network.run(inputForRun, { state: stateForRun as any });
     };
 
     console.log("[DEBUG] Running network with input:", event.data.value);
@@ -1608,8 +1641,13 @@ Generate code that matches the approved specification.`;
       if (error instanceof Error && error.stack) {
         console.error("[ERROR] Stack trace:", error.stack);
       }
+      if (errorMessage.toLowerCase().includes("step")) {
+        console.error(
+          "[ERROR] Inngest step context missing; ensure asyncContext is enabled and the route uses the nodejs runtime.",
+        );
+      }
       throw new Error(
-        `Code generation failed: ${errorMessage}. Please ensure API credentials are valid and try again.`,
+        `Code generation failed: ${errorMessage}. Check server logs for details.`,
       );
     }
 
