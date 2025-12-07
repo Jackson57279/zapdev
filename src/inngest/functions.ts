@@ -936,7 +936,12 @@ export const codeAgentFunction = inngest.createFunction(
       },
     });
 
-    const result = await network.run(event.data.value, { state: initialState });
+    const runOptions = {
+      state: initialState,
+      step,
+    } as unknown as Parameters<typeof network.run>[1];
+
+    const result = await network.run(event.data.value, runOptions);
 
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
