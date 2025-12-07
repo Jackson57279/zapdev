@@ -996,8 +996,22 @@ export const codeAgentFunction = inngest.createFunction(
       tools: createCodeAgentTools(sandboxId),
       lifecycle: {
         onResponse: async ({ result, network }) => {
+          // Log full response details for debugging
+          console.log("[DEBUG] Agent onResponse - output count:", result.output?.length ?? 0);
+          console.log("[DEBUG] Agent onResponse - tool calls:", result.toolCalls?.length ?? 0);
+          
+          // Log each output message type
+          for (const [idx, msg] of (result.output || []).entries()) {
+            console.log(`[DEBUG] Agent output[${idx}] - role: ${msg.role}, type: ${msg.type}`);
+            if (msg.type === "tool_call") {
+              console.log(`[DEBUG] Agent output[${idx}] - tool: ${(msg as { name?: string }).name}`);
+            }
+          }
+          
           const lastAssistantMessageText =
             lastAssistantTextMessageContent(result);
+
+          console.log("[DEBUG] Agent response text preview:", lastAssistantMessageText?.slice(0, 200) ?? "no text");
 
           if (lastAssistantMessageText && network) {
             const containsSummaryTag = lastAssistantMessageText.includes("<task_summary>");
