@@ -1364,7 +1364,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
     const filePaths = Object.keys(files);
     const hasFiles = filePaths.length > 0;
 
-    let summaryText = extractSummaryText(
+    summaryText = extractSummaryText(
       typeof result.state.data.summary === "string"
         ? result.state.data.summary
         : "",

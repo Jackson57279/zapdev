@@ -269,7 +269,7 @@ Built a responsive dashboard with real-time charts, user profile management, and
 </task_summary>
 
 ❌ Incorrect:
-- Wrapping the summary in backticks: ```<task_summary>...</task_summary>```
+- Wrapping the summary in backticks: \`\`\`<task_summary>...</task_summary>\`\`\`
 - Including explanation or code after the summary
 - Ending without printing <task_summary>
 - Forgetting to include the summary tag
