@@ -29,8 +29,13 @@ const convex = new Proxy({} as ConvexHttpClient, {
  */
 export const autoPauseSandboxes = inngest.createFunction(
   { id: "auto-pause-sandboxes" },
-  { cron: "0 */5 * * * *" }, // Every 5 minutes
+  { cron: "*/5 * * * *" }, // Every 5 minutes
   async ({ step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Starting auto-pause job");
 
     // Get all running sandbox sessions

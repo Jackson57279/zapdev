@@ -25,6 +25,8 @@ const nextConfig = {
   /* config options here */
   // Disable trailing slash enforcement for the entire app
   trailingSlash: false,
+  // Ensure file tracing resolves from the project root when multiple lockfiles exist
+  outputFileTracingRoot: __dirname,
   // Prevent trailing slash redirects on API routes (Polar webhooks don't follow redirects)
   skipTrailingSlashRedirect: true,
   // Handle webhook requests with or without trailing slash
