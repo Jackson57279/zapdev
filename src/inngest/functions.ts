@@ -1707,18 +1707,11 @@ Generate code that matches the approved specification.`;
       const network = createCodeAgentNetwork(agent);
       const stateForRun = stateOverride ?? buildAgentState();
       const inputForRun = userInput ?? event.data.value;
-      const executeNetwork = async (): Promise<NetworkRun<AgentState>> =>
-        network.run(inputForRun, { state: stateForRun });
 
-      return runWithStepContext<NetworkRun<AgentState>>(step, async () => {
-        if (!step) {
-          return executeNetwork();
-        }
-        return (await step.run(
-          label,
-          executeNetwork,
-        )) as unknown as NetworkRun<AgentState>;
-      });
+      // FIX: Do not wrap network.run in step.run. The agent-kit manages its own steps.
+      console.log(`[DEBUG] Running network directly (label: ${label})`);
+
+      return network.run(inputForRun, { state: stateForRun });
     };
 
     console.log("[DEBUG] Running network with input:", event.data.value);
