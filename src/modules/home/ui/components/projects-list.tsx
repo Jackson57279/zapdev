@@ -1,6 +1,15 @@
 "use client";
 
-import { Link } from "@tanstack/react-router";
+                <img
+                  src={imageSrc}
+                  alt={hasPreviewImage ? `${project.name} preview` : "ZapDev"}
+                  width={48}
+                  height={48}
+                  className={cn(
+                    "rounded-md border object-cover",
+                    !hasPreviewImage && "border-none object-contain bg-muted p-2"
+                  )}
+                />
 import { useUser } from "@/lib/auth-client";
 import { formatDistanceToNow } from "date-fns";
 import { useQuery } from "convex/react";
