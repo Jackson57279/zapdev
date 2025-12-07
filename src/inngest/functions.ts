@@ -9,7 +9,6 @@ import {
   type Tool,
   type Message,
   createState,
-  getStepTools,
   type NetworkRun,
   type AgentResult,
 } from "@inngest/agent-kit";
@@ -1579,26 +1578,6 @@ Generate code that matches the approved specification.`;
         },
       });
 
-    const resolveStepContext = async (stepContext?: typeof step) => {
-      try {
-        const contextStep = await getStepTools();
-        if (contextStep?.run) {
-          return { stepTools: contextStep, source: "async-context" };
-        }
-      } catch (contextError) {
-        console.warn(
-          "[WARN] Unable to read step tools from async context:",
-          contextError,
-        );
-      }
-
-      if (stepContext?.run) {
-        return { stepTools: stepContext, source: "direct-step" };
-      }
-
-      return { stepTools: undefined, source: "missing" };
-    };
-
     const runNetwork = async (
       stepContext: typeof step | undefined,
       _label: string, // Label is unused now, but kept for signature compatibility
@@ -1615,7 +1594,14 @@ Generate code that matches the approved specification.`;
       // Wrapping it causes context loss for the internal 'step' accessor.
       console.log(`[DEBUG] Running network directly (label: ${_label})`);
 
-      return network.run(inputForRun, { state: stateForRun });
+      const runOptions: Parameters<typeof network.run>[1] & {
+        step?: typeof step;
+      } = {
+        state: stateForRun,
+        step: stepContext,
+      };
+
+      return network.run(inputForRun, runOptions);
     };
 
     console.log("[DEBUG] Running network with input:", event.data.value);
