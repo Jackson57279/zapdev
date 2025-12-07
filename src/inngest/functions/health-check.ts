@@ -30,6 +30,11 @@ export const e2bHealthCheck = inngest.createFunction(
   { id: "e2b-health-check", name: "E2B Health Check" },
   { cron: "*/5 * * * *" }, // Every 5 minutes
   async ({ step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Starting E2B health check");
 
     const healthStatus = await step.run("check-health", async () => {
@@ -135,6 +140,11 @@ export const cleanupRateLimits = inngest.createFunction(
   { id: "cleanup-rate-limits", name: "Cleanup E2B Rate Limits" },
   { cron: "0 * * * *" }, // Every hour
   async ({ step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Starting rate limit cleanup");
 
     const result = await step.run("cleanup", async () => {

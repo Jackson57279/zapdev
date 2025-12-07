@@ -1035,6 +1035,11 @@ export const sandboxTransferFunction = inngest.createFunction(
   { id: "sandbox-transfer" },
   { event: "sandbox-transfer/run" },
   async ({ event, step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Starting sandbox resume function");
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
 
@@ -1165,6 +1170,11 @@ export const errorFixFunction = inngest.createFunction(
   { id: "error-fix" },
   { event: "error-fix/run" },
   async ({ event, step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Starting error-fix function (no credit charge)");
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
 
@@ -1834,6 +1844,11 @@ export const sandboxCleanupFunction = inngest.createFunction(
     cron: "0 0 * * *", // Every day at midnight UTC
   },
   async ({ step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime."
+      );
+    }
     console.log("[DEBUG] Running sandbox cleanup job");
 
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
