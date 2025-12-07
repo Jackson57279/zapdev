@@ -1,15 +1,6 @@
 "use client";
 
-                <img
-                  src={imageSrc}
-                  alt={hasPreviewImage ? `${project.name} preview` : "ZapDev"}
-                  width={48}
-                  height={48}
-                  className={cn(
-                    "rounded-md border object-cover",
-                    !hasPreviewImage && "border-none object-contain bg-muted p-2"
-                  )}
-                />
+import { Link } from "@tanstack/react-router";
 import { useUser } from "@/lib/auth-client";
 import { formatDistanceToNow } from "date-fns";
 import { useQuery } from "convex/react";
@@ -69,18 +60,18 @@ export const ProjectsList = () => {
               className="font-normal h-auto justify-start w-full text-start p-4"
               asChild
             >
-              <Link to={`/projects/${project._id}`}>
+              <Link to={"/projects/$projectId"} params={{ projectId: project._id }}>
                 <div className="flex items-center gap-x-4">
-                  <Image
-                    src={imageSrc}
-                    alt={hasPreviewImage ? `${project.name} preview` : "ZapDev"}
-                    width={48}
-                    height={48}
-                    className={cn(
-                      "rounded-md border object-cover",
-                      !hasPreviewImage && "border-none object-contain bg-muted p-2"
-                    )}
-                  />
+                   <img
+                     src={imageSrc}
+                     alt={hasPreviewImage ? `${project.name} preview` : "ZapDev"}
+                     width={48}
+                     height={48}
+                     className={cn(
+                       "rounded-md border object-cover",
+                       !hasPreviewImage && "border-none object-contain bg-muted p-2"
+                     )}
+                   />
                   <div className="flex flex-col">
                     <h3 className="truncate font-medium">
                       {project.name}
