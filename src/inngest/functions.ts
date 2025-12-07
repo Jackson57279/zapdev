@@ -1601,7 +1601,7 @@ Generate code that matches the approved specification.`;
 
     const runNetwork = async (
       stepContext: typeof step | undefined,
-      _label: string,
+      _label: string, // Label is unused now, but kept for signature compatibility
       agent: ReturnType<typeof createAgent<AgentState>>,
       stateOverride?: AgentStateInstance,
       userInput?: string,
@@ -1610,20 +1610,11 @@ Generate code that matches the approved specification.`;
       const stateForRun = stateOverride ?? buildAgentState();
       const inputForRun = userInput ?? event.data.value;
 
-      const { stepTools, source } = await resolveStepContext(stepContext);
+      // FIX: Do not wrap network.run in step.run.
+      // The agent-kit handles its own steps and context.
+      // Wrapping it causes context loss for the internal 'step' accessor.
+      console.log(`[DEBUG] Running network directly (label: ${_label})`);
 
-      if (stepTools?.run) {
-        console.log(
-          `[DEBUG] Running network via step context source: ${source}`,
-        );
-        return stepTools.run(_label, () =>
-          network.run(inputForRun, { state: stateForRun }),
-        );
-      }
-
-      console.warn(
-        "[WARN] Step context unavailable; running network without step.run()",
-      );
       return network.run(inputForRun, { state: stateForRun });
     };
 
