@@ -1,4 +1,4 @@
-import { ConvexHttpClient } from "convex/http-client";
+import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReference, FunctionReturnType } from "convex/server";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import Image from "next/image";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
@@ -50,7 +50,7 @@ interface AttachmentData {
 }
 
 export const ProjectForm = () => {
-  const router = useRouter();
+  const navigate = useNavigate();
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -137,7 +137,7 @@ export const ProjectForm = () => {
 
       form.reset();
       setAttachments([]);
-      router.push(`/projects/${result.id}`);
+      navigate({ to: "/projects/$projectId", params: { projectId: result.id } });
     } catch (error) {
       if (error instanceof Error) {
         toast.error(error.message);
@@ -154,7 +154,7 @@ export const ProjectForm = () => {
           error.message.includes("credits") ||
           error.message.includes("out of credits")
         ) {
-          router.push("/pricing");
+          navigate({ to: "/pricing" });
         }
       } else {
         toast.error("Something went wrong");

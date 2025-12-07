@@ -1,22 +1,21 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useNavigate, useSearch, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FigmaImportFlow } from "@/components/import/figma-import-flow";
 import { GitHubImportFlow } from "@/components/import/github-import-flow";
 
 function ImportPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const searchParams = useSearch({ strict: false }) as Record<string, string | undefined>;
   const [isLoading, setIsLoading] = useState(true);
 
-  const source = searchParams?.get("source");
-  const status = searchParams?.get("status");
-  const error = searchParams?.get("error");
+  const source = searchParams?.source;
+  const status = searchParams?.status;
+  const error = searchParams?.error;
 
   useEffect(() => {
     if (error) {
@@ -44,7 +43,7 @@ function ImportPageContent() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Import Your Design or Code</h1>
-          <Link href="/">
+          <Link to="/">
             <Button variant="ghost" size="icon">
               <ArrowLeftIcon className="size-4" />
             </Button>
@@ -59,9 +58,9 @@ function ImportPageContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div
               className="p-6 rounded-lg border border-border bg-card hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer"
-              onClick={() =>
-                router.push("/api/import/figma/auth")
-              }
+              onClick={() => {
+                window.location.href = "/api/import/figma/auth";
+              }}
             >
               <div className="flex items-center justify-center w-12 h-12 bg-[#0ACE4E] rounded-lg mb-4">
                 <svg
@@ -84,9 +83,9 @@ function ImportPageContent() {
 
             <div
               className="p-6 rounded-lg border border-border bg-card hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer"
-              onClick={() =>
-                router.push("/api/import/github/auth")
-              }
+              onClick={() => {
+                window.location.href = "/api/import/github/auth";
+              }}
             >
               <div className="flex items-center justify-center w-12 h-12 bg-black rounded-lg mb-4">
                 <svg

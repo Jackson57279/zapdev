@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -18,14 +18,14 @@ interface Props {
 }
 
 export const UserControl = ({ showName }: Props) => {
-  const router = useRouter();
+  const navigate = useNavigate();
   const user = useUser();
 
   if (!user) return null;
 
   const handleSignOut = async () => {
     await user.signOut();
-    router.push("/");
+    navigate({ to: "/" });
   };
 
   const initials = user.displayName
@@ -59,11 +59,11 @@ export const UserControl = ({ showName }: Props) => {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+        <DropdownMenuItem onClick={() => navigate({ to: "/dashboard" })}>
           <User className="mr-2 h-4 w-4" />
           <span>Dashboard</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push("/settings")}>
+        <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
           <Settings className="mr-2 h-4 w-4" />
           <span>Settings</span>
         </DropdownMenuItem>

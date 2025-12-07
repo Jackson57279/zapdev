@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import Image from "next/image";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon, FigmaIcon, SparklesIcon } from "lucide-react";
@@ -46,7 +46,7 @@ interface AttachmentData {
 }
 
 export const MessageForm = ({ projectId }: Props) => {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const user = useUser();
   const isAuthenticated = !!user;
@@ -113,7 +113,7 @@ export const MessageForm = ({ projectId }: Props) => {
         toast.error(error.message);
 
         if (error.message.includes("credits") || error.message.includes("out of credits")) {
-          router.push("/pricing");
+          navigate({ to: "/pricing" });
         }
       } else {
         toast.error("Something went wrong");

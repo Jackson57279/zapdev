@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearch, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 
@@ -12,15 +12,15 @@ import { StructuredData } from "@/components/seo/structured-data";
 
 // Client-side wrapper for handling search params
 function PageContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+  const searchParams = useSearch({ strict: false }) as Record<string, string | undefined>;
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const subscription = searchParams?.get("subscription");
+    const subscription = searchParams?.subscription;
     
     if (subscription === "success") {
       // Clean up URL
-      router.replace("/", { scroll: false });
+      navigate({ to: "/", replace: true });
       
       // Show success toast
       toast.success("Upgrade Successful!", {
@@ -59,7 +59,7 @@ function PageContent() {
 
       return () => clearInterval(interval);
     }
-  }, [searchParams, router]);
+  }, [searchParams, navigate]);
 
   return (
     <div className="flex flex-col max-w-5xl mx-auto w-full">
