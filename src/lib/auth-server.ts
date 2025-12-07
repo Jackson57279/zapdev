@@ -3,6 +3,14 @@ import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import type { FunctionReference, FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 
+interface ClerkTokenClaims {
+  sub: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Get the authenticated user from Convex Auth (server-side)
  * This should be called from Server Components or API routes
@@ -18,11 +26,29 @@ export async function getUser(req?: Request) {
 
     const secretKey = process.env.CLERK_SECRET_KEY;
     if (!secretKey) {
-      console.warn("CLERK_SECRET_KEY is not set; skipping auth verification");
+      const errorMsg = "CLERK_SECRET_KEY is not set; authentication disabled";
+      if (process.env.NODE_ENV === "production") {
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      console.warn(errorMsg);
       return null;
     }
 
     const claims = await verifyToken(token, { secretKey });
+    
+    // Type guard for Clerk claims
+    if (!claims || typeof claims !== "object" || !("sub" in claims)) {
+      console.error("Invalid token claims structure");
+      return null;
+    }
+    
+    const claimsTyped: ClerkTokenClaims = {
+      sub: String(claims.sub),
+      email: typeof claims.email === "string" ? claims.email : undefined,
+      firstName: typeof claims.firstName === "string" ? claims.firstName : undefined,
+      lastName: typeof claims.lastName === "string" ? claims.lastName : undefined,
+    };
 
     // Try to enrich from Convex if available
     try {
@@ -41,16 +67,16 @@ export async function getUser(req?: Request) {
       console.warn("Convex user fetch failed, falling back to Clerk claims", convexError);
     }
 
+    const rawFullName = `${claimsTyped.firstName ?? ""} ${claimsTyped.lastName ?? ""}`.trim();
+    const nameFromClaims = rawFullName === "" ? null : rawFullName;
+
     return {
-      id: claims.sub ?? "",
-      email: (claims as any).email ?? null,
-      name:
-        `${(claims as any).firstName ?? ""} ${(claims as any).lastName ?? ""}`.trim() ||
-        (claims as any).email ??
-        null,
+      id: claimsTyped.sub,
+      email: claimsTyped.email ?? null,
+      name: (nameFromClaims ?? claimsTyped.email) ?? null,
       image: null,
-      primaryEmail: (claims as any).email ?? null,
-      displayName: (claims as any).email ?? claims.sub ?? "",
+      primaryEmail: claimsTyped.email ?? null,
+      displayName: claimsTyped.email ?? claimsTyped.sub,
     };
   } catch (error) {
     console.error("Failed to get user:", error);
@@ -85,91 +111,80 @@ export async function getAuthHeaders(req?: Request) {
  * Fetch a Convex query with authentication
  * Use this in Server Components or API routes
  */
-export async function fetchQueryWithAuth<T>(
-  query: any,
-  args: any = {},
+export async function fetchQueryWithAuth<
+  Query extends FunctionReference<"query">
+>(
+  query: Query,
+  args?: Query["_args"],
   req?: Request,
-): Promise<T> {
+): Promise<FunctionReturnType<Query>> {
   const token = await extractClerkToken(req);
   const options = token ? { token } : undefined;
-  return options ? fetchQuery(query, args, options) : fetchQuery(query, args);
+  
+  if (options) {
+    return fetchQuery(query, args, options);
+  }
+  return fetchQuery(query, args);
 }
 
 /**
  * Fetch a Convex mutation with authentication
  * Use this in Server Components or API routes  
  */
-export async function fetchMutationWithAuth<T>(
-  mutation: any,
-  args: any = {},
+export async function fetchMutationWithAuth<
+  Mutation extends FunctionReference<"mutation">
+>(
+  mutation: Mutation,
+  args?: Mutation["_args"],
   req?: Request,
-): Promise<T> {
+): Promise<FunctionReturnType<Mutation>> {
   const token = await extractClerkToken(req);
   const options = token ? { token } : undefined;
 
-  return options
-    ? fetchMutation(mutation, args, options)
-    : fetchMutation(mutation, args);
+  if (options) {
+    return fetchMutation(mutation, args, options);
+  }
+  return fetchMutation(mutation, args);
 }
-
-type ArgsOf<Func extends FunctionReference<any>> =
-  Func["_args"] extends undefined ? Record<string, never> : Func["_args"];
-
-type ConvexClientWithAuth = {
-  query<Query extends FunctionReference<"query">>(
-    query: Query,
-    args?: ArgsOf<Query>
-  ): Promise<FunctionReturnType<Query>>;
-  mutation<Mutation extends FunctionReference<"mutation">>(
-    mutation: Mutation,
-    args?: ArgsOf<Mutation>
-  ): Promise<FunctionReturnType<Mutation>>;
-  action<Action extends FunctionReference<"action">>(
-    action: Action,
-    args?: ArgsOf<Action>
-  ): Promise<FunctionReturnType<Action>>;
-};
 
 /**
  * Create a minimal Convex client that forwards the authenticated token
  * from Convex Auth cookies when calling queries, mutations, or actions.
  * Use this in API routes and server components that need to talk to Convex.
  */
-export async function getConvexClientWithAuth(req?: Request): Promise<ConvexClientWithAuth> {
+export async function getConvexClientWithAuth(req?: Request) {
   const token = await extractClerkToken(req);
   const options = token ? { token } : undefined;
 
-  const client: ConvexClientWithAuth = {
+  return {
     query: async <Query extends FunctionReference<"query">>(
       query: Query,
-      args?: ArgsOf<Query>
-    ) => {
-      const normalizedArgs = (args ?? {}) as ArgsOf<Query>;
-      return options
-        ? await fetchQuery(query, normalizedArgs, options)
-        : await fetchQuery(query, normalizedArgs);
+      args?: Query["_args"]
+    ): Promise<FunctionReturnType<Query>> => {
+      if (options) {
+        return await fetchQuery(query, args, options);
+      }
+      return await fetchQuery(query, args);
     },
     mutation: async <Mutation extends FunctionReference<"mutation">>(
       mutation: Mutation,
-      args?: ArgsOf<Mutation>
-    ) => {
-      const normalizedArgs = (args ?? {}) as ArgsOf<Mutation>;
-      return options
-        ? await fetchMutation(mutation, normalizedArgs, options)
-        : await fetchMutation(mutation, normalizedArgs);
+      args?: Mutation["_args"]
+    ): Promise<FunctionReturnType<Mutation>> => {
+      if (options) {
+        return await fetchMutation(mutation, args, options);
+      }
+      return await fetchMutation(mutation, args);
     },
     action: async <Action extends FunctionReference<"action">>(
       action: Action,
-      args?: ArgsOf<Action>
-    ) => {
-      const normalizedArgs = (args ?? {}) as ArgsOf<Action>;
-      return options
-        ? await fetchAction(action, normalizedArgs, options)
-        : await fetchAction(action, normalizedArgs);
+      args?: Action["_args"]
+    ): Promise<FunctionReturnType<Action>> => {
+      if (options) {
+        return await fetchAction(action, args, options);
+      }
+      return await fetchAction(action, args);
     },
   };
-
-  return client;
 }
 
 async function extractClerkToken(req?: Request): Promise<string | null> {

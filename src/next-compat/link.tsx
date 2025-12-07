@@ -1,34 +1,40 @@
 import { Link as RouterLink } from "@tanstack/react-router";
 import React, { forwardRef } from "react";
 
-type LinkProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & {
-  href: string;
-  prefetch?: boolean;
+type RouterLinkProps = Omit<React.ComponentPropsWithRef<typeof RouterLink>, "ref">;
+type RouterLinkInstance = React.ComponentRef<typeof RouterLink>;
+
+type InternalRouterLinkProps = Omit<RouterLinkProps, "to"> & {
+  to: string;
 };
 
-const Link = forwardRef<HTMLAnchorElement, LinkProps>(function NextCompatLink(
-  { href, children, prefetch: _prefetch, ...rest },
-  ref
-) {
-  const isExternal = /^https?:\/\//.test(href) || href.startsWith("mailto:") || href.startsWith("#");
+export type LinkProps = React.AnchorHTMLAttributes<HTMLAnchorElement> &
+  Omit<InternalRouterLinkProps, "to"> & {
+    href: string;
+    prefetch?: boolean;
+  };
 
-  if (isExternal) {
+const Link = forwardRef<HTMLAnchorElement | RouterLinkInstance, LinkProps>(
+  function NextCompatLink({ href, children, prefetch: _prefetch, ...rest }, ref) {
+    const isExternal = /^https?:\/\//.test(href) || href.startsWith("mailto:") || href.startsWith("#");
+
+    if (isExternal) {
+      return (
+        <a href={href} ref={ref} {...rest}>
+          {children}
+        </a>
+      );
+    }
+
     return (
-      <a href={href} ref={ref} {...rest}>
+      <RouterLink
+        to={href}
+        ref={ref}
+        {...rest}
+      >
         {children}
-      </a>
+      </RouterLink>
     );
-  }
-
-  return (
-    <RouterLink
-      to={href as any}
-      ref={ref as any}
-      {...rest}
-    >
-      {children}
-    </RouterLink>
-  );
-});
+  });
 
 export default Link;

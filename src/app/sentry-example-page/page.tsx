@@ -1,8 +1,8 @@
 "use client";
 
 import Head from "next/head";
-import * as Sentry from "@sentry/nextjs";
-import { useState, useEffect } from "react";
+import * as Sentry from "@sentry/react";
+import { useState } from "react";
 
 class SentryExampleFrontendError extends Error {
   constructor(message: string | undefined) {
@@ -13,15 +13,6 @@ class SentryExampleFrontendError extends Error {
 
 export default function Page() {
   const [hasSentError, setHasSentError] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
-  
-  useEffect(() => {
-    async function checkConnectivity() {
-      const result = await Sentry.diagnoseSdkConnectivity();
-      setIsConnected(result !== 'sentry-unreachable');
-    }
-    checkConnectivity();
-  }, []);
 
   return (
     <div>
@@ -49,17 +40,18 @@ export default function Page() {
           type="button"
           onClick={async () => {
             await Sentry.startSpan({
-              name: 'Example Frontend/Backend Span',
-              op: 'test'
+              name: "Example Frontend/Backend Span",
+              op: "test",
             }, async () => {
               const res = await fetch("/api/sentry-example-api");
               if (!res.ok) {
                 setHasSentError(true);
               }
             });
-            throw new SentryExampleFrontendError("This error is raised on the frontend of the example page.");
+            throw new SentryExampleFrontendError(
+              "This error is raised on the frontend of the example page."
+            );
           }}
-          disabled={!isConnected}
         >
           <span>
             Throw Sample Error
@@ -70,10 +62,6 @@ export default function Page() {
           <p className="success">
             Error sent to Sentry.
           </p>
-        ) : !isConnected ? (
-          <div className="connectivity-error">
-            <p>It looks like network requests to Sentry are being blocked, which will prevent errors from being captured. Try disabling your ad-blocker to complete the test.</p>
-          </div>
         ) : (
           <div className="success_placeholder" />
         )}
@@ -188,21 +176,6 @@ export default function Page() {
           height: 46px;
         }
 
-        .connectivity-error {
-          padding: 12px 16px;
-          background-color: #E50045;
-          border-radius: 8px;
-          width: 500px;
-          color: #FFFFFF;
-          border: 1px solid #A80033;
-          text-align: center;
-          margin: 0;
-        }
-        
-        .connectivity-error a {
-          color: #FFFFFF;
-          text-decoration: underline;
-        }
       `}</style>
     </div>
   );

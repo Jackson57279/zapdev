@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-import { fileURLToPath } from "url";
+import { URL, fileURLToPath } from "url";
 
 const tsconfigRootDir = fileURLToPath(new URL(".", import.meta.url));
 

@@ -108,7 +108,7 @@ export class CircuitBreaker {
       // Only send alerts in production or if explicitly enabled
       if (typeof window === "undefined" && process.env.NODE_ENV === "production") {
         // Check if Sentry is available (dynamically imported)
-        import("@sentry/nextjs")
+        import("@sentry/node")
           .then((Sentry) => {
             const message =
               event === "circuit_opened"

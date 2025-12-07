@@ -77,8 +77,8 @@ export const e2bHealthCheck = inngest.createFunction(
 
         // Send to Sentry if available
         try {
-          if (process.env.NODE_ENV === "production") {
-            const Sentry = await import("@sentry/nextjs");
+        if (process.env.NODE_ENV === "production") {
+            const Sentry = await import("@sentry/node");
             Sentry.captureMessage(
               "E2B Circuit Breaker has been OPEN for extended period",
               {
@@ -101,9 +101,9 @@ export const e2bHealthCheck = inngest.createFunction(
 
     // Alert if rate limits approaching (>90%)
     const stats = healthStatus.rateLimits;
-    if (stats && !(stats as any).error) {
-      const sandboxCreateCount =
-        (stats as any).byOperation.sandbox_create || 0;
+    const statsTyped = stats as { error?: unknown; byOperation?: { sandbox_create?: number } };
+    if (stats && !statsTyped.error) {
+      const sandboxCreateCount = statsTyped.byOperation?.sandbox_create || 0;
       const rateLimitThreshold = 100; // Adjust based on your plan
 
       if (sandboxCreateCount > rateLimitThreshold * 0.9) {

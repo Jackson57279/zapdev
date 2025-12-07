@@ -87,7 +87,7 @@ export async function GET(request: Request) {
     const convex = await getConvexClientWithAuth();
 
     // Store OAuth connection in Convex
-    await convex.mutation((api as any).oauth.storeConnection, {
+    await convex.mutation(api.oauth.storeConnection, {
       provider: "figma",
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,

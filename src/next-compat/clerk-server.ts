@@ -1,4 +1,4 @@
-import { clerkClient, createClerkClient, verifyToken } from "@clerk/backend";
+import { createClerkClient, verifyToken } from "@clerk/backend";
 
 export function auth() {
   // Minimal server-side auth shim.
@@ -12,9 +12,15 @@ export const createRouteMatcher = (_patterns: string[]) => {
   return (_path: string) => false;
 };
 
+type ClerkMiddlewareContext = {
+  protect: () => Promise<void>;
+};
+
 export const clerkMiddleware =
-  (handler: any) =>
-  async (...args: any[]) =>
+  <Args extends unknown[]>(
+    handler: (context: ClerkMiddlewareContext, ...args: Args) => Promise<unknown> | unknown,
+  ) =>
+  async (...args: Args) =>
     handler(
       {
         protect: async () => undefined,
@@ -22,4 +28,4 @@ export const clerkMiddleware =
       ...args,
     );
 
-export { clerkClient, createClerkClient, verifyToken };
+export { createClerkClient, verifyToken };

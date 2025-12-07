@@ -10,7 +10,23 @@
  * - useSearch() instead of useSearchParams()
  */
 
-import { useLocation, useNavigate, useRouter as useTanRouter, useRouterState } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter as useTanRouter } from "@tanstack/react-router";
+import type { FileRouteTypes } from "@/routeTree.gen";
+
+type ResolveRouteParams<Path extends string> = Path extends `${infer Prefix}/$${infer _Param}/${infer Rest}`
+  ? `${Prefix}/${string}/${ResolveRouteParams<Rest>}`
+  : Path extends `${infer Prefix}/$${infer _Param}`
+    ? `${Prefix}/${string}`
+    : Path;
+
+type WithQuerySuffix<Path extends string> =
+  | Path
+  | `${Path}?${string}`
+  | `${Path}#${string}`
+  | `${Path}?${string}#${string}`;
+
+type AppRouteTemplate = ResolveRouteParams<FileRouteTypes['to']>;
+export type AppRoutePath = WithQuerySuffix<AppRouteTemplate>;
 
 /**
  * @deprecated Use useNavigate() from @tanstack/react-router instead
@@ -31,11 +47,11 @@ export function useRouter() {
   const router = useTanRouter();
 
   return {
-    push: (href: string, options?: { replace?: boolean; scroll?: boolean }) =>
-      navigate({ to: href as any, replace: options?.replace ?? false }),
-    replace: (href: string, options?: { scroll?: boolean }) =>
-      navigate({ to: href as any, replace: true }),
-    prefetch: (href: string) => router.preloadRoute({ to: href as any }).catch(() => undefined),
+    push: (href: AppRoutePath, options?: { replace?: boolean; scroll?: boolean }) =>
+      navigate({ to: href, replace: options?.replace ?? false }),
+    replace: (href: AppRoutePath, options?: { scroll?: boolean }) =>
+      navigate({ to: href, replace: true }),
+    prefetch: (href: AppRoutePath) => router.preloadRoute({ to: href }).catch(() => undefined),
     back: () => window.history.back(),
     forward: () => window.history.forward(),
     refresh: () => router.invalidate(),
@@ -75,9 +91,9 @@ export function usePathname() {
  * ```
  */
 export function useSearchParams() {
-  const { location } = useRouterState();
-  const searchString = "searchStr" in location ? (location as any).searchStr : location.search ?? "";
-  return new URLSearchParams(searchString ?? "");
+  const searchString =
+    typeof window === "undefined" ? "" : window.location?.search ?? "";
+  return new URLSearchParams(searchString);
 }
 
 /**

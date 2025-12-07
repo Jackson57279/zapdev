@@ -21,7 +21,7 @@ export async function GET() {
   try {
     const convex = await getConvexClientWithAuth();
     // Get OAuth connection
-    const connection = await convex.query((api as any).oauth.getConnection, {
+    const connection = await convex.query(api.oauth.getConnection, {
       provider: "figma",
     });
 

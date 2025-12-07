@@ -13,7 +13,8 @@ export default defineConfig({
     react(),
   ],
   define: {
-    "process.env": "import.meta.env",
+    "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
+    "process.env.NEXT_PUBLIC_CONVEX_URL": JSON.stringify(process.env.NEXT_PUBLIC_CONVEX_URL),
   },
   server: {
     port: 3000,

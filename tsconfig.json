@@ -30,9 +30,6 @@
       "next": [
         "./src/next-compat/index"
       ],
-      "@sentry/nextjs": [
-        "./src/next-compat/sentry"
-      ],
       "convex/nextjs": [
         "./src/next-compat/convex-nextjs"
       ],

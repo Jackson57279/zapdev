@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const convex = await getConvexClientWithAuth();
 
     // Get OAuth connection
-    const connection = await convex.query((api as any).oauth.getConnection, {
+    const connection = await convex.query(api.oauth.getConnection, {
       provider: "github",
     });
 
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     const repoData = await repoResponse.json();
 
     // Create import record in Convex
-    const importRecord = await convex.mutation((api as any).imports.createImport, {
+    const importRecord = await convex.mutation(api.imports.createImport, {
       projectId,
       source: "GITHUB",
       sourceId: repoId.toString(),

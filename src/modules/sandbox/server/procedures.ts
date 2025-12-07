@@ -2,6 +2,7 @@ import { createTRPCRouter, protectedProcedure } from '@/trpc/init';
 import { z } from 'zod';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '@/convex/_generated/api';
+import type { Id } from '@/convex/_generated/dataModel';
 
 // Get Convex client lazily
 let convexClient: ConvexHttpClient | null = null;
@@ -93,7 +94,7 @@ export const sandboxRouter = createTRPCRouter({
     .query(async ({ input }) => {
       try {
         const sessions = await convex.query(api.sandboxSessions.getByProjectId, {
-          projectId: input.projectId as any,
+          projectId: input.projectId as Id<"projects">,
         });
 
         return {

@@ -67,8 +67,9 @@ export const autoPauseSandboxes = inngest.createFunction(
             });
 
             // Use betaPause if available, otherwise just log
-            if (typeof (sandbox as any).betaPause === "function") {
-              await (sandbox as any).betaPause();
+            const sandboxWithPause = sandbox as { betaPause?: () => Promise<void> };
+            if (typeof sandboxWithPause.betaPause === "function") {
+              await sandboxWithPause.betaPause();
               console.log(`[DEBUG] Successfully paused sandbox ${session.sandboxId}`);
             } else {
               console.warn(

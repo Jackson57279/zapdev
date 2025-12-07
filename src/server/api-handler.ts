@@ -1,14 +1,44 @@
-type RouteModule = {
-  GET?: (request: Request, ctx?: unknown) => Promise<Response> | Response;
-  POST?: (request: Request, ctx?: unknown) => Promise<Response> | Response;
-  OPTIONS?: (request: Request, ctx?: unknown) => Promise<Response> | Response;
-};
+type RouteHandler = (request: Request, ctx?: unknown) => Promise<Response> | Response;
+type RouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+type RouteModule = Partial<Record<RouteMethod, RouteHandler>>;
 
 type RouteConfig = {
   pattern: RegExp;
-  load: () => Promise<RouteModule>;
+  load: () => Promise<unknown>;
   params?: (url: URL) => Record<string, string>;
 };
+
+const ROUTE_METHODS: RouteMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
+
+function normalizeRouteModule(moduleImport: unknown): RouteModule | null {
+  const normalizedImport =
+    typeof moduleImport === 'object' && moduleImport !== null && 'default' in moduleImport
+      ? (moduleImport as { default: unknown }).default
+      : moduleImport;
+
+  if (typeof normalizedImport !== 'object' || normalizedImport === null) {
+    return null;
+  }
+
+  const module: RouteModule = {};
+  const candidate = normalizedImport as Record<string, unknown>;
+
+  for (const method of ROUTE_METHODS) {
+    const handler = candidate[method];
+
+    if (handler === undefined) {
+      continue;
+    }
+
+    if (typeof handler !== 'function') {
+      return null;
+    }
+
+    module[method] = handler as RouteHandler;
+  }
+
+  return module;
+}
 
 const routes: RouteConfig[] = [
   {
@@ -113,7 +143,8 @@ const routes: RouteConfig[] = [
       return {
         GET: async () => {
           const mod = await import("@/app/robots");
-          const robotsFn = (mod as any).default ?? mod;
+          const moduleExport = "default" in mod ? mod.default : mod;
+          const robotsFn = moduleExport;
           const data = typeof robotsFn === "function" ? robotsFn() : robotsFn;
 
           const lines: string[] = [];
@@ -123,28 +154,28 @@ const routes: RouteConfig[] = [
             const userAgents = Array.isArray(rule.userAgent) ? rule.userAgent : [rule.userAgent];
             for (const ua of userAgents) {
               lines.push(`User-agent: ${ua}`);
-              const allows = rule.allow
+              const allows: string[] = rule.allow
                 ? Array.isArray(rule.allow)
                   ? rule.allow
                   : [rule.allow]
                 : [];
-              const disallows = rule.disallow
+              const disallows: string[] = rule.disallow
                 ? Array.isArray(rule.disallow)
                   ? rule.disallow
                   : [rule.disallow]
                 : [];
-              allows.forEach((p) => lines.push(`Allow: ${p}`));
-              disallows.forEach((p) => lines.push(`Disallow: ${p}`));
+              allows.forEach((p: string) => lines.push(`Allow: ${p}`));
+              disallows.forEach((p: string) => lines.push(`Disallow: ${p}`));
               lines.push("");
             }
           }
 
-          const sitemap = data.sitemap
+          const sitemap: string[] = data.sitemap
             ? Array.isArray(data.sitemap)
               ? data.sitemap
               : [data.sitemap]
             : [];
-          sitemap.forEach((s) => lines.push(`Sitemap: ${s}`));
+          sitemap.forEach((s: string) => lines.push(`Sitemap: ${s}`));
 
           if (data.host) {
             lines.push(`Host: ${data.host}`);
@@ -164,14 +195,16 @@ async function handleWithModule(mod: RouteModule, request: Request, params?: Rec
   const method = request.method.toUpperCase();
   const ctx = params ? { params: Promise.resolve(params) } : undefined;
 
+  const methodKey = method as RouteMethod;
   const handler =
-    (method === "HEAD" && mod.HEAD) ||
-    (method === "HEAD" && mod.GET) ||
-    (method === "OPTIONS" && mod.OPTIONS) ||
-    (mod as any)[method];
+    method === 'HEAD'
+      ? mod.HEAD ?? mod.GET
+      : method === 'OPTIONS'
+      ? mod.OPTIONS
+      : mod[methodKey];
 
   if (handler) {
-    return handler(request as any, ctx as any);
+    return handler(request, ctx);
   }
 
   return new Response("Method Not Allowed", { status: 405 });
@@ -187,9 +220,19 @@ export async function handleApiRequest(request: Request, _env?: unknown): Promis
 
   for (const route of routes) {
     if (route.pattern.test(pathname)) {
-      const mod = await route.load();
-      const params = route.params ? route.params(url) : undefined;
-      return handleWithModule(mod, request, params);
+      try {
+        const modImport = await route.load();
+        const mod = normalizeRouteModule(modImport);
+        if (!mod) {
+          console.error(`Failed to normalize route module for ${pathname}`);
+          return new Response('Internal Server Error', { status: 500 });
+        }
+        const params = route.params ? route.params(url) : undefined;
+        return handleWithModule(mod, request, params);
+      } catch (error) {
+        console.error(`Error loading route module for ${pathname}:`, error);
+        return new Response('Internal Server Error', { status: 500 });
+      }
     }
   }
 

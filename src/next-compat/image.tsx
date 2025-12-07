@@ -14,9 +14,16 @@ const Image = React.forwardRef<HTMLImageElement, ImageProps>(function NextCompat
   { src, alt, width, height, fill, style, ...rest },
   ref
 ) {
-  const resolvedStyle = fill
-    ? { objectFit: "cover", width: "100%", height: "100%", ...style }
-    : style;
+  let resolvedStyle: React.CSSProperties | undefined = style ?? undefined;
+
+  if (fill) {
+    resolvedStyle = {
+      objectFit: "cover",
+      width: "100%",
+      height: "100%",
+      ...(style ?? {}),
+    };
+  }
 
   return (
     <img

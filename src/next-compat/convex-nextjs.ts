@@ -11,8 +11,8 @@ function makeClient(token?: string | null) {
   return client;
 }
 
-type ArgsOf<Func extends FunctionReference<any>> =
-  Func["_args"] extends undefined ? Record<string, never> : Func["_args"];
+type ArgsOf<Func extends FunctionReference<unknown>> =
+  Func["_args"] extends undefined ? undefined : Func["_args"];
 
 export async function fetchQuery<Query extends FunctionReference<"query">>(
   query: Query,
@@ -20,7 +20,7 @@ export async function fetchQuery<Query extends FunctionReference<"query">>(
   options?: { token?: string | null },
 ): Promise<FunctionReturnType<Query>> {
   const client = makeClient(options?.token ?? undefined);
-  return client.query(query, (args ?? {}) as ArgsOf<Query>);
+  return client.query(query, args ?? undefined);
 }
 
 export async function fetchMutation<Mutation extends FunctionReference<"mutation">>(
@@ -29,7 +29,7 @@ export async function fetchMutation<Mutation extends FunctionReference<"mutation
   options?: { token?: string | null },
 ): Promise<FunctionReturnType<Mutation>> {
   const client = makeClient(options?.token ?? undefined);
-  return client.mutation(mutation, (args ?? {}) as ArgsOf<Mutation>);
+  return client.mutation(mutation, args ?? undefined);
 }
 
 export async function fetchAction<Action extends FunctionReference<"action">>(
@@ -38,5 +38,5 @@ export async function fetchAction<Action extends FunctionReference<"action">>(
   options?: { token?: string | null },
 ): Promise<FunctionReturnType<Action>> {
   const client = makeClient(options?.token ?? undefined);
-  return client.action(action, (args ?? {}) as ArgsOf<Action>);
+  return client.action(action, args ?? undefined);
 }
