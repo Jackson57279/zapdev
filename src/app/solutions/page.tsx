@@ -76,7 +76,7 @@ export default function SolutionsPage() {
           {solutions.map((solution) => (
             <Link
               key={solution.slug}
-              href={`/solutions/${solution.slug}`}
+              to={`/solutions/${solution.slug}`}
               className="block transition-transform hover:scale-105"
             >
               <Card className="h-full hover:shadow-lg transition-shadow">

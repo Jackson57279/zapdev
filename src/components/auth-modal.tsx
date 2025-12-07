@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ClerkLoaded, ClerkLoading, SignIn, SignUp } from "@clerk/nextjs";
+import { ClerkLoaded, ClerkLoading, SignIn, SignUp } from "@clerk/clerk-react";
 import { useUser } from "@/lib/auth-client";
 import {
   Dialog,

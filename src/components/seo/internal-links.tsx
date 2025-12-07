@@ -63,15 +63,15 @@ export function InternalLinks({
       aria-label="Related Pages"
       className={`${containerClass} text-sm`}
     >
-      {links.slice(0, limit).map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          className="text-primary hover:underline transition-colors px-3 py-1 bg-muted rounded-md hover:bg-muted/80"
-        >
-          {link.text}
-        </Link>
-      ))}
+       {links.slice(0, limit).map((link) => (
+         <Link
+           key={link.href}
+           to={link.href}
+           className="text-primary hover:underline transition-colors px-3 py-1 bg-muted rounded-md hover:bg-muted/80"
+         >
+           {link.text}
+         </Link>
+       ))}
     </nav>
   );
 }
@@ -142,18 +142,18 @@ export function RelatedContent({ currentSlug, type, limit = 3 }: RelatedContentP
           const title = 'name' in item ? item.name : item.title;
           const description = item.metaDescription || ('description' in item ? item.description : '');
 
-          return (
-            <Link
-              key={item.slug}
-              href={href}
-              className="p-4 bg-background rounded-md hover:shadow-md transition-shadow border"
-            >
-              <h3 className="font-semibold text-lg mb-2">{title}</h3>
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {description}
-              </p>
-            </Link>
-          );
+           return (
+             <Link
+               key={item.slug}
+               to={href}
+               className="p-4 bg-background rounded-md hover:shadow-md transition-shadow border"
+             >
+               <h3 className="font-semibold text-lg mb-2">{title}</h3>
+               <p className="text-sm text-muted-foreground line-clamp-2">
+                 {description}
+               </p>
+             </Link>
+           );
         })}
       </div>
     </section>

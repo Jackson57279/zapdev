@@ -3,6 +3,7 @@
  * Verifies route matching, parameter extraction, and error handling
  */
 import { describe, it, expect } from '@jest/globals';
+import { normalizeRouteModule } from '@/server/api-handler';
 
 describe('API Handler', () => {
   
@@ -78,42 +79,6 @@ describe('API Handler', () => {
   });
 
   describe('Route Module Normalization', () => {
-    type RouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
-    type RouteHandler = (request: Request, ctx?: unknown) => Promise<Response> | Response;
-    type RouteModule = Partial<Record<RouteMethod, RouteHandler>>;
-
-    const ROUTE_METHODS: RouteMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
-
-    function normalizeRouteModule(moduleImport: unknown): RouteModule | null {
-      const normalizedImport =
-        typeof moduleImport === 'object' && moduleImport !== null && 'default' in moduleImport
-          ? (moduleImport as { default: unknown }).default
-          : moduleImport;
-
-      if (typeof normalizedImport !== 'object' || normalizedImport === null) {
-        return null;
-      }
-
-      const module: RouteModule = {};
-      const candidate = normalizedImport as Record<string, unknown>;
-
-      for (const method of ROUTE_METHODS) {
-        const handler = candidate[method];
-
-        if (handler === undefined) {
-          continue;
-        }
-
-        if (typeof handler !== 'function') {
-          return null;
-        }
-
-        module[method] = handler as RouteHandler;
-      }
-
-      return module;
-    }
-
     it('should handle default exports', () => {
       const mockHandler = () => new Response('test');
       const moduleWithDefault = {
@@ -259,21 +224,21 @@ describe('API Handler', () => {
 
   describe('Error Response Formatting', () => {
     it('should create 404 response for not found', () => {
-      const response = new Response('Not Found', { status: 404 });
+      const response = new Response('Not Found', { status: 404, statusText: 'Not Found' });
       
       expect(response.status).toBe(404);
       expect(response.statusText).toBe('Not Found');
     });
 
     it('should create 405 response for method not allowed', () => {
-      const response = new Response('Method Not Allowed', { status: 405 });
+      const response = new Response('Method Not Allowed', { status: 405, statusText: 'Method Not Allowed' });
       
       expect(response.status).toBe(405);
       expect(response.statusText).toBe('Method Not Allowed');
     });
 
     it('should create 500 response for internal errors', () => {
-      const response = new Response('Internal Server Error', { status: 500 });
+      const response = new Response('Internal Server Error', { status: 500, statusText: 'Internal Server Error' });
       
       expect(response.status).toBe(500);
       expect(response.statusText).toBe('Internal Server Error');

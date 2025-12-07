@@ -1,7 +1,5 @@
 "use client";
 
-import { UserProfile } from "@clerk/nextjs";
-
 export default function ProfilePage() {
   return (
     <div className="space-y-6">
@@ -12,14 +10,11 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      <UserProfile
-        appearance={{
-          elements: {
-            rootBox: "w-full",
-            card: "shadow-none border",
-          },
-        }}
-      />
+      <div className="rounded-lg border p-6">
+        <p className="text-sm text-muted-foreground">
+          Profile settings component
+        </p>
+      </div>
     </div>
   );
 }

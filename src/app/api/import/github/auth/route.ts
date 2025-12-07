@@ -24,13 +24,9 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = stackUser.id;
+   const userId = stackUser.id;
 
-  if (false) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!GITHUB_CLIENT_ID) {
+   if (!GITHUB_CLIENT_ID) {
     return Response.json(
       { error: "GitHub OAuth not configured" },
       { status: 500 }

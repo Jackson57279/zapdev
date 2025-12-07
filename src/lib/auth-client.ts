@@ -4,7 +4,7 @@ import {
   useAuth as useClerkAuth,
   useClerk,
   useUser as useClerkUser,
-} from "@clerk/nextjs";
+} from "@clerk/clerk-react";
 
 // Client-side auth hooks backed by Clerk. These mirror the previous
 // Convex Auth shape to minimize downstream changes while swapping providers.

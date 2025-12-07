@@ -56,3 +56,6 @@ next-env.d.ts
 assets/
 nextjs-vibe/ 
 old-inngest-functions.ts
+
+# Bun temporary files
+.bun_tmp/

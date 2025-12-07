@@ -10,31 +10,65 @@ type RouteConfig = {
 
 const ROUTE_METHODS: RouteMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
 
-function normalizeRouteModule(moduleImport: unknown): RouteModule | null {
-  const normalizedImport =
-    typeof moduleImport === 'object' && moduleImport !== null && 'default' in moduleImport
-      ? (moduleImport as { default: unknown }).default
-      : moduleImport;
+/**
+ * Type guard to check if a value is an object with a 'default' property
+ */
+function isObjectWithDefault(value: unknown): value is { default: unknown } {
+  return typeof value === 'object' && value !== null && 'default' in value;
+}
 
-  if (typeof normalizedImport !== 'object' || normalizedImport === null) {
+/**
+ * Type guard to check if a value is a non-null object
+ */
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Type guard to check if a value is a function matching RouteHandler signature
+ */
+function isRouteHandler(value: unknown): value is RouteHandler {
+  return typeof value === 'function';
+}
+
+/**
+ * Normalize a module import to extract route handlers
+ * Handles both default exports and direct exports
+ * Returns null if the module doesn't contain valid route handlers
+ */
+export function normalizeRouteModule(moduleImport: unknown): RouteModule | null {
+  let normalizedImport: unknown;
+
+  // Extract default export if present, otherwise use the module as-is
+  if (isObjectWithDefault(moduleImport)) {
+    normalizedImport = moduleImport.default;
+  } else {
+    normalizedImport = moduleImport;
+  }
+
+  // Ensure we have an object to work with
+  if (!isObject(normalizedImport)) {
     return null;
   }
 
   const module: RouteModule = {};
-  const candidate = normalizedImport as Record<string, unknown>;
 
+  // Process each HTTP method
   for (const method of ROUTE_METHODS) {
-    const handler = candidate[method];
+    const handler = normalizedImport[method];
 
+    // Skip undefined handlers
     if (handler === undefined) {
       continue;
     }
 
-    if (typeof handler !== 'function') {
+    // Reject non-function handlers
+    if (!isRouteHandler(handler)) {
       return null;
     }
 
-    module[method] = handler as RouteHandler;
+    // Add the handler to the module with proper typing
+    module[method] = handler;
   }
 
   return module;

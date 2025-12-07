@@ -9,15 +9,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!stackUser.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+   if (!stackUser.id) {
+     return Response.json({ error: "Unauthorized" }, { status: 401 });
+   }
 
-  if (false) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  try {
+   try {
     const body = await request.json();
     const { repoId, repoName, repoFullName, repoUrl, projectId } = body;
 

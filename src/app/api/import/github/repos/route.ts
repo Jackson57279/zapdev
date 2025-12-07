@@ -1,19 +1,25 @@
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
+import * as Sentry from "@sentry/node";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-interface GitHubRepo {
-  id: number;
-  name: string;
-  full_name: string;
-  description: string | null;
-  html_url: string;
-  private: boolean;
-  language: string | null;
-  updated_at: string;
-  stargazers_count: number;
-}
+const GitHubRepoSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  full_name: z.string(),
+  description: z.string().nullable(),
+  html_url: z.string(),
+  private: z.boolean(),
+  language: z.string().nullable(),
+  updated_at: z.string(),
+  stargazers_count: z.number(),
+});
+
+type GitHubRepo = z.infer<typeof GitHubRepoSchema>;
+
+const GitHubReposSchema = z.array(GitHubRepoSchema);
 
 export async function GET() {
   const stackUser = await getUser();
@@ -22,10 +28,6 @@ export async function GET() {
   }
 
   if (!stackUser.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (false) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -65,7 +67,23 @@ export async function GET() {
       throw new Error("Failed to fetch GitHub repositories");
     }
 
-    const repos = await response.json() as GitHubRepo[];
+    const jsonData = await response.json();
+
+    // Validate response shape with Zod
+    let repos: GitHubRepo[];
+    try {
+      repos = GitHubReposSchema.parse(jsonData) as GitHubRepo[];
+    } catch (validationError) {
+      Sentry.captureException(validationError, {
+        tags: {
+          context: "github_repos_validation",
+        },
+      });
+      return Response.json(
+        { error: "Invalid GitHub API response format" },
+        { status: 502 }
+      );
+    }
 
     return Response.json({
       repositories: repos.map((repo) => ({
@@ -81,6 +99,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching GitHub repositories:", error);
     return Response.json(
       { error: "Failed to fetch GitHub repositories" },

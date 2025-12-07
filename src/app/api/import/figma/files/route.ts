@@ -13,10 +13,6 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (false) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
     const convex = await getConvexClientWithAuth();
     // Get OAuth connection

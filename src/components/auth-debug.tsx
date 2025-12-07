@@ -1,7 +1,7 @@
 "use client";
 
 import { useConvexAuth } from "convex/react";
-import { useAuth as useClerkAuth } from "@clerk/nextjs";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { useUser } from "@/lib/auth-client";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";

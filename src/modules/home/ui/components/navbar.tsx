@@ -1,7 +1,7 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { SignInButton, SignUpButton } from "@clerk/clerk-react";
 import { cn } from "@/lib/utils";
 import { useScroll } from "@/hooks/use-scroll";
 import { Button } from "@/components/ui/button";
@@ -45,12 +45,12 @@ export const Navbar = () => {
             <NavigationMenu className="hidden md:flex">
               <NavigationMenuList>
                 <NavigationMenuItem>
-                  <Link to="/pricing" legacyBehavior passHref>
-                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                      Pricing
-                    </NavigationMenuLink>
-                  </Link>
-                </NavigationMenuItem>
+                   <NavigationMenuLink asChild>
+                     <Link to="/pricing" className={navigationMenuTriggerStyle()}>
+                       Pricing
+                     </Link>
+                   </NavigationMenuLink>
+                 </NavigationMenuItem>
               </NavigationMenuList>
             </NavigationMenu>
           </div>
