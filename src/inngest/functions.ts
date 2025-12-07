@@ -6,7 +6,6 @@ import {
   createAgent,
   createTool,
   createNetwork,
-  createStepWrapper,
   type Tool,
   type Message,
   createState,
@@ -962,6 +961,12 @@ export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
   { event: "code-agent/run" },
   async ({ event, step }) => {
+    if (!step || typeof step.run !== "function") {
+      throw new Error(
+        "Inngest step tools are unavailable. Ensure async context is enabled and this route uses the nodejs runtime.",
+      );
+    }
+
     console.log("[DEBUG] Starting code-agent function");
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
     console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
@@ -1574,7 +1579,7 @@ Generate code that matches the approved specification.`;
         },
       });
 
-    const resolveStepContext = async () => {
+    const resolveStepContext = async (stepContext?: typeof step) => {
       try {
         const contextStep = await getStepTools();
         if (contextStep?.run) {
@@ -1587,45 +1592,44 @@ Generate code that matches the approved specification.`;
         );
       }
 
-      const wrappedStep = createStepWrapper(step, step);
-      if (wrappedStep?.run) {
-        return { stepTools: wrappedStep, source: "direct-step" };
+      if (stepContext?.run) {
+        return { stepTools: stepContext, source: "direct-step" };
       }
 
       return { stepTools: undefined, source: "missing" };
     };
 
     const runNetwork = async (
-      _stepContext: typeof step,
+      stepContext: typeof step | undefined,
       _label: string,
       agent: ReturnType<typeof createAgent<AgentState>>,
-      stateOverride?: AgentStateInstance | any,
+      stateOverride?: AgentStateInstance,
       userInput?: string,
-    ) => {
+    ): Promise<NetworkRun<AgentState>> => {
       const network = createCodeAgentNetwork(agent);
       const stateForRun = stateOverride ?? buildAgentState();
       const inputForRun = userInput ?? event.data.value;
 
-      const { stepTools, source } = await resolveStepContext();
+      const { stepTools, source } = await resolveStepContext(stepContext);
 
       if (stepTools?.run) {
         console.log(
           `[DEBUG] Running network via step context source: ${source}`,
         );
         return stepTools.run(_label, () =>
-          network.run(inputForRun, { state: stateForRun as any }),
+          network.run(inputForRun, { state: stateForRun }),
         );
       }
 
       console.warn(
         "[WARN] Step context unavailable; running network without step.run()",
       );
-      return network.run(inputForRun, { state: stateForRun as any });
+      return network.run(inputForRun, { state: stateForRun });
     };
 
     console.log("[DEBUG] Running network with input:", event.data.value);
-    let result: any;
-    let activeAgent = codeAgent;
+    let result: NetworkRun<AgentState>;
+    const activeAgent = codeAgent;
     try {
       result = await runNetwork(
         step,
@@ -1665,7 +1669,7 @@ Generate code that matches the approved specification.`;
           step,
           "run-code-agent-network-summary-request",
           activeAgent,
-          result.state as any,
+          result.state,
           "IMPORTANT: You have successfully generated files, but you forgot to provide the <task_summary> tag. Please provide it now with a brief description of what you built. This is required to complete the task.",
         );
       } catch (summaryError) {
@@ -1765,7 +1769,7 @@ Generate code that matches the approved specification.`;
     }
 
     let autoFixAttempts = 0;
-    let lastAssistantMessage = getLastAssistantMessage(result as any);
+    let lastAssistantMessage = getLastAssistantMessage(result);
 
     if (selectedFramework === "nextjs") {
       const currentFiles = (result.state.data.files || {}) as Record<
@@ -1826,7 +1830,7 @@ Generate code that matches the approved specification.`;
             step,
             `run-code-agent-network-auto-fix-${autoFixAttempts}`,
             activeAgent,
-            result.state as any,
+            result.state,
             `CRITICAL ERROR DETECTED - IMMEDIATE FIX REQUIRED
 
 The previous attempt encountered an error that must be corrected before proceeding.
@@ -1864,7 +1868,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
           break;
         }
 
-        lastAssistantMessage = getLastAssistantMessage(result as any);
+        lastAssistantMessage = getLastAssistantMessage(result);
 
         // Re-run validation checks to verify if errors are actually fixed
         console.log(
@@ -1903,7 +1907,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       }
     }
 
-    lastAssistantMessage = getLastAssistantMessage(result as any);
+    lastAssistantMessage = getLastAssistantMessage(result);
 
     const files = (result.state.data.files || {}) as Record<string, string>;
     const filePaths = Object.keys(files);

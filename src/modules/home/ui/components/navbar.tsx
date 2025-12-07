@@ -89,7 +89,6 @@ export const Navbar = () => {
               <div className="flex gap-2">
                 <SignUpButton
                   mode="modal"
-                  afterSignUpUrl="/projects"
                   redirectUrl="/projects"
                 >
                   <Button variant="outline" size="sm">
@@ -98,7 +97,6 @@ export const Navbar = () => {
                 </SignUpButton>
                 <SignInButton
                   mode="modal"
-                  afterSignInUrl="/projects"
                   redirectUrl="/projects"
                 >
                   <Button size="sm">

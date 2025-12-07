@@ -11,7 +11,7 @@ import { api } from "@/convex/_generated/api";
  */
 export async function getUser() {
   try {
-    const { getToken, userId } = auth();
+    const { getToken, userId } = await auth();
     if (!userId) return null;
 
     const token = await getToken({ template: "convex" });
@@ -42,7 +42,7 @@ export async function getUser() {
  */
 export async function getToken() {
   try {
-    const { getToken } = auth();
+    const { getToken } = await auth();
     return await getToken({ template: "convex" });
   } catch (error) {
     console.error("Failed to get token:", error);
@@ -68,7 +68,7 @@ export async function fetchQueryWithAuth<T>(
   query: any,
   args: any = {}
 ): Promise<T> {
-  const { getToken } = auth();
+  const { getToken } = await auth();
   const token = await getToken({ template: "convex" });
   const options = token ? { token } : undefined;
 
@@ -83,7 +83,7 @@ export async function fetchMutationWithAuth<T>(
   mutation: any,
   args: any = {}
 ): Promise<T> {
-  const { getToken } = auth();
+  const { getToken } = await auth();
   const token = await getToken({ template: "convex" });
   const options = token ? { token } : undefined;
 
@@ -116,7 +116,7 @@ type ConvexClientWithAuth = {
  * Use this in API routes and server components that need to talk to Convex.
  */
 export async function getConvexClientWithAuth(): Promise<ConvexClientWithAuth> {
-  const { getToken } = auth();
+  const { getToken } = await auth();
   const token = await getToken({ template: "convex" });
   const options = token ? { token } : undefined;
 
