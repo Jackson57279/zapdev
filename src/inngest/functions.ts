@@ -1573,25 +1573,27 @@ Generate code that matches the approved specification.`;
       });
 
     const runNetwork = async (
+      stepContext: typeof step,
       label: string,
       agent: ReturnType<typeof createAgent<AgentState>>,
-      stateOverride?: AgentStateInstance,
+      stateOverride?: AgentStateInstance | any,
       userInput?: string,
     ) => {
       const network = createCodeAgentNetwork(agent);
       const stateForRun = stateOverride ?? buildAgentState();
       const inputForRun = userInput ?? event.data.value;
 
-      return await step.run(label, async () => {
-        return await network.run(inputForRun, { state: stateForRun });
+      return await stepContext.run(label, async () => {
+        return await network.run(inputForRun, { state: stateForRun as any });
       });
     };
 
     console.log("[DEBUG] Running network with input:", event.data.value);
-    let result;
+    let result: any;
     let activeAgent = codeAgent;
     try {
       result = await runNetwork(
+        step,
         "run-code-agent-network",
         codeAgent,
         undefined,
@@ -1620,9 +1622,10 @@ Generate code that matches the approved specification.`;
       );
       try {
         result = await runNetwork(
+          step,
           "run-code-agent-network-summary-request",
           activeAgent,
-          result.state,
+          result.state as any,
           "IMPORTANT: You have successfully generated files, but you forgot to provide the <task_summary> tag. Please provide it now with a brief description of what you built. This is required to complete the task.",
         );
       } catch (summaryError) {
@@ -1722,7 +1725,7 @@ Generate code that matches the approved specification.`;
     }
 
     let autoFixAttempts = 0;
-    let lastAssistantMessage = getLastAssistantMessage(result);
+    let lastAssistantMessage = getLastAssistantMessage(result as any);
 
     if (selectedFramework === "nextjs") {
       const currentFiles = (result.state.data.files || {}) as Record<
@@ -1780,9 +1783,10 @@ Generate code that matches the approved specification.`;
 
         try {
           result = await runNetwork(
+            step,
             `run-code-agent-network-auto-fix-${autoFixAttempts}`,
             activeAgent,
-            result.state,
+            result.state as any,
             `CRITICAL ERROR DETECTED - IMMEDIATE FIX REQUIRED
 
 The previous attempt encountered an error that must be corrected before proceeding.
@@ -1820,7 +1824,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
           break;
         }
 
-        lastAssistantMessage = getLastAssistantMessage(result);
+        lastAssistantMessage = getLastAssistantMessage(result as any);
 
         // Re-run validation checks to verify if errors are actually fixed
         console.log(
@@ -1859,7 +1863,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       }
     }
 
-    lastAssistantMessage = getLastAssistantMessage(result);
+    lastAssistantMessage = getLastAssistantMessage(result as any);
 
     const files = (result.state.data.files || {}) as Record<string, string>;
     const filePaths = Object.keys(files);
@@ -2236,7 +2240,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
 
       for (const [path, content] of Object.entries(mergedFiles)) {
         if (isValidFilePath(path)) {
-          validatedMergedFiles[path] = content;
+          validatedMergedFiles[path] = content as string;
         } else {
           invalidPathCount++;
           console.warn(
