@@ -9,8 +9,6 @@ import {
   type Tool,
   type Message,
   createState,
-  type NetworkRun,
-  type AgentResult,
 } from "@inngest/agent-kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -27,20 +25,17 @@ import {
   SVELTE_PROMPT,
   SPEC_MODE_PROMPT,
 } from "@/prompt";
-import { crawlUrl, type CrawledContent } from "@/lib/firecrawl";
-import { sanitizeTextForDatabase, sanitizeJsonForDatabase } from "@/lib/utils";
+import { sanitizeJsonForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { inngest } from "./client";
-import { type Framework, type AgentState } from "./types";
+import { type Framework, type AgentState, SANDBOX_TIMEOUT } from "./types";
 import {
   getSandbox,
   lastAssistantTextMessageContent,
   parseAgentOutput,
   createSandboxWithRetry,
-  validateSandboxHealth,
   ensureDevServerRunning,
 } from "./utils";
-import { e2bCircuitBreaker } from "./circuit-breaker";
 
 // Get Convex client lazily to avoid build-time errors
 let convexClient: ConvexHttpClient | null = null;
@@ -80,8 +75,6 @@ function frameworkToConvexEnum(
   };
   return mapping[framework];
 }
-
-const AUTO_FIX_MAX_ATTEMPTS = 2;
 
 // Model configurations for multi-model support
 export const MODEL_CONFIGS = {
@@ -349,40 +342,6 @@ const AUTO_FIX_ERROR_PATTERNS = [
   /Module build failed/i,
 ];
 
-const usesShadcnComponents = (files: Record<string, string>) => {
-  return Object.entries(files).some(([path, content]) => {
-    if (!path.endsWith(".tsx")) {
-      return false;
-    }
-    return content.includes("@/components/ui/");
-  });
-};
-
-const shouldTriggerAutoFix = (message?: string): boolean => {
-  if (!message) return false;
-  return AUTO_FIX_ERROR_PATTERNS.some((pattern) => pattern.test(message));
-};
-
-const URL_REGEX = /(https?:\/\/[^\s\]\)"'<>]+)/gi;
-
-const extractUrls = (value: string) => {
-  const matches = value.matchAll(URL_REGEX);
-  const urls = new Set<string>();
-
-  for (const match of matches) {
-    try {
-      const parsed = new URL(match[0]);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        urls.add(parsed.toString());
-      }
-    } catch {
-      // skip invalid URLs
-    }
-  }
-
-  return Array.from(urls);
-};
-
 const SUMMARY_TAG_REGEX = /<task_summary>([\s\S]*?)<\/task_summary>/i;
 
 const extractSummaryText = (value: string): string => {
@@ -397,20 +356,6 @@ const extractSummaryText = (value: string): string => {
   }
 
   return trimmed;
-};
-
-const getLastAssistantMessage = (
-  networkRun: NetworkRun<AgentState>,
-): string | undefined => {
-  const results = networkRun.state.results;
-
-  if (results.length === 0) {
-    return undefined;
-  }
-
-  const latestResult = results[results.length - 1];
-
-  return lastAssistantTextMessageContent(latestResult);
 };
 
 const runLintCheck = async (sandboxId: string): Promise<string | null> => {
@@ -623,19 +568,12 @@ const getFrameworkPrompt = (framework: Framework): string => {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export const MAX_FILE_COUNT = 500;
-const MAX_SCREENSHOTS = 20;
 const FILE_READ_TIMEOUT_MS = 3000; // Reduced from 5000 to 3000ms for faster failure detection
 const BUILD_TIMEOUT_MS = 120000; // 2 minutes for build operations (increased from 60s)
-const INNGEST_STEP_OUTPUT_SIZE_LIMIT = 1024 * 1024;
-const FILES_PER_STEP_BATCH = 50;
 
 const ALLOWED_WORKSPACE_PATHS = ["/home/user", "."];
 type SandboxWithHost = Sandbox & {
   getHost?: (port: number) => string | undefined;
-};
-
-const escapeShellPattern = (pattern: string): string => {
-  return pattern.replace(/'/g, "'\"'\"'");
 };
 
 export const isValidFilePath = (filePath: string): boolean => {
@@ -669,47 +607,6 @@ export const isValidFilePath = (filePath: string): boolean => {
   );
 
   return isInWorkspace || normalizedPath.startsWith("/home/user/");
-};
-
-const getFindCommand = (framework: Framework): string => {
-  const baseIgnorePatterns = [
-    "*/node_modules/*",
-    "*/.git/*",
-    "*/dist/*",
-    "*/build/*",
-  ];
-
-  const frameworkSpecificIgnores: Record<Framework, string[]> = {
-    nextjs: ["*/.next/*"],
-    angular: ["*/.angular/*"],
-    react: [],
-    vue: [],
-    svelte: ["*/.svelte-kit/*"],
-  };
-
-  const ignorePatterns = [
-    ...baseIgnorePatterns,
-    ...(frameworkSpecificIgnores[framework] || []),
-  ];
-  const escapedPatterns = ignorePatterns.map(
-    (pattern) => `-not -path '${escapeShellPattern(pattern)}'`,
-  );
-  const ignoreFlags = escapedPatterns.join(" ");
-
-  return `find /home/user -type f ${ignoreFlags} 2>/dev/null || find . -type f ${ignoreFlags} 2>/dev/null`;
-};
-
-const isValidScreenshotUrl = (url: string): boolean => {
-  if (!url || typeof url !== "string" || url.length === 0) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return url.startsWith("data:image/");
-  }
 };
 
 export const readFileWithTimeout = async (
@@ -748,14 +645,6 @@ export const readFileWithTimeout = async (
     console.error(`[ERROR] Failed to read file ${filePath}:`, errorMessage);
     return null;
   }
-};
-
-const calculateFilesMapSize = (filesMap: Record<string, string>): number => {
-  let totalSize = 0;
-  for (const [path, content] of Object.entries(filesMap)) {
-    totalSize += path.length + content.length;
-  }
-  return totalSize;
 };
 
 export const readFilesInBatches = async (
@@ -810,64 +699,6 @@ export const readFilesInBatches = async (
   }
 
   return allFilesMap;
-};
-
-const CRITICAL_FILES = [
-  "package.json",
-  "tsconfig.json",
-  "next.config.ts",
-  "next.config.js",
-  "tailwind.config.ts",
-  "tailwind.config.js",
-];
-
-const validateMergeStrategy = (
-  agentFiles: Record<string, string>,
-  sandboxFiles: Record<string, string>,
-): { warnings: string[]; isValid: boolean } => {
-  const warnings: string[] = [];
-
-  const agentFilePaths = new Set(Object.keys(agentFiles));
-  const sandboxFilePaths = new Set(Object.keys(sandboxFiles));
-
-  const overwrittenCriticalFiles = CRITICAL_FILES.filter(
-    (file) =>
-      sandboxFilePaths.has(file) &&
-      agentFilePaths.has(file) &&
-      agentFiles[file] !== sandboxFiles[file],
-  );
-
-  if (overwrittenCriticalFiles.length > 0) {
-    warnings.push(
-      `Critical files were overwritten by agent: ${overwrittenCriticalFiles.join(", ")}`,
-    );
-  }
-
-  const missingCriticalFiles = CRITICAL_FILES.filter(
-    (file) => sandboxFilePaths.has(file) && !agentFilePaths.has(file),
-  );
-
-  if (missingCriticalFiles.length > 0) {
-    warnings.push(
-      `Critical files from sandbox not in agent files (will be preserved): ${missingCriticalFiles.join(", ")}`,
-    );
-  }
-
-  const agentFileCount = agentFilePaths.size;
-  const sandboxFileCount = sandboxFilePaths.size;
-
-  if (agentFileCount > 0 && sandboxFileCount > agentFileCount * 10) {
-    warnings.push(
-      `Large discrepancy: sandbox has ${sandboxFileCount} files but agent only tracked ${agentFileCount} files`,
-    );
-  }
-
-  return {
-    warnings,
-    isValid:
-      warnings.length === 0 ||
-      warnings.every((w) => !w.includes("discrepancy")),
-  };
 };
 
 const createCodeAgentTools = (sandboxId: string) => [
@@ -966,1488 +797,227 @@ export const codeAgentFunction = inngest.createFunction(
       );
     }
 
-    console.log("[DEBUG] Starting code-agent function");
-    console.log("[DEBUG] Event data:", JSON.stringify(event.data));
-    console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
-    console.log(
-      "[DEBUG] AI_GATEWAY_API_KEY present:",
-      !!process.env.AI_GATEWAY_API_KEY,
-    );
+    const projectId = event.data.projectId as Id<"projects">;
 
-    // Get project to check if framework is already set
     const project = await step.run("get-project", async () => {
       return await convex.query(api.projects.getForSystem, {
-        projectId: event.data.projectId as Id<"projects">,
+        projectId,
       });
     });
 
     if (!project) {
       const missingProjectId = String(event.data.projectId ?? "unknown");
-      console.error(
-        "[ERROR] Project not found for code-agent run:",
-        missingProjectId,
-      );
+      console.error("[ERROR] Project not found for code-agent run:", missingProjectId);
       throw new Error(
         `Project not found. Unable to run code agent for project ${missingProjectId}.`,
       );
     }
 
-    let selectedFramework: Framework =
-      (project?.framework?.toLowerCase() as Framework) || "nextjs";
+    const selectedFramework: Framework =
+      (project.framework?.toLowerCase() as Framework) || "nextjs";
 
-    // If project doesn't have a framework set, use framework selector
-    if (!project?.framework) {
-      console.log("[DEBUG] No framework set, running framework selector...");
-
-      try {
-        const frameworkSelectorAgent = createAgent({
-          name: "framework-selector",
-          description: "Determines the best framework for the user's request",
-          system: FRAMEWORK_SELECTOR_PROMPT,
-          model: getModelAdapter("google/gemini-2.5-flash-lite", 0.3),
-        });
-
-        const frameworkResult = await frameworkSelectorAgent.run(
-          event.data.value,
-        );
-        const frameworkOutput = frameworkResult.output[0];
-
-        if (frameworkOutput.type === "text") {
-          const detectedFramework = (
-            typeof frameworkOutput.content === "string"
-              ? frameworkOutput.content
-              : frameworkOutput.content.map((c) => c.text).join("")
-          )
-            .trim()
-            .toLowerCase();
-
-          console.log("[DEBUG] Framework selector output:", detectedFramework);
-
-          if (
-            ["nextjs", "angular", "react", "vue", "svelte"].includes(
-              detectedFramework,
-            )
-          ) {
-            selectedFramework = detectedFramework as Framework;
-          }
-        }
-
-        console.log("[DEBUG] Selected framework:", selectedFramework);
-
-        // Update project with selected framework
-        await step.run("update-project-framework", async () => {
-          return await convex.mutation(api.projects.updateForUser, {
-            userId: project.userId,
-            projectId: event.data.projectId as Id<"projects">,
-            framework: frameworkToConvexEnum(selectedFramework),
-          });
-        });
-      } catch (frameworkError) {
-        const errorMessage =
-          frameworkError instanceof Error
-            ? frameworkError.message
-            : String(frameworkError);
-        console.error("[ERROR] Framework selection failed:", errorMessage);
-        console.warn(
-          "[WARN] Falling back to default framework (Next.js) due to framework selector error",
-        );
-        selectedFramework = "nextjs";
-      }
-    } else {
-      console.log("[DEBUG] Using existing framework:", selectedFramework);
-    }
-
-    // Run mode configuration: "fast" (default) or "safe" (full validation)
-    type RunMode = "fast" | "safe";
-
-    const requestedMode = (event.data.mode as RunMode | undefined) ?? "fast";
-    const mode: RunMode = requestedMode === "safe" ? "safe" : "fast";
-    console.log("[DEBUG] Code agent run mode:", mode);
-
-    // Model selection logic
-    const requestedModel =
-      (event.data.model as ModelId) || project?.modelPreference || "auto";
-    console.log("[DEBUG] Requested model:", requestedModel);
-
-    // Validate that the requested model exists in MODEL_CONFIGS
-    let validatedModel: ModelId = requestedModel;
-    if (requestedModel !== "auto" && !(requestedModel in MODEL_CONFIGS)) {
-      console.warn(
-        `[WARN] Invalid model requested: "${requestedModel}". Falling back to "auto".`,
-      );
-      validatedModel = "auto";
-    }
-
-    // Enforce Pro restriction for Gemini model - REMOVED TEMPORARILY
-    // if (validatedModel === "google/gemini-3-pro-preview" && usage?.planType !== "pro") {
-    //   console.warn(
-    //     `[WARN] Pro model requested by non-pro user. Falling back to "auto".`,
-    //   );
-    //   validatedModel = "auto";
-    // }
+    const requestedModel: ModelId =
+      (event.data.model as ModelId) || project.modelPreference || "auto";
+    const validatedModel: ModelId =
+      requestedModel !== "auto" && !(requestedModel in MODEL_CONFIGS)
+        ? "auto"
+        : requestedModel;
 
     const selectedModel: keyof typeof MODEL_CONFIGS =
       validatedModel === "auto"
-        ? selectModelForTask(event.data.value, selectedFramework)
+        ? selectModelForTask(event.data.value ?? "", selectedFramework)
         : (validatedModel as keyof typeof MODEL_CONFIGS);
 
-    // Enforce Pro plan for Gemini 3 Pro - REMOVED TEMPORARILY
-    // if (selectedModel === "google/gemini-3-pro-preview") {
-    //   const usage = await step.run("check-user-plan", async () => {
-    //     return await convex.query(api.usage.getUsageForUser, {
-    //       userId: project.userId,
-    //     });
-    //   });
-
-    //   if (usage.planType !== "pro") {
-    //     console.warn(
-    //       `[WARN] User ${project.userId} is not Pro but selected Gemini. Falling back to Haiku.`,
-    //     );
-    //     selectedModel = "anthropic/claude-haiku-4.5";
-    //   }
-    // }
-
-    console.log("[DEBUG] Selected model:", selectedModel);
-    console.log("[DEBUG] Model config:", MODEL_CONFIGS[selectedModel]);
-
     const sandboxId = await step.run("get-sandbox-id", async () => {
-      console.log(
-        "[DEBUG] Creating E2B sandbox for framework:",
-        selectedFramework,
-      );
-      console.log("[E2B_METRICS]", {
-        event: "sandbox_create_start",
-        framework: selectedFramework,
-        template: getE2BTemplate(selectedFramework),
-        circuitBreakerState: e2bCircuitBreaker.getState(),
-        timestamp: Date.now(),
-      });
-
-      // Check rate limit before attempting creation
-      try {
-        const rateLimitStatus = await convex.query(
-          api.e2bRateLimits.checkRateLimit,
-          {
-            operation: "sandbox_create",
-            maxPerHour: 100, // Adjust based on your E2B plan
-          },
-        );
-
-        if (rateLimitStatus.exceeded) {
-          console.error("[E2B_METRICS]", {
-            event: "rate_limit_exceeded",
-            count: rateLimitStatus.count,
-            limit: rateLimitStatus.limit,
-            timestamp: Date.now(),
-          });
-          throw new Error(
-            `E2B rate limit exceeded: ${rateLimitStatus.count}/${rateLimitStatus.limit} requests in last hour`,
-          );
-        }
-
-        // Warn at 80% usage
-        if (rateLimitStatus.count >= rateLimitStatus.limit * 0.8) {
-          console.warn("[E2B_METRICS]", {
-            event: "rate_limit_warning",
-            count: rateLimitStatus.count,
-            limit: rateLimitStatus.limit,
-            remaining: rateLimitStatus.remaining,
-            percentUsed: Math.round(
-              (rateLimitStatus.count / rateLimitStatus.limit) * 100,
-            ),
-            timestamp: Date.now(),
-          });
-        }
-      } catch (rateLimitError) {
-        console.warn("[WARN] Failed to check rate limit:", rateLimitError);
-        // Don't block sandbox creation if rate limit check fails
-      }
-
       const template = getE2BTemplate(selectedFramework);
-
-      try {
-        // Check if circuit breaker is open - queue the request instead
-        if (e2bCircuitBreaker.getState() === "OPEN") {
-          console.warn("[E2B_METRICS]", {
-            event: "circuit_breaker_open_queue",
-            framework: selectedFramework,
-            timestamp: Date.now(),
-          });
-
-          // Queue the request for later processing
-          const jobId = await convex.mutation(api.jobQueue.enqueue, {
-            type: "code_generation",
-            projectId: event.data.projectId as Id<"projects">,
-            userId: project.userId,
-            payload: event.data,
-            priority: "normal",
-          });
-
-          // Notify user
-          await convex.mutation(api.messages.createForUser, {
-            userId: project.userId,
-            projectId: event.data.projectId as Id<"projects">,
-            content:
-              "E2B service is temporarily unavailable. Your request has been queued and will be processed automatically when the service recovers. You'll be notified when it's ready.",
-            role: "ASSISTANT",
-            type: "RESULT",
-            status: "COMPLETE",
-          });
-
-          console.log("[E2B_METRICS]", {
-            event: "request_queued",
-            jobId,
-            timestamp: Date.now(),
-          });
-
-          // Throw error to stop current execution (request is queued)
-          throw new Error(
-            "E2B service unavailable - request queued for later processing",
-          );
-        }
-
-        // Use circuit breaker to prevent cascading failures
-        const sandbox = await e2bCircuitBreaker.execute(async () => {
-          // Try framework-specific template first
-          try {
-            return await createSandboxWithRetry(template, 3);
-          } catch {
-            // Fallback to default zapdev template if framework-specific doesn't exist
-            console.log(
-              "[DEBUG] Framework template not found, using default 'zapdev' template",
-            );
-            selectedFramework = "nextjs"; // Reset to default framework
-            return await createSandboxWithRetry("zapdev", 3);
-          }
-        });
-
-        console.log("[DEBUG] Sandbox created successfully:", sandbox.sandboxId);
-
-        // Record rate limit usage
-        try {
-          await convex.mutation(api.e2bRateLimits.recordRequest, {
-            operation: "sandbox_create",
-          });
-        } catch (recordError) {
-          console.warn("[WARN] Failed to record rate limit:", recordError);
-        }
-
-        // Validate sandbox is healthy before proceeding
-        const isHealthy = await validateSandboxHealth(sandbox);
-        if (!isHealthy) {
-          console.warn("[WARN] Sandbox health check failed, but continuing...");
-        }
-
-        return sandbox.sandboxId;
-      } catch (error) {
-        console.error("[ERROR] Failed to create E2B sandbox:", error);
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-
-        // Log failure metrics
-        console.error("[E2B_METRICS]", {
-          event: "sandbox_create_critical_failure",
-          framework: selectedFramework,
-          template,
-          error: errorMessage,
-          circuitBreakerState: e2bCircuitBreaker.getState(),
-          timestamp: Date.now(),
-        });
-
-        throw new Error(`E2B sandbox creation failed: ${errorMessage}`);
-      }
+      const sandbox = await createSandboxWithRetry(template, 3);
+      await sandbox.setTimeout(SANDBOX_TIMEOUT);
+      return sandbox.sandboxId;
     });
 
-    // Create sandbox session in Convex to track persistence state
     await step.run("create-sandbox-session", async () => {
       try {
-        console.log(
-          "[DEBUG] Creating sandbox session for sandboxId:",
-          sandboxId,
-        );
         await convex.mutation(api.sandboxSessions.create, {
           sandboxId,
-          projectId: event.data.projectId as Id<"projects">,
+          projectId,
           userId: project.userId,
           framework: frameworkToConvexEnum(selectedFramework),
-          autoPauseTimeout: 10 * 60 * 1000, // Default 10 minutes
+          autoPauseTimeout: 10 * 60 * 1000,
         });
-        console.log("[DEBUG] Sandbox session created successfully");
       } catch (error) {
         console.error("[ERROR] Failed to create sandbox session:", error);
-        // Don't throw - continue without session tracking
       }
     });
 
     const previousMessages = await step.run(
       "get-previous-messages",
       async () => {
-        console.log(
-          "[DEBUG] Fetching previous messages for project:",
-          event.data.projectId,
-        );
-        const formattedMessages: Message[] = [];
-
+        const formatted: Message[] = [];
         try {
-          const allMessages = await convex.query(api.messages.listForUser, {
+          const messages = await convex.query(api.messages.listForUser, {
             userId: project.userId,
-            projectId: event.data.projectId as Id<"projects">,
+            projectId,
           });
 
-          // Take last 3 messages for context
-          const messages = allMessages.slice(-3);
-
-          console.log("[DEBUG] Found", messages.length, "previous messages");
-
-          for (const message of messages) {
-            // Add text message
-            formattedMessages.push({
+          const recent = messages.slice(-5);
+          for (const message of recent) {
+            formatted.push({
               type: "text",
               role: message.role === "ASSISTANT" ? "assistant" : "user",
               content: message.content,
             });
 
-            // Add image attachments if present
             if (
-              message.Attachment &&
               Array.isArray(message.Attachment) &&
               message.Attachment.length > 0
             ) {
               const imageAttachments = message.Attachment.filter(
                 (att) => att.type === "IMAGE",
               );
-
               if (imageAttachments.length > 0) {
-                console.log(
-                  `[DEBUG] Found ${imageAttachments.length} image attachment(s) for message ${message._id}`,
-                );
-
                 const imageUrls = imageAttachments
                   .map((att) => att.url)
                   .filter(
                     (url): url is string =>
                       typeof url === "string" && url.length > 0,
                   );
-
-                // Convert image URLs to AI-compatible image messages
                 const imageMessages = await createImageMessages(imageUrls);
-                formattedMessages.push(...imageMessages);
-
-                console.log(
-                  `[DEBUG] Added ${imageMessages.length} image message(s) to context`,
-                );
+                formatted.push(...imageMessages);
               }
             }
           }
-
-          return formattedMessages;
         } catch (error) {
           console.error("[ERROR] Failed to fetch previous messages:", error);
-          return [];
         }
+        return formatted;
       },
     );
 
-    await step.run("notify-screenshots", async () => {
-      const urls = extractUrls(event.data.value ?? "").slice(0, 2);
-      if (urls.length === 0) {
+    const initialState = createState<AgentState>(
+      {
+        summary: "",
+        files: {},
+        selectedFramework,
+        summaryRetryCount: 0,
+      },
+      { messages: previousMessages },
+    );
+
+    const modelConfig = MODEL_CONFIGS[selectedModel];
+
+    const codeAgent = createAgent<AgentState>({
+      name: "code-agent",
+      description: "An expert coding agent",
+      system: getFrameworkPrompt(selectedFramework),
+      model: getModelAdapter(selectedModel, modelConfig.temperature),
+      tools: createCodeAgentTools(sandboxId),
+      lifecycle: {
+        onResponse: async ({ result, network }) => {
+          const lastAssistantMessageText = lastAssistantTextMessageContent(result);
+          if (lastAssistantMessageText && network) {
+            network.state.data.summary = lastAssistantMessageText;
+          }
+          return result;
+        },
+      },
+    });
+
+    const network = createNetwork<AgentState>({
+      name: "coding-agent-network",
+      agents: [codeAgent],
+      maxIter: 12,
+      defaultState: initialState,
+      router: async ({ network }) => {
+        const summaryText = network.state.data.summary ?? "";
+        if (summaryText.trim().length === 0) {
+          return codeAgent;
+        }
         return;
-      }
+      },
+    });
 
+    const result = await network.run(event.data.value, { state: initialState });
+
+    const fragmentTitleGenerator = createAgent({
+      name: "fragment-title-generator",
+      description: "Generates fragment titles",
+      system: FRAGMENT_TITLE_PROMPT,
+      model: getModelAdapter(selectedModel, modelConfig.temperature),
+    });
+
+    const responseGenerator = createAgent({
+      name: "response-generator",
+      description: "Generates assistant responses",
+      system: RESPONSE_PROMPT,
+      model: getModelAdapter(selectedModel, modelConfig.temperature),
+    });
+
+    const { output: fragmentTitleOutput } = await fragmentTitleGenerator.run(
+      result.state.data.summary || "New fragment",
+    );
+    const { output: responseOutput } = await responseGenerator.run(
+      result.state.data.summary || "Code generation completed",
+    );
+
+    const files = result.state.data.files || {};
+    const hasFiles = Object.keys(files).length > 0;
+    const summaryText = result.state.data.summary || "";
+
+    const sandboxUrl = await step.run("get-sandbox-url", async () => {
       try {
-        for (const url of urls) {
-          const content = sanitizeTextForDatabase(
-            `📸 Taking screenshot of ${url}...`,
-          );
-          const messageContent =
-            content.length > 0 ? content : "Taking screenshot...";
+        const sandbox = await getSandbox(sandboxId);
+        const host = sandbox.getHost
+          ? sandbox.getHost(getFrameworkPort(selectedFramework))
+          : undefined;
+        if (host) {
+          return `https://${host}`;
+        }
+      } catch (error) {
+        console.error("[ERROR] Failed to get sandbox URL:", error);
+      }
+      return "";
+    });
 
-          await convex.mutation(api.messages.createForUser, {
+    const isError = !summaryText || !hasFiles;
+
+    await step.run("save-result", async () => {
+      try {
+        const content = isError
+          ? "Something went wrong. Please try again."
+          : parseAgentOutput(responseOutput);
+        const messageId = (await convex.mutation(api.messages.createForUser, {
+          userId: project.userId,
+          projectId,
+          content,
+          role: "ASSISTANT",
+          type: isError ? "ERROR" : "RESULT",
+          status: "COMPLETE",
+        })) as Id<"messages">;
+
+        if (!isError) {
+          await convex.mutation(api.messages.createFragmentForUser, {
             userId: project.userId,
-            projectId: event.data.projectId as Id<"projects">,
-            content: messageContent,
-            role: "ASSISTANT",
-            type: "RESULT",
-            status: "COMPLETE",
+            messageId,
+            sandboxId,
+            sandboxUrl,
+            title: parseAgentOutput(fragmentTitleOutput),
+            files: filterAIGeneratedFiles(files),
+            metadata: {},
+            framework: frameworkToConvexEnum(selectedFramework),
           });
         }
       } catch (error) {
-        console.error(
-          "[ERROR] Failed to create screenshot notifications:",
-          error,
-        );
+        console.error("[ERROR] Failed to save result:", error);
       }
-    });
-
-    const crawledContexts = await step.run("crawl-url-context", async () => {
-      try {
-        const urls = extractUrls(event.data.value ?? "").slice(0, 2);
-
-        if (urls.length === 0) {
-          return [] as CrawledContent[];
-        }
-
-        console.log("[DEBUG] Found URLs in input:", urls);
-
-        const crawlWithTimeout = async (
-          url: string,
-        ): Promise<CrawledContent | null> => {
-          try {
-            return await Promise.race([
-              crawlUrl(url),
-              new Promise<null>((resolve) =>
-                setTimeout(() => {
-                  console.warn("[DEBUG] Crawl timeout for URL:", url);
-                  resolve(null);
-                }, 10000),
-              ),
-            ]);
-          } catch (error) {
-            console.error("[ERROR] Crawl error for URL:", url, error);
-            return null;
-          }
-        };
-
-        const results = await Promise.all(
-          urls.map((url) => crawlWithTimeout(url)),
-        );
-
-        return results.filter(
-          (crawled): crawled is CrawledContent => crawled !== null,
-        );
-      } catch (error) {
-        console.error("[ERROR] Failed to crawl URLs", error);
-        return [] as CrawledContent[];
-      }
-    });
-
-    const contextMessages: Message[] = (crawledContexts ?? []).map(
-      (context) => ({
-        type: "text",
-        role: "user",
-        content: `Crawled context from ${context.url}:\n${context.content}`,
-      }),
-    );
-
-    const initialMessages = [...contextMessages, ...previousMessages];
-
-    const buildAgentState = () =>
-      createState<AgentState>(
-        {
-          summary: "",
-          files: {},
-          selectedFramework,
-          summaryRetryCount: 0,
-        },
-        {
-          messages: initialMessages,
-        },
-      );
-
-    type AgentStateInstance = ReturnType<typeof buildAgentState>;
-
-    // Check if this message has an approved spec
-    const currentMessage = await step.run("get-current-message", async () => {
-      try {
-        const allMessages = await convex.query(api.messages.listForUser, {
-          userId: project.userId,
-          projectId: event.data.projectId as Id<"projects">,
-        });
-        // Find the most recent user message (should be the one that triggered this)
-        return allMessages.filter((m) => m.role === "USER").pop();
-      } catch (error) {
-        console.error("[ERROR] Failed to fetch current message:", error);
-        return null;
-      }
-    });
-
-    const hasApprovedSpec = currentMessage?.specMode === "APPROVED";
-    const specContent = currentMessage?.specContent;
-
-    let frameworkPrompt = getFrameworkPrompt(selectedFramework);
-
-    // If there's an approved spec, enhance the prompt with it
-    if (hasApprovedSpec && specContent) {
-      console.log("[DEBUG] Using approved spec for code generation");
-      frameworkPrompt = `${frameworkPrompt}
-
-## IMPORTANT: Implementation Specification
-
-The user has approved the following detailed implementation specification. Follow it closely:
-
-${specContent}
-
-Your task is to implement this specification accurately. Refer to the spec for:
-- Component structure and architecture
-- Feature requirements and user interactions
-- Technical approach and patterns
-- Implementation steps and order
-
-Generate code that matches the approved specification.`;
-    }
-
-    console.log("[DEBUG] Using prompt for framework:", selectedFramework);
-
-    const modelConfig = MODEL_CONFIGS[selectedModel];
-    console.log("[MODEL_SELECTION] Creating agent with:", {
-      model: selectedModel,
-      modelName: modelConfig.name,
-      provider: modelConfig.provider,
-      framework: selectedFramework,
-      temperature: modelConfig.temperature,
-      autoSelected: validatedModel === "auto",
-    });
-
-    const codeAgentLifecycle = {
-      onResponse: async ({
-        result,
-        network,
-      }: {
-        result: AgentResult;
-        network?: NetworkRun<AgentState>;
-      }) => {
-        const lastAssistantMessageText =
-          lastAssistantTextMessageContent(result);
-
-        if (lastAssistantMessageText && network) {
-          const containsSummaryTag =
-            lastAssistantMessageText.includes("<task_summary>");
-          console.log(
-            `[DEBUG] Agent response received (contains summary tag: ${containsSummaryTag})`,
-          );
-          if (containsSummaryTag) {
-            network.state.data.summary = extractSummaryText(
-              lastAssistantMessageText,
-            );
-            network.state.data.summaryRetryCount = 0;
-          }
-        }
-
-        return result;
-      },
-    };
-
-    const codeAgent = createAgent<AgentState>({
-      name: `${selectedFramework}-code-agent`,
-      description: `An expert ${selectedFramework} coding agent powered by ${modelConfig.name}`,
-      system: frameworkPrompt,
-      model: getModelAdapter(selectedModel, modelConfig.temperature),
-      tools: createCodeAgentTools(sandboxId),
-      lifecycle: codeAgentLifecycle,
-    });
-
-    const createCodeAgentNetwork = (
-      agent: ReturnType<typeof createAgent<AgentState>>,
-    ) =>
-      createNetwork<AgentState>({
-        name: "coding-agent-network",
-        agents: [agent],
-        maxIter: 8,
-        defaultState: buildAgentState(),
-        router: async ({ network }) => {
-          const summaryText = extractSummaryText(
-            network.state.data.summary ?? "",
-          );
-          const fileEntries = network.state.data.files ?? {};
-          const fileCount = Object.keys(fileEntries).length;
-
-          if (summaryText.length > 0) {
-            return;
-          }
-
-          if (fileCount === 0) {
-            network.state.data.summaryRetryCount = 0;
-            return agent;
-          }
-
-          const currentRetry = network.state.data.summaryRetryCount ?? 0;
-          if (currentRetry >= 2) {
-            console.warn(
-              "[WARN] Missing <task_summary> after multiple attempts despite generated files; proceeding with fallback handling.",
-            );
-            return;
-          }
-
-          const nextRetry = currentRetry + 1;
-          network.state.data.summaryRetryCount = nextRetry;
-          console.log(
-            `[DEBUG] No <task_summary> yet; retrying agent to request summary (attempt ${nextRetry}).`,
-          );
-
-          return agent;
-        },
-      });
-
-    const runNetwork = async (
-      stepContext: typeof step | undefined,
-      _label: string, // Label is unused now, but kept for signature compatibility
-      agent: ReturnType<typeof createAgent<AgentState>>,
-      stateOverride?: AgentStateInstance,
-      userInput?: string,
-    ): Promise<NetworkRun<AgentState>> => {
-      const network = createCodeAgentNetwork(agent);
-      const stateForRun = stateOverride ?? buildAgentState();
-      const inputForRun = userInput ?? event.data.value;
-
-      // FIX: Do not wrap network.run in step.run.
-      // The agent-kit handles its own steps and context.
-      // Wrapping it causes context loss for the internal 'step' accessor.
-      console.log(`[DEBUG] Running network directly (label: ${_label})`);
-
-      const runOptions: Parameters<typeof network.run>[1] & {
-        step?: typeof step;
-      } = {
-        state: stateForRun,
-        step: stepContext,
-      };
-
-      return network.run(inputForRun, runOptions);
-    };
-
-    console.log("[DEBUG] Running network with input:", event.data.value);
-    let result: NetworkRun<AgentState>;
-    const activeAgent = codeAgent;
-    try {
-      result = await runNetwork(
-        step,
-        "run-code-agent-network",
-        codeAgent,
-        undefined,
-        event.data.value,
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error("[ERROR] Network run failed with error:", errorMessage);
-      if (error instanceof Error && error.stack) {
-        console.error("[ERROR] Stack trace:", error.stack);
-      }
-      if (errorMessage.toLowerCase().includes("step")) {
-        console.error(
-          "[ERROR] Inngest step context missing; ensure asyncContext is enabled and the route uses the nodejs runtime.",
-        );
-      }
-      throw new Error(
-        `Code generation failed: ${errorMessage}. Check server logs for details.`,
-      );
-    }
-
-    // Post-network fallback: If no summary but files exist, make one more explicit request
-    let summaryText = extractSummaryText(result.state.data.summary ?? "");
-    const hasGeneratedFiles =
-      Object.keys(result.state.data.files || {}).length > 0;
-
-    if (!summaryText && hasGeneratedFiles) {
-      console.log(
-        "[DEBUG] No summary detected after network run, requesting explicitly...",
-      );
-      try {
-        result = await runNetwork(
-          step,
-          "run-code-agent-network-summary-request",
-          activeAgent,
-          result.state,
-          "IMPORTANT: You have successfully generated files, but you forgot to provide the <task_summary> tag. Please provide it now with a brief description of what you built. This is required to complete the task.",
-        );
-      } catch (summaryError) {
-        const errorMessage =
-          summaryError instanceof Error
-            ? summaryError.message
-            : String(summaryError);
-        console.error("[ERROR] Failed to generate summary:", errorMessage);
-        // Don't throw - continue with fallback
-      }
-
-      // Re-extract summary after explicit request
-      summaryText = extractSummaryText(result.state.data.summary ?? "");
-
-      if (summaryText) {
-        console.log(
-          "[DEBUG] Summary successfully extracted after explicit request",
-        );
-      } else {
-        console.warn(
-          "[WARN] Summary still missing after explicit request, will use fallback",
-        );
-      }
-    }
-
-    // Post-execution validation: Check if expected entry point file was modified
-    const generatedFiles = result.state.data.files || {};
-    const fileKeys = Object.keys(generatedFiles);
-
-    // Define expected entry points by framework
-    const entryPointsByFramework: Record<Framework, string[]> = {
-      nextjs: ["app/page.tsx", "pages/index.tsx"],
-      angular: ["src/app/app.component.ts", "src/app/app.component.html"],
-      react: ["src/App.tsx", "src/main.tsx", "src/index.tsx"],
-      vue: ["src/App.vue", "src/main.ts"],
-      svelte: ["src/routes/+page.svelte", "src/App.svelte"],
-    };
-
-    const expectedEntryPoints = entryPointsByFramework[selectedFramework] || [];
-    const modifiedEntryPoint = expectedEntryPoints.some((entry) =>
-      fileKeys.includes(entry),
-    );
-
-    if (hasGeneratedFiles && !modifiedEntryPoint) {
-      console.warn(
-        `[VALIDATION_WARNING] Expected entry point file not modified for ${selectedFramework}`,
-        {
-          model: selectedModel,
-          expectedFiles: expectedEntryPoints,
-          actualFiles: fileKeys.slice(0, 10),
-          userRequest: event.data.value.slice(0, 200),
-        },
-      );
-
-      // Log specific warning for OpenAI models (GPT-5.1)
-      if (modelConfig.provider === "openai") {
-        console.error(
-          "[MODEL_BEHAVIOR] OpenAI model did not edit the expected entry point file!",
-          {
-            model: selectedModel,
-            framework: selectedFramework,
-            expectedFiles: expectedEntryPoints,
-            filesGenerated: fileKeys.length,
-          },
-        );
-      }
-    } else if (modifiedEntryPoint) {
-      console.log(
-        `[VALIDATION_SUCCESS] Entry point file correctly modified for ${selectedFramework}`,
-        {
-          model: selectedModel,
-          modifiedFile: fileKeys.find((key) =>
-            expectedEntryPoints.includes(key),
-          ),
-        },
-      );
-    }
-
-    // Post-completion validation: Run lint and build checks to catch any errors the agent missed
-    console.log("[DEBUG] Running post-completion validation checks...");
-    let lintErrors: string | null = null;
-    let buildErrors: string | null = null;
-
-    if (mode === "safe") {
-      [lintErrors, buildErrors] = (await Promise.all([
-        step.run("post-completion-lint-check", async () => {
-          return await runLintCheck(sandboxId);
-        }),
-        step.run("post-completion-build-check", async () => {
-          return await runBuildCheck(sandboxId);
-        }),
-      ])) as [string | null, string | null];
-    } else {
-      console.log(
-        "[DEBUG] Fast mode: skipping lint/build validation checks and auto-fix loop",
-      );
-    }
-
-    let autoFixAttempts = 0;
-    let lastAssistantMessage = getLastAssistantMessage(result);
-
-    if (selectedFramework === "nextjs") {
-      const currentFiles = (result.state.data.files || {}) as Record<
-        string,
-        string
-      >;
-      if (
-        Object.keys(currentFiles).length > 0 &&
-        !usesShadcnComponents(currentFiles)
-      ) {
-        const shadcnErrorMessage =
-          "[ERROR] Missing Shadcn UI usage. Rebuild the UI using components imported from '@/components/ui/*' instead of plain HTML elements.";
-        console.warn("[WARN] Shadcn usage check failed. Triggering auto-fix.");
-        if (!shouldTriggerAutoFix(lastAssistantMessage)) {
-          lastAssistantMessage = shadcnErrorMessage;
-        } else {
-          lastAssistantMessage = `${lastAssistantMessage}\n${shadcnErrorMessage}`;
-        }
-      }
-    }
-
-    if (mode === "safe") {
-      // Collect all validation errors
-      let validationErrors = [lintErrors, buildErrors]
-        .filter(Boolean)
-        .join("\n\n");
-
-      // Always include validation errors in the error message if they exist
-      if (validationErrors) {
-        console.log("[DEBUG] Validation errors detected:", validationErrors);
-        if (
-          !lastAssistantMessage ||
-          !shouldTriggerAutoFix(lastAssistantMessage)
-        ) {
-          lastAssistantMessage = `Validation Errors Detected:\n${validationErrors}`;
-        } else {
-          lastAssistantMessage = `${lastAssistantMessage}\n\nValidation Errors:\n${validationErrors}`;
-        }
-      }
-
-      // Auto-fix loop: continue until errors are resolved or max attempts reached
-      while (
-        autoFixAttempts < AUTO_FIX_MAX_ATTEMPTS &&
-        (shouldTriggerAutoFix(lastAssistantMessage) || validationErrors)
-      ) {
-        autoFixAttempts += 1;
-        const errorDetails =
-          validationErrors ||
-          lastAssistantMessage ||
-          "No error details provided.";
-
-        console.log(
-          `\n[DEBUG] Auto-fix triggered (attempt ${autoFixAttempts}). Errors detected.\n${errorDetails}\n`,
-        );
-
-        try {
-          result = await runNetwork(
-            step,
-            `run-code-agent-network-auto-fix-${autoFixAttempts}`,
-            activeAgent,
-            result.state,
-            `CRITICAL ERROR DETECTED - IMMEDIATE FIX REQUIRED
-
-The previous attempt encountered an error that must be corrected before proceeding.
-
-Error details:
-${errorDetails}
-
-REQUIRED ACTIONS:
-1. Carefully analyze the error message to identify the root cause
-2. Check for common issues:
-   - Missing imports or incorrect import paths
-   - TypeScript type errors or incorrect type usage
-   - Missing package installations
-   - Syntax errors or typos
-   - Security vulnerabilities (XSS, injection, etc.)
-   - Runtime errors (undefined variables, null references)
-3. Apply the necessary fix to resolve the error completely
-4. Verify the fix by checking the code logic and types
-5. If needed, install missing packages or update configurations
-6. Rerun any commands that failed and verify they now succeed
-7. Provide an updated <task_summary> only after the error is fully resolved
-
-DO NOT proceed until the error is completely fixed. The fix must be thorough and address the root cause, not just mask the symptoms.`,
-          );
-        } catch (autoFixError) {
-          const fixErrorMessage =
-            autoFixError instanceof Error
-              ? autoFixError.message
-              : String(autoFixError);
-          console.error(
-            `[ERROR] Auto-fix attempt ${autoFixAttempts} failed:`,
-            fixErrorMessage,
-          );
-          // Break out of auto-fix loop on network error
-          break;
-        }
-
-        lastAssistantMessage = getLastAssistantMessage(result);
-
-        // Re-run validation checks to verify if errors are actually fixed
-        console.log(
-          "[DEBUG] Re-running validation checks after auto-fix attempt...",
-        );
-        const [newLintErrors, newBuildErrors] = await Promise.all([
-          step.run(`post-fix-lint-check-${autoFixAttempts}`, async () => {
-            return await runLintCheck(sandboxId);
-          }),
-          step.run(`post-fix-build-check-${autoFixAttempts}`, async () => {
-            return await runBuildCheck(sandboxId);
-          }),
-        ]);
-
-        validationErrors = [newLintErrors, newBuildErrors]
-          .filter(Boolean)
-          .join("\n\n");
-
-        if (validationErrors) {
-          console.log(
-            "[DEBUG] Validation errors still present after fix attempt:",
-            validationErrors,
-          );
-        } else {
-          console.log("[DEBUG] All validation errors resolved!");
-        }
-
-        // Update lastAssistantMessage with validation results if still present
-        if (validationErrors) {
-          if (!shouldTriggerAutoFix(lastAssistantMessage)) {
-            lastAssistantMessage = `Validation Errors Still Present:\n${validationErrors}`;
-          } else {
-            lastAssistantMessage = `${lastAssistantMessage}\n\nValidation Errors:\n${validationErrors}`;
-          }
-        }
-      }
-    }
-
-    lastAssistantMessage = getLastAssistantMessage(result);
-
-    const files = (result.state.data.files || {}) as Record<string, string>;
-    const filePaths = Object.keys(files);
-    const hasFiles = filePaths.length > 0;
-
-    summaryText = extractSummaryText(
-      typeof result.state.data.summary === "string"
-        ? result.state.data.summary
-        : "",
-    );
-    const agentProvidedSummary = summaryText.length > 0;
-    const agentReportedError = shouldTriggerAutoFix(lastAssistantMessage);
-
-    if (!agentProvidedSummary && hasFiles) {
-      const previewFiles = filePaths.slice(0, 5);
-      const remainingCount = filePaths.length - previewFiles.length;
-      summaryText = `Generated or updated ${filePaths.length} file${filePaths.length === 1 ? "" : "s"}: ${previewFiles.join(", ")}${remainingCount > 0 ? ` (and ${remainingCount} more)` : ""}.`;
-      console.warn(
-        "[WARN] Missing <task_summary> from agent despite generated files; using fallback summary.",
-      );
-    }
-
-    result.state.data.summary = summaryText;
-
-    const hasSummary = summaryText.length > 0;
-
-    console.log(
-      `[DEBUG] Network run complete. Summary status: ${hasSummary ? "present" : "missing"}`,
-    );
-    if (hasSummary) {
-      console.log("[DEBUG] Summary preview:", summaryText.slice(0, 160));
-    }
-    console.log("[DEBUG] Files generated:", filePaths.length);
-    if (filePaths.length > 0) {
-      console.log("[DEBUG] File list preview:", filePaths.slice(0, 10));
-    }
-    if (agentReportedError) {
-      console.warn(
-        "[WARN] Last assistant message still signals an unresolved error.",
-      );
-    }
-
-    const errorReasons: string[] = [];
-    const warningReasons: string[] = [];
-    const shadcnCompliant =
-      selectedFramework !== "nextjs" || usesShadcnComponents(files);
-
-    if (!hasFiles) {
-      errorReasons.push("no files generated");
-    }
-    if (!hasSummary) {
-      errorReasons.push("no summary available");
-    }
-    if (agentReportedError) {
-      errorReasons.push("agent reported unresolved error");
-    }
-    if (!shadcnCompliant) {
-      warningReasons.push("missing Shadcn UI components");
-    }
-
-    const isError = errorReasons.length > 0;
-    if (isError) {
-      console.warn(
-        `[WARN] Completion flagged as error: ${errorReasons.join(", ")}`,
-      );
-    } else {
-      console.log("[DEBUG] Completion flagged as success.");
-    }
-    if (warningReasons.length > 0) {
-      console.warn(
-        `[WARN] Completion generated warnings: ${warningReasons.join(", ")}`,
-      );
-    }
-
-    const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      // Ensure the dev server is running before returning the URL
-      let sandbox: Sandbox | null = null;
-      try {
-        sandbox = await getSandbox(sandboxId);
-        await ensureDevServerRunning(sandbox, selectedFramework);
-        console.log(
-          "[DEBUG] Dev server confirmed running, returning sandbox URL",
-        );
-      } catch (error) {
-        console.warn("[WARN] Failed to ensure dev server is running:", error);
-        // Continue anyway - the sandbox URL might still work if the template starts it
-      }
-
-      // Prefer E2B SDK helper when available so we follow their host format
-      try {
-        const port = getFrameworkPort(selectedFramework);
-        const sandboxWithHost = sandbox as SandboxWithHost | null;
-        const maybeHost =
-          sandboxWithHost && typeof sandboxWithHost.getHost === "function"
-            ? sandboxWithHost.getHost?.(port)
-            : undefined;
-
-        if (
-          maybeHost &&
-          typeof maybeHost === "string" &&
-          maybeHost.length > 0
-        ) {
-          const host = maybeHost.startsWith("http")
-            ? maybeHost
-            : `https://${maybeHost}`;
-          return host;
-        }
-      } catch (hostError) {
-        console.warn(
-          "[WARN] Failed to resolve sandbox host via E2B SDK, using fallback URL:",
-          hostError,
-        );
-      }
-
-      // Fallback to legacy pattern if getHost is unavailable
-      console.warn(
-        "[WARN] E2B sandbox getHost() not available; using fallback https://${sandboxId}.sandbox.e2b.dev",
-      );
-      return `https://${sandboxId}.sandbox.e2b.dev`;
-    });
-
-    let fragmentTitleOutput: Message[] | undefined;
-    let responseOutput: Message[] | undefined;
-
-    if (!isError && hasSummary && hasFiles) {
-      try {
-        // Reuse the already-selected model for metadata generation so we
-        // 1) stay on the Vercel AI gateway and
-        // 2) avoid unsupported Gemini endpoints returning 405.
-        const metadataModelId =
-          selectedModel in MODEL_CONFIGS
-            ? selectedModel
-            : ("anthropic/claude-haiku-4.5" as keyof typeof MODEL_CONFIGS);
-
-        let titleModel;
-        try {
-          titleModel = getModelAdapter(
-            metadataModelId,
-            MODEL_CONFIGS[metadataModelId].temperature,
-          );
-        } catch (adapterError) {
-          const errorMessage =
-            adapterError instanceof Error
-              ? adapterError.message
-              : String(adapterError);
-          console.error(
-            "[ERROR] Failed to initialize model adapter for metadata generation:",
-            errorMessage,
-          );
-          throw adapterError;
-        }
-
-        const fragmentTitleGenerator = createAgent({
-          name: "fragment-title-generator",
-          description: "A fragment title generator",
-          system: FRAGMENT_TITLE_PROMPT,
-          model: titleModel,
-        });
-
-        const responseGenerator = createAgent({
-          name: "response-generator",
-          description: "A response generator",
-          system: RESPONSE_PROMPT,
-          model: titleModel,
-        });
-
-        const [titleResult, responseResult] = await Promise.all([
-          fragmentTitleGenerator.run(summaryText),
-          responseGenerator.run(summaryText),
-        ]);
-
-        fragmentTitleOutput = titleResult.output;
-        responseOutput = responseResult.output;
-      } catch (gatewayError) {
-        const errorMessage =
-          gatewayError instanceof Error
-            ? gatewayError.message
-            : String(gatewayError);
-        console.error(
-          "[ERROR] Failed to generate fragment metadata:",
-          errorMessage,
-        );
-        if (gatewayError instanceof Error && gatewayError.stack) {
-          console.error("[ERROR] Stack trace:", gatewayError.stack);
-        }
-        fragmentTitleOutput = undefined;
-        responseOutput = undefined;
-      }
-    }
-
-    const allScreenshots = await step.run("collect-screenshots", async () => {
-      const screenshots: string[] = [];
-      for (const context of crawledContexts) {
-        if (context.screenshots && Array.isArray(context.screenshots)) {
-          screenshots.push(...context.screenshots);
-        }
-      }
-
-      const validScreenshots = screenshots.filter(isValidScreenshotUrl);
-      const uniqueScreenshots = Array.from(new Set(validScreenshots));
-
-      if (screenshots.length > uniqueScreenshots.length) {
-        console.log(
-          `[DEBUG] Deduplicated ${screenshots.length - uniqueScreenshots.length} duplicate screenshots`,
-        );
-      }
-
-      if (uniqueScreenshots.length > MAX_SCREENSHOTS) {
-        console.warn(
-          `[WARN] Screenshot count (${uniqueScreenshots.length}) exceeds limit (${MAX_SCREENSHOTS}), keeping first ${MAX_SCREENSHOTS}`,
-        );
-        return uniqueScreenshots.slice(0, MAX_SCREENSHOTS);
-      }
-
-      return uniqueScreenshots;
-    });
-
-    let filePathsList: string[] = [];
-    const sandboxFiles: Record<string, string> = {};
-
-    if (!isError && mode === "safe") {
-      filePathsList = await step.run("find-sandbox-files", async () => {
-        try {
-          const sandbox = await getSandbox(sandboxId);
-          const findCommand = getFindCommand(selectedFramework);
-          const findResult = await sandbox.commands.run(findCommand);
-
-          const filePaths = findResult.stdout
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(
-              (line) => line.length > 0 && !line.includes("Permission denied"),
-            )
-            .filter(isValidFilePath);
-
-          console.log(`[DEBUG] Found ${filePaths.length} files in sandbox`);
-
-          if (filePaths.length === 0) {
-            console.warn("[WARN] No files found in sandbox");
-            return [];
-          }
-
-          const totalFiles = Math.min(filePaths.length, MAX_FILE_COUNT);
-          if (filePaths.length > MAX_FILE_COUNT) {
-            console.warn(
-              `[WARN] File count (${filePaths.length}) exceeds limit (${MAX_FILE_COUNT}), reading first ${MAX_FILE_COUNT} files`,
-            );
-          }
-
-          return filePaths.slice(0, totalFiles);
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          console.error("[ERROR] Failed to find sandbox files:", errorMessage);
-          return [];
-        }
-      });
-
-      if (filePathsList.length > 0) {
-        const numBatches = Math.ceil(
-          filePathsList.length / FILES_PER_STEP_BATCH,
-        );
-
-        for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
-          const batchStart = batchIndex * FILES_PER_STEP_BATCH;
-          const batchEnd = Math.min(
-            batchStart + FILES_PER_STEP_BATCH,
-            filePathsList.length,
-          );
-          const batchFilePaths = filePathsList.slice(batchStart, batchEnd);
-
-          const batchFiles = await step.run(
-            `read-sandbox-files-batch-${batchIndex}`,
-            async () => {
-              const sandbox = await getSandbox(sandboxId);
-              const batchFilesMap: Record<string, string> = {};
-
-              for (const filePath of batchFilePaths) {
-                const content = await readFileWithTimeout(
-                  sandbox,
-                  filePath,
-                  FILE_READ_TIMEOUT_MS,
-                );
-                if (content !== null) {
-                  batchFilesMap[filePath] = content;
-                }
-              }
-
-              const batchSize = calculateFilesMapSize(batchFilesMap);
-              if (batchSize > INNGEST_STEP_OUTPUT_SIZE_LIMIT) {
-                console.warn(
-                  `[WARN] Batch ${batchIndex} size (${batchSize} bytes) exceeds Inngest limit, filtering large files`,
-                );
-                const filteredBatch: Record<string, string> = {};
-                let currentSize = 0;
-
-                for (const [path, content] of Object.entries(batchFilesMap)) {
-                  const fileSize = path.length + content.length;
-                  if (
-                    currentSize + fileSize <=
-                    INNGEST_STEP_OUTPUT_SIZE_LIMIT * 0.9
-                  ) {
-                    filteredBatch[path] = content;
-                    currentSize += fileSize;
-                  } else {
-                    console.warn(
-                      `[WARN] Skipping large file in batch: ${path} (${fileSize} bytes)`,
-                    );
-                  }
-                }
-
-                return filteredBatch;
-              }
-
-              return batchFilesMap;
-            },
-          );
-
-          Object.assign(sandboxFiles, batchFiles);
-          console.log(
-            `[DEBUG] Processed batch ${batchIndex + 1}/${numBatches} (${Object.keys(batchFiles).length} files)`,
-          );
-        }
-
-        console.log(
-          `[DEBUG] Successfully read ${Object.keys(sandboxFiles).length} files from sandbox in ${numBatches} batches`,
-        );
-      }
-    } else {
-      console.log(
-        "[DEBUG] Fast mode or error state: skipping sandbox filesystem scan; using agent files only",
-      );
-    }
-
-    const agentFiles = result.state.data.files || {};
-
-    let finalFiles: Record<string, string>;
-
-    if (!isError && mode === "safe" && Object.keys(sandboxFiles).length > 0) {
-      const mergeValidation = validateMergeStrategy(agentFiles, sandboxFiles);
-
-      if (mergeValidation.warnings.length > 0) {
-        console.warn(
-          `[WARN] Merge strategy warnings: ${mergeValidation.warnings.join("; ")}`,
-        );
-      }
-
-      // Filter out E2B sandbox system files and configuration boilerplate
-      const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
-      const removedFileCount =
-        Object.keys(sandboxFiles).length -
-        Object.keys(filteredSandboxFiles).length;
-      console.log(
-        `[DEBUG] Filtered sandbox files: ${Object.keys(sandboxFiles).length} → ${Object.keys(filteredSandboxFiles).length} files (removed ${removedFileCount} system/config files)`,
-      );
-
-      // Merge strategy: Agent files take priority over sandbox files
-      const mergedFiles = { ...filteredSandboxFiles, ...agentFiles };
-
-      const overwrittenFiles = Object.keys(agentFiles).filter(
-        (path) => filteredSandboxFiles[path] !== undefined,
-      );
-      if (overwrittenFiles.length > 0) {
-        console.log(
-          `[DEBUG] Agent files overwriting ${overwrittenFiles.length} sandbox files: ${overwrittenFiles
-            .slice(0, 5)
-            .join(", ")}${overwrittenFiles.length > 5 ? "..." : ""}`,
-        );
-      }
-
-      // Validate all file paths in merged files to prevent path traversal
-      const validatedMergedFiles: Record<string, string> = {};
-      let invalidPathCount = 0;
-
-      for (const [path, content] of Object.entries(mergedFiles)) {
-        if (isValidFilePath(path)) {
-          validatedMergedFiles[path] = content as string;
-        } else {
-          invalidPathCount++;
-          console.warn(
-            `[WARN] Filtered out invalid file path from merged files: ${path}`,
-          );
-        }
-      }
-
-      if (invalidPathCount > 0) {
-        console.warn(
-          `[WARN] Filtered out ${invalidPathCount} invalid file paths from merged files`,
-        );
-      }
-
-      // Validate aggregate size to prevent exceeding Convex document limits
-      const totalSizeBytes = Object.values(validatedMergedFiles).reduce(
-        (sum, content) => sum + content.length,
-        0,
-      );
-      const totalSizeMB = totalSizeBytes / (1024 * 1024);
-      const fileCount = Object.keys(validatedMergedFiles).length;
-
-      console.log(
-        `[DEBUG] Merged files size: ${totalSizeMB.toFixed(2)} MB (${fileCount} files, ${totalSizeBytes.toLocaleString()} bytes)`,
-      );
-
-      // Convex document size limits: warn at 4MB, fail at 5MB
-      const WARN_SIZE_MB = 4;
-      const MAX_SIZE_MB = 5;
-
-      if (totalSizeMB > MAX_SIZE_MB) {
-        throw new Error(
-          `Merged files size (${totalSizeMB.toFixed(2)} MB) exceeds maximum limit (${MAX_SIZE_MB} MB). ` +
-            `This usually indicates that large build artifacts or dependencies were not filtered out. ` +
-            `File count: ${fileCount}. Please review the file filtering logic.`,
-        );
-      }
-
-      if (totalSizeMB > WARN_SIZE_MB) {
-        console.warn(
-          `[WARN] Merged files size (${totalSizeMB.toFixed(2)} MB) is approaching limit (${MAX_SIZE_MB} MB). ` +
-            `Current file count: ${fileCount}. Consider reviewing file filtering to reduce size.`,
-        );
-      }
-
-      finalFiles = validatedMergedFiles;
-    } else {
-      finalFiles = agentFiles;
-      if (mode === "fast") {
-        console.log(
-          "[DEBUG] Fast mode: using only agent-generated files (no sandbox merge)",
-        );
-      } else if (isError) {
-        console.log(
-          "[DEBUG] Error state: using only agent-generated files (no sandbox merge)",
-        );
-      } else {
-        console.log(
-          "[DEBUG] No sandbox files found; using only agent-generated files",
-        );
-      }
-    }
-
-    let fragmentTitleForReturn: string | null = null;
-
-    await step.run("save-result", async () => {
-      if (isError) {
-        // Provide more specific error messages based on the failure reasons
-        let errorMessage = "Something went wrong. ";
-
-        if (!hasFiles && !hasSummary) {
-          errorMessage =
-            "I wasn't able to generate any code for your request. This could be due to:\n\n" +
-            "• The request was unclear or too complex\n" +
-            "• A temporary issue with the AI model\n" +
-            "• The dev server failed to start\n\n" +
-            "Please try:\n" +
-            "• Rephrasing your request with more specific details\n" +
-            "• Breaking complex requests into smaller steps\n" +
-            "• Trying again in a moment";
-        } else if (!hasFiles) {
-          errorMessage =
-            "I understood your request but couldn't generate the code files. Please try again or rephrase your request.";
-        } else if (agentReportedError) {
-          errorMessage =
-            "I encountered an error while generating code. The AI agent reported issues. Please try again.";
-        }
-
-        const errorContent = sanitizeTextForDatabase(errorMessage);
-        const messageContent =
-          errorContent.length > 0
-            ? errorContent
-            : "An unexpected error occurred.";
-
-        return await convex.mutation(api.messages.createForUser, {
-          userId: project.userId,
-          projectId: event.data.projectId as Id<"projects">,
-          content: messageContent,
-          role: "ASSISTANT",
-          type: "ERROR",
-          status: "COMPLETE",
-        });
-      }
-
-      const parsedResponse = parseAgentOutput(responseOutput);
-      const parsedTitle = parseAgentOutput(fragmentTitleOutput);
-
-      const sanitizedResponse = sanitizeTextForDatabase(parsedResponse ?? "");
-      const baseResponseContent =
-        sanitizedResponse.length > 0
-          ? sanitizedResponse
-          : "Generated code is ready.";
-      const warningsNote =
-        warningReasons.length > 0
-          ? sanitizeTextForDatabase(
-              `\n\nWarnings:\n- ${warningReasons.join("\n- ")}`,
-            )
-          : "";
-      const responseContent = sanitizeTextForDatabase(
-        `${baseResponseContent}${warningsNote}`,
-      );
-
-      const sanitizedTitle = sanitizeTextForDatabase(parsedTitle ?? "");
-      const fragmentTitle =
-        sanitizedTitle.length > 0 ? sanitizedTitle : "Generated Fragment";
-
-      // Capture for function return so preview uses the real fragment title
-      fragmentTitleForReturn = fragmentTitle;
-
-      const metadata: FragmentMetadata = {
-        model: selectedModel,
-        modelName: MODEL_CONFIGS[selectedModel].name,
-        provider: MODEL_CONFIGS[selectedModel].provider,
-        ...(allScreenshots.length > 0 && { screenshots: allScreenshots }),
-        ...(warningReasons.length > 0 && { warnings: warningReasons }),
-      };
-
-      console.log(
-        `[DEBUG] Preparing to save fragment with ${Object.keys(finalFiles).length} files`,
-      );
-      console.log(
-        `[DEBUG] Sample file paths:`,
-        Object.keys(finalFiles).slice(0, 10),
-      );
-
-      // Create message first
-      const messageId = await convex.mutation(api.messages.createForUser, {
-        userId: project.userId,
-        projectId: event.data.projectId as Id<"projects">,
-        content: responseContent,
-        role: "ASSISTANT",
-        type: "RESULT",
-        status: "COMPLETE",
-      });
-
-      console.log(
-        `[DEBUG] Created message ${messageId}, now creating fragment...`,
-      );
-
-      // Then create fragment linked to the message
-      const fragmentId = await convex.mutation(
-        api.messages.createFragmentForUser,
-        {
-          userId: project.userId,
-          messageId: messageId as Id<"messages">,
-          sandboxId: sandboxId || undefined,
-          sandboxUrl: sandboxUrl,
-          title: fragmentTitle,
-          files: finalFiles,
-          framework: frameworkToConvexEnum(selectedFramework),
-          metadata: metadata,
-        },
-      );
-
-      console.log(
-        `[DEBUG] Fragment ${fragmentId} created successfully with ${Object.keys(finalFiles).length} files`,
-      );
-
-      return messageId;
     });
 
     return {
       url: sandboxUrl,
-      title: fragmentTitleForReturn ?? "Fragment",
-      files: finalFiles,
+      title: "Fragment",
+      files,
       summary: summaryText,
+      selectedModel,
+      selectedFramework,
     };
   },
 );
