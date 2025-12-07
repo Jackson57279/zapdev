@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -5,6 +6,21 @@ import { TanStackRouterVite } from "@tanstack/router-vite-plugin";
 
 export default defineConfig({
   plugins: [
+    {
+      // Prevent browser bundle from pulling in AsyncLocalStorage from node:async_hooks
+      // used by @tanstack/start-storage-context (server-only).
+      name: "start-storage-context-browser-stub",
+      enforce: "pre",
+      resolveId(source, _importer, options) {
+        if (source === "@tanstack/start-storage-context" && !options?.ssr) {
+          return path.resolve(
+            __dirname,
+            "./src/lib/shims/start-storage-context-browser.ts",
+          );
+        }
+        return null;
+      },
+    },
     tsconfigPaths(),
     TanStackRouterVite({
       routesDirectory: "./src/routes",
