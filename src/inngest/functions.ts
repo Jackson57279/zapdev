@@ -1020,20 +1020,33 @@ export const codeAgentFunction = inngest.createFunction(
       agents: [codeAgent],
       maxIter: 8,
       defaultState: state,
-      router: async ({ network }) => {
+      router: async ({ network, callCount }) => {
         const summaryText = extractSummaryText(network.state.data.summary ?? "");
         const fileEntries = network.state.data.files ?? {};
         const fileCount = Object.keys(fileEntries).length;
 
-        if (summaryText.length > 0) {
+        console.log(`[DEBUG] Router: callCount=${callCount}, fileCount=${fileCount}, hasSummary=${summaryText.length > 0}`);
+
+        // Always run the code agent on the first call
+        if (callCount === 0) {
+          console.log("[DEBUG] First iteration - running code agent");
+          return codeAgent;
+        }
+
+        // Only complete if we have BOTH files AND a summary
+        if (fileCount > 0 && summaryText.length > 0) {
+          console.log("[DEBUG] Files generated and summary present - completing");
           return;
         }
 
+        // If no files yet, always continue
         if (fileCount === 0) {
+          console.log("[DEBUG] No files generated yet - continuing with code agent");
           network.state.data.summaryRetryCount = 0;
           return codeAgent;
         }
 
+        // Have files but no summary - retry for summary
         const currentRetry = network.state.data.summaryRetryCount ?? 0;
         if (currentRetry >= 2) {
           console.warn(
@@ -1622,20 +1635,33 @@ export const errorFixFunction = inngest.createFunction(
       agents: [codeAgent],
       maxIter: 10,
       defaultState: state,
-      router: async ({ network }) => {
+      router: async ({ network, callCount }) => {
         const summaryText = extractSummaryText(network.state.data.summary ?? "");
         const fileEntries = network.state.data.files ?? {};
         const fileCount = Object.keys(fileEntries).length;
 
-        if (summaryText.length > 0) {
+        console.log(`[DEBUG] Error-fix Router: callCount=${callCount}, fileCount=${fileCount}, hasSummary=${summaryText.length > 0}`);
+
+        // Always run the code agent on the first call
+        if (callCount === 0) {
+          console.log("[DEBUG] First error-fix iteration - running code agent");
+          return codeAgent;
+        }
+
+        // Only complete if we have BOTH files AND a summary
+        if (fileCount > 0 && summaryText.length > 0) {
+          console.log("[DEBUG] Error-fix: Files generated and summary present - completing");
           return;
         }
 
+        // If no files yet, always continue
         if (fileCount === 0) {
+          console.log("[DEBUG] Error-fix: No files generated yet - continuing with code agent");
           network.state.data.summaryRetryCount = 0;
           return codeAgent;
         }
 
+        // Have files but no summary - retry for summary
         const currentRetry = network.state.data.summaryRetryCount ?? 0;
         if (currentRetry >= 3) {
           console.warn(
