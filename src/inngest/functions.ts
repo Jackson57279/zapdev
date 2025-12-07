@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { Sandbox } from "@e2b/code-interpreter";
-import { openai, createAgent, createTool, createNetwork, type Tool, type Message, createState, type NetworkRun } from "@inngest/agent-kit";
-import { Prisma, Framework as PrismaFramework } from "@/generated/prisma";
+import { openai, gemini, createAgent, createTool, createNetwork, type Tool, type Message, createState, type NetworkRun } from "@inngest/agent-kit";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { inspect } from "util";
 
-import { prisma } from "@/lib/db";
 import { crawlUrl, type CrawledContent } from "@/lib/firecrawl";
+import { sanitizeJsonForDatabase } from "@/lib/utils";
+import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import {
   FRAGMENT_TITLE_PROMPT,
   RESPONSE_PROMPT,
@@ -22,6 +25,224 @@ import { SANDBOX_TIMEOUT, type Framework, type AgentState } from "./types";
 import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from "./utils";
 // Multi-agent workflow removed; only single code agent is used.
 
+// Get Convex client lazily to avoid build-time errors
+let convexClient: ConvexHttpClient | null = null;
+function getConvexClient() {
+  if (!convexClient) {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) {
+      throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
+    }
+    convexClient = new ConvexHttpClient(url);
+  }
+  return convexClient;
+}
+
+const convex = new Proxy({} as ConvexHttpClient, {
+  get(_target, prop) {
+    return getConvexClient()[prop as keyof ConvexHttpClient];
+  },
+});
+
+// Model configurations for multi-model support
+export const MODEL_CONFIGS = {
+  "anthropic/claude-haiku-4.5": {
+    name: "Claude Haiku 4.5",
+    provider: "anthropic",
+    description: "Fast and efficient for most coding tasks",
+    temperature: 0.7,
+  },
+  "openai/gpt-5.1-codex": {
+    name: "GPT-5.1 Codex",
+    provider: "openai",
+    description: "OpenAI's flagship model for complex tasks",
+    temperature: 0.7,
+  },
+  "moonshotai/kimi-k2-thinking": {
+    name: "Kimi K2 Thinking",
+    provider: "moonshot",
+    description: "Fast and efficient for speed-critical tasks",
+    temperature: 0.7,
+  },
+  "google/gemini-3-pro-preview": {
+    name: "Gemini 3 Pro",
+    provider: "google",
+    description: "Specialized for coding tasks",
+    temperature: 0.7,
+  },
+  "xai/grok-4-fast-reasoning": {
+    name: "Grok 4 Fast",
+    provider: "xai",
+    description: "Good at nothing",
+    temperature: 0.7,
+  },
+  "prime-intellect/intellect-3": {
+    name: "Intellect 3",
+    provider: "prime-intellect",
+    description: "Advanced reasoning model from Prime Intellect",
+    temperature: 0.7,
+  },
+  "bfl/flux-kontext-pro": {
+    name: "Flux Kontext Pro",
+    provider: "bfl",
+    description:
+      "Advanced image generation with context awareness for Pro users",
+    temperature: 0.7,
+    isProOnly: true,
+    isImageGeneration: true,
+    hidden: true,
+  },
+} as const;
+
+export type ModelId = keyof typeof MODEL_CONFIGS | "auto";
+
+// Auto-selection logic to choose the best model based on task complexity
+export function selectModelForTask(
+  prompt: string,
+  framework?: Framework,
+): keyof typeof MODEL_CONFIGS {
+  const promptLength = prompt.length;
+  const lowercasePrompt = prompt.toLowerCase();
+  let chosenModel: keyof typeof MODEL_CONFIGS = "anthropic/claude-haiku-4.5";
+
+  // Analyze task complexity
+  const complexityIndicators = [
+    "advanced",
+    "complex",
+    "sophisticated",
+    "enterprise",
+    "architecture",
+    "performance",
+    "optimization",
+    "scalability",
+    "authentication",
+    "authorization",
+    "database",
+    "api",
+    "integration",
+    "deployment",
+    "security",
+    "testing",
+  ];
+
+  const hasComplexityIndicators = complexityIndicators.some((indicator) =>
+    lowercasePrompt.includes(indicator),
+  );
+
+  const isLongPrompt = promptLength > 500;
+  const isVeryLongPrompt = promptLength > 1000;
+
+  // Framework-specific model selection
+  if (framework === "angular" && (hasComplexityIndicators || isLongPrompt)) {
+    return chosenModel;
+  }
+
+  // Coding-specific keywords favor Qwen
+  const codingIndicators = [
+    "refactor",
+    "optimize",
+    "debug",
+    "fix bug",
+    "improve code",
+  ];
+  const hasCodingFocus = codingIndicators.some((indicator) =>
+    lowercasePrompt.includes(indicator),
+  );
+
+  if (hasCodingFocus && !isVeryLongPrompt) {
+    chosenModel = "google/gemini-3-pro-preview";
+  }
+
+  // Speed-critical tasks favor Kimi
+  const speedIndicators = ["quick", "fast", "simple", "basic", "prototype"];
+  const needsSpeed = speedIndicators.some((indicator) =>
+    lowercasePrompt.includes(indicator),
+  );
+
+  if (needsSpeed && !hasComplexityIndicators) {
+    chosenModel = "moonshotai/kimi-k2-thinking";
+  }
+
+  // Highly complex or long tasks stick with Haiku
+  if (hasComplexityIndicators || isVeryLongPrompt) {
+    chosenModel = "anthropic/claude-haiku-4.5";
+  }
+
+  return chosenModel;
+}
+
+/**
+ * Returns the appropriate AI adapter based on model provider
+ */
+function getModelAdapter(
+  modelId: keyof typeof MODEL_CONFIGS | string,
+  temperature?: number,
+) {
+  const apiKey = process.env.AI_GATEWAY_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "AI_GATEWAY_API_KEY environment variable is not set. Cannot initialize AI models.",
+    );
+  }
+
+  const baseUrl =
+    process.env.AI_GATEWAY_BASE_URL || "https://ai-gateway.vercel.sh/v1";
+
+  const config =
+    modelId in MODEL_CONFIGS
+      ? MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS]
+      : null;
+
+  const temp = temperature ?? config?.temperature ?? 0.7;
+
+  // Detect Google models to use native Gemini adapter
+  const isGoogleModel =
+    config?.provider === "google" ||
+    modelId.startsWith("google/") ||
+    modelId.includes("gemini");
+
+  if (isGoogleModel) {
+    return gemini({
+      apiKey,
+      baseUrl,
+      model: modelId,
+      defaultParameters: {
+        generationConfig: {
+          temperature: temp,
+        },
+      },
+    });
+  }
+
+  // Use OpenAI adapter for all other models
+  return openai({
+    apiKey,
+    baseUrl,
+    model: modelId,
+    defaultParameters: {
+      temperature: temp,
+    },
+  });
+}
+
+type FragmentMetadata = Record<string, unknown>;
+
+function frameworkToConvexEnum(
+  framework: Framework,
+): "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE" {
+  const mapping: Record<
+    Framework,
+    "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE"
+  > = {
+    nextjs: "NEXTJS",
+    angular: "ANGULAR",
+    react: "REACT",
+    vue: "VUE",
+    svelte: "SVELTE",
+  };
+  return mapping[framework];
+}
+
 type SandboxWithHost = Sandbox & {
   getHost?: (port: number) => string | undefined;
 };
@@ -35,6 +256,16 @@ const AUTO_FIX_ERROR_PATTERNS = [
   /Compilation error/i, /undefined is not/i, /null is not/i,
   /Cannot read propert/i, /is not a function/i, /is not defined/i,
   /ESLint/i, /Type error/i, /TS\d+/i,
+  // ECMAScript/Turbopack errors
+  /Ecmascript file had an error/i,
+  /Parsing ecmascript source code failed/i,
+  /Turbopack build failed/i,
+  /the name .* is defined multiple times/i,
+  /Expected a semicolon/i,
+  // Additional error patterns
+  /CommandExitError/i,
+  /ENOENT/i,
+  /Module build failed/i,
 ];
 
 const usesShadcnComponents = (files: Record<string, string>) => {
@@ -165,12 +396,12 @@ const runBuildCheck = async (sandboxId: string): Promise<string | null> => {
     if (result.exitCode !== 0) {
       console.log("[DEBUG] Build check FAILED with exit code:", result.exitCode);
       console.log("[DEBUG] Build output:\n", output);
-      
+
       // Check if output contains error patterns
       if (AUTO_FIX_ERROR_PATTERNS.some((pattern) => pattern.test(output))) {
         return `Build failed with errors:\n${output}`;
       }
-      
+
       // Even if no specific pattern matches, if build failed it's an error
       return `Build failed with exit code ${result.exitCode}:\n${output}`;
     }
@@ -241,12 +472,7 @@ const getFrameworkPrompt = (framework: Framework): string => {
     default:
       return NEXTJS_PROMPT;
   }
-};
-
-const toPrismaFramework = (framework: Framework): PrismaFramework => {
-  return framework.toUpperCase() as PrismaFramework;
-};
-
+}
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_FILE_COUNT = 500;
 const MAX_SCREENSHOTS = 20;
@@ -265,7 +491,7 @@ const isValidFilePath = (filePath: string): boolean => {
   }
 
   const normalizedPath = filePath.trim();
-  
+
   if (normalizedPath.length === 0 || normalizedPath.length > 4096) {
     return false;
   }
@@ -278,8 +504,8 @@ const isValidFilePath = (filePath: string): boolean => {
     return false;
   }
 
-  const isInWorkspace = ALLOWED_WORKSPACE_PATHS.some(basePath => 
-    normalizedPath === basePath || 
+  const isInWorkspace = ALLOWED_WORKSPACE_PATHS.some(basePath =>
+    normalizedPath === basePath ||
     normalizedPath.startsWith(`${basePath}/`) ||
     normalizedPath.startsWith(`./`)
   );
@@ -306,7 +532,7 @@ const getFindCommand = (framework: Framework): string => {
   const ignorePatterns = [...baseIgnorePatterns, ...(frameworkSpecificIgnores[framework] || [])];
   const escapedPatterns = ignorePatterns.map(pattern => `-not -path '${escapeShellPattern(pattern)}'`);
   const ignoreFlags = escapedPatterns.join(' ');
-  
+
   return `find /home/user -type f ${ignoreFlags} 2>/dev/null || find . -type f ${ignoreFlags} 2>/dev/null`;
 };
 
@@ -314,7 +540,7 @@ const isValidScreenshotUrl = (url: string): boolean => {
   if (!url || typeof url !== 'string' || url.length === 0) {
     return false;
   }
-  
+
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
@@ -335,22 +561,22 @@ const readFileWithTimeout = async (
 
   try {
     const readPromise = sandbox.files.read(filePath);
-    const timeoutPromise = new Promise<null>((resolve) => 
+    const timeoutPromise = new Promise<null>((resolve) =>
       setTimeout(() => resolve(null), timeoutMs)
     );
-    
+
     const content = await Promise.race([readPromise, timeoutPromise]);
-    
+
     if (content === null) {
       console.warn(`[WARN] File read timeout for ${filePath}`);
       return null;
     }
-    
+
     if (typeof content === 'string' && content.length > MAX_FILE_SIZE) {
       console.warn(`[WARN] File ${filePath} exceeds size limit (${content.length} bytes), skipping`);
       return null;
     }
-    
+
     return typeof content === 'string' ? content : null;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -365,41 +591,41 @@ const readFilesInBatches = async (
   batchSize: number
 ): Promise<Record<string, string>> => {
   const allFilesMap: Record<string, string> = {};
-  
+
   const validFilePaths = filePaths.filter(isValidFilePath);
   const invalidCount = filePaths.length - validFilePaths.length;
-  
+
   if (invalidCount > 0) {
     console.warn(`[WARN] Filtered out ${invalidCount} invalid file paths (path traversal attempts or invalid paths)`);
   }
-  
+
   const totalFiles = Math.min(validFilePaths.length, MAX_FILE_COUNT);
-  
+
   if (validFilePaths.length > MAX_FILE_COUNT) {
     console.warn(`[WARN] File count (${validFilePaths.length}) exceeds limit (${MAX_FILE_COUNT}), reading first ${MAX_FILE_COUNT} files`);
   }
-  
+
   const filesToRead = validFilePaths.slice(0, totalFiles);
-  
+
   for (let i = 0; i < filesToRead.length; i += batchSize) {
     const batch = filesToRead.slice(i, i + batchSize);
-    
+
     const batchResults = await Promise.all(
       batch.map(async (filePath) => {
         const content = await readFileWithTimeout(sandbox, filePath, FILE_READ_TIMEOUT_MS);
         return { filePath, content };
       })
     );
-    
+
     for (const { filePath, content } of batchResults) {
       if (content !== null) {
         allFilesMap[filePath] = content;
       }
     }
-    
+
     console.log(`[DEBUG] Processed ${Math.min(i + batchSize, filesToRead.length)}/${filesToRead.length} files`);
   }
-  
+
   return allFilesMap;
 };
 
@@ -410,34 +636,34 @@ const validateMergeStrategy = (
   sandboxFiles: Record<string, string>
 ): { warnings: string[]; isValid: boolean } => {
   const warnings: string[] = [];
-  
+
   const agentFilePaths = new Set(Object.keys(agentFiles));
   const sandboxFilePaths = new Set(Object.keys(sandboxFiles));
-  
+
   const overwrittenCriticalFiles = CRITICAL_FILES.filter(
-    file => sandboxFilePaths.has(file) && agentFilePaths.has(file) && 
-    agentFiles[file] !== sandboxFiles[file]
+    file => sandboxFilePaths.has(file) && agentFilePaths.has(file) &&
+      agentFiles[file] !== sandboxFiles[file]
   );
-  
+
   if (overwrittenCriticalFiles.length > 0) {
     warnings.push(`Critical files were overwritten by agent: ${overwrittenCriticalFiles.join(', ')}`);
   }
-  
+
   const missingCriticalFiles = CRITICAL_FILES.filter(
     file => sandboxFilePaths.has(file) && !agentFilePaths.has(file)
   );
-  
+
   if (missingCriticalFiles.length > 0) {
     warnings.push(`Critical files from sandbox not in agent files (will be preserved): ${missingCriticalFiles.join(', ')}`);
   }
-  
+
   const agentFileCount = agentFilePaths.size;
   const sandboxFileCount = sandboxFilePaths.size;
-  
+
   if (agentFileCount > 0 && sandboxFileCount > agentFileCount * 10) {
     warnings.push(`Large discrepancy: sandbox has ${sandboxFileCount} files but agent only tracked ${agentFileCount} files`);
   }
-  
+
   return {
     warnings,
     isValid: warnings.length === 0 || warnings.every(w => !w.includes('discrepancy')),
@@ -545,20 +771,28 @@ export const codeAgentFunction = inngest.createFunction(
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
     console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
     console.log("[DEBUG] AI_GATEWAY_API_KEY present:", !!process.env.AI_GATEWAY_API_KEY);
-    
+
     // Get project to check if framework is already set
     const project = await step.run("get-project", async () => {
-      return await prisma.project.findUnique({
-        where: { id: event.data.projectId },
+      return await convex.query(api.projects.getForSystem, {
+        projectId: event.data.projectId as Id<"projects">,
       });
     });
+
+    if (!project) {
+      const missingProjectId = String(event.data.projectId ?? "unknown");
+      console.error("[ERROR] Project not found for code-agent run:", missingProjectId);
+      throw new Error(
+        `Project not found. Unable to run code agent for project ${missingProjectId}.`,
+      );
+    }
 
     let selectedFramework: Framework = project?.framework?.toLowerCase() as Framework || 'nextjs';
 
     // If project doesn't have a framework set, use framework selector
     if (!project?.framework) {
       console.log("[DEBUG] No framework set, running framework selector...");
-      
+
       const frameworkSelectorAgent = createAgent({
         name: "framework-selector",
         description: "Determines the best framework for the user's request",
@@ -575,36 +809,36 @@ export const codeAgentFunction = inngest.createFunction(
 
       const frameworkResult = await frameworkSelectorAgent.run(event.data.value);
       const frameworkOutput = frameworkResult.output[0];
-      
+
       if (frameworkOutput.type === "text") {
-        const detectedFramework = (typeof frameworkOutput.content === "string" 
-          ? frameworkOutput.content 
+        const detectedFramework = (typeof frameworkOutput.content === "string"
+          ? frameworkOutput.content
           : frameworkOutput.content.map((c) => c.text).join("")).trim().toLowerCase();
-        
+
         console.log("[DEBUG] Framework selector output:", detectedFramework);
-        
+
         if (['nextjs', 'angular', 'react', 'vue', 'svelte'].includes(detectedFramework)) {
           selectedFramework = detectedFramework as Framework;
         }
       }
-      
+
       console.log("[DEBUG] Selected framework:", selectedFramework);
-      
+
       // Update project with selected framework
       await step.run("update-project-framework", async () => {
-        return await prisma.project.update({
-          where: { id: event.data.projectId },
-          data: { framework: toPrismaFramework(selectedFramework) },
+        return await convex.mutation(api.projects.update, {
+          projectId: event.data.projectId as Id<"projects">,
+          framework: frameworkToConvexEnum(selectedFramework),
         });
       });
     } else {
       console.log("[DEBUG] Using existing framework:", selectedFramework);
     }
-    
+
     const sandboxId = await step.run("get-sandbox-id", async () => {
       console.log("[DEBUG] Creating E2B sandbox for framework:", selectedFramework);
       const template = getE2BTemplate(selectedFramework);
-      
+
       try {
         let sandbox;
         try {
@@ -623,7 +857,7 @@ export const codeAgentFunction = inngest.createFunction(
           // Fallback framework to nextjs if template doesn't exist
           selectedFramework = 'nextjs';
         }
-        
+
         console.log("[DEBUG] Sandbox created successfully:", sandbox.sandboxId);
         await sandbox.setTimeout(SANDBOX_TIMEOUT);
         return sandbox.sandboxId;
@@ -639,19 +873,16 @@ export const codeAgentFunction = inngest.createFunction(
       const formattedMessages: Message[] = [];
 
       try {
-        const messages = await prisma.message.findMany({
-          where: {
-            projectId: event.data.projectId,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 3,
+        const messages = await convex.query(api.messages.list, {
+          projectId: event.data.projectId as Id<"projects">,
         });
-        
-        console.log("[DEBUG] Found", messages.length, "previous messages");
 
-        for (const message of messages) {
+        // Get the last 3 messages
+        const recentMessages = messages.slice(-3);
+
+        console.log("[DEBUG] Found", recentMessages.length, "previous messages");
+
+        for (const message of recentMessages) {
           formattedMessages.push({
             type: "text",
             role: message.role === "ASSISTANT" ? "assistant" : "user",
@@ -659,7 +890,7 @@ export const codeAgentFunction = inngest.createFunction(
           })
         }
 
-        return formattedMessages.reverse();
+        return formattedMessages;
       } catch (error) {
         console.error("[ERROR] Failed to fetch previous messages:", error);
         return [];
@@ -674,14 +905,13 @@ export const codeAgentFunction = inngest.createFunction(
 
       try {
         for (const url of urls) {
-          await prisma.message.create({
-            data: {
-              projectId: event.data.projectId,
-              content: `📸 Taking screenshot of ${url}...`,
-              role: "ASSISTANT",
-              type: "RESULT",
-              status: "COMPLETE",
-            },
+          await convex.mutation(api.messages.createForUser, {
+            userId: project.userId,
+            projectId: event.data.projectId as Id<"projects">,
+            content: `📸 Taking screenshot of ${url}...`,
+            role: "ASSISTANT",
+            type: "RESULT",
+            status: "COMPLETE",
           });
         }
       } catch (error) {
@@ -703,7 +933,7 @@ export const codeAgentFunction = inngest.createFunction(
           try {
             return await Promise.race([
               crawlUrl(url),
-              new Promise<null>((resolve) => 
+              new Promise<null>((resolve) =>
                 setTimeout(() => {
                   console.warn("[DEBUG] Crawl timeout for URL:", url);
                   resolve(null);
@@ -853,7 +1083,7 @@ export const codeAgentFunction = inngest.createFunction(
 
     // Collect all validation errors
     let validationErrors = [lintErrors, buildErrors].filter(Boolean).join("\n\n");
-    
+
     // Always include validation errors in the error message if they exist
     if (validationErrors) {
       console.log("[DEBUG] Validation errors detected:", validationErrors);
@@ -917,7 +1147,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
       ]);
 
       validationErrors = [newLintErrors, newBuildErrors].filter(Boolean).join("\n\n");
-      
+
       if (validationErrors) {
         console.log("[DEBUG] Validation errors still present after fix attempt:", validationErrors);
       } else {
@@ -1061,19 +1291,19 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
           screenshots.push(...context.screenshots);
         }
       }
-      
+
       const validScreenshots = screenshots.filter(isValidScreenshotUrl);
       const uniqueScreenshots = Array.from(new Set(validScreenshots));
-      
+
       if (screenshots.length > uniqueScreenshots.length) {
         console.log(`[DEBUG] Deduplicated ${screenshots.length - uniqueScreenshots.length} duplicate screenshots`);
       }
-      
+
       if (uniqueScreenshots.length > MAX_SCREENSHOTS) {
         console.warn(`[WARN] Screenshot count (${uniqueScreenshots.length}) exceeds limit (${MAX_SCREENSHOTS}), keeping first ${MAX_SCREENSHOTS}`);
         return uniqueScreenshots.slice(0, MAX_SCREENSHOTS);
       }
-      
+
       return uniqueScreenshots;
     });
 
@@ -1086,7 +1316,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
         const sandbox = await getSandbox(sandboxId);
         const findCommand = getFindCommand(selectedFramework);
         const findResult = await sandbox.commands.run(findCommand);
-        
+
         const filePaths = findResult.stdout
           .split('\n')
           .map(line => line.trim())
@@ -1113,29 +1343,29 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
     });
 
     const agentFiles = result.state.data.files || {};
-    
+
     const mergeValidation = validateMergeStrategy(agentFiles, allSandboxFiles);
-    
+
     if (mergeValidation.warnings.length > 0) {
       console.warn(`[WARN] Merge strategy warnings: ${mergeValidation.warnings.join('; ')}`);
     }
-    
+
     // Merge strategy: Agent files take priority over sandbox files
     // This ensures that any files explicitly created/modified by the agent
     // overwrite the corresponding files from the sandbox filesystem.
     // This is intentional as agent files represent the final state of the project.
     // Critical files from sandbox are preserved if not in agent files.
     const mergedFiles = { ...allSandboxFiles, ...agentFiles };
-    
+
     const overwrittenFiles = Object.keys(agentFiles).filter(path => allSandboxFiles[path] !== undefined);
     if (overwrittenFiles.length > 0) {
       console.log(`[DEBUG] Agent files overwriting ${overwrittenFiles.length} sandbox files: ${overwrittenFiles.slice(0, 5).join(', ')}${overwrittenFiles.length > 5 ? '...' : ''}`);
     }
-    
+
     // Validate all file paths in merged files to prevent path traversal
     const validatedMergedFiles: Record<string, string> = {};
     let invalidPathCount = 0;
-    
+
     for (const [path, content] of Object.entries(mergedFiles)) {
       if (isValidFilePath(path)) {
         validatedMergedFiles[path] = content;
@@ -1144,53 +1374,55 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
         console.warn(`[WARN] Filtered out invalid file path from merged files: ${path}`);
       }
     }
-    
+
     if (invalidPathCount > 0) {
       console.warn(`[WARN] Filtered out ${invalidPathCount} invalid file paths from merged files`);
     }
-    
+
     const finalFiles = validatedMergedFiles;
 
     await step.run("save-result", async () => {
       if (isError) {
-        return await prisma.message.create({
-          data: {
-            projectId: event.data.projectId,
-            content: "Something went wrong. Please try again.",
-            role: "ASSISTANT",
-            type: "ERROR",
-            status: "COMPLETE",
-          },
+        return await convex.mutation(api.messages.createForUser, {
+          userId: project.userId,
+          projectId: event.data.projectId as Id<"projects">,
+          content: "Something went wrong. Please try again.",
+          role: "ASSISTANT",
+          type: "ERROR",
+          status: "COMPLETE",
         });
       }
 
       const parsedResponse = parseAgentOutput(responseOutput);
       const parsedTitle = parseAgentOutput(fragmentTitleOutput);
 
-      const metadata: Prisma.JsonObject | undefined = 
-        allScreenshots.length > 0 
-          ? { screenshots: allScreenshots } 
+      const metadata: FragmentMetadata | undefined =
+        allScreenshots.length > 0
+          ? { screenshots: allScreenshots }
           : undefined;
 
-      return await prisma.message.create({
-        data: {
-          projectId: event.data.projectId,
-          content: parsedResponse ?? "Generated code is ready.",
-          role: "ASSISTANT",
-          type: "RESULT",
-          status: "COMPLETE",
-          Fragment: {
-            create: {
-              sandboxId: sandboxId,
-              sandboxUrl: sandboxUrl,
-              title: parsedTitle ?? "Generated Fragment",
-              files: finalFiles,
-              framework: toPrismaFramework(selectedFramework),
-              metadata: metadata,
-            },
-          },
-        },
-      })
+      // First create the message
+      const messageId = await convex.mutation(api.messages.createForUser, {
+        userId: project.userId,
+        projectId: event.data.projectId as Id<"projects">,
+        content: parsedResponse ?? "Generated code is ready.",
+        role: "ASSISTANT",
+        type: "RESULT",
+        status: "COMPLETE",
+      });
+
+      // Then create the fragment for the message
+      await convex.mutation(api.messages.createFragment, {
+        messageId: messageId as Id<"messages">,
+        sandboxId: sandboxId,
+        sandboxUrl: sandboxUrl,
+        title: parsedTitle ?? "Generated Fragment",
+        files: sanitizeJsonForDatabase(finalFiles),
+        framework: frameworkToConvexEnum(selectedFramework),
+        metadata: metadata ? sanitizeJsonForDatabase(metadata) : undefined,
+      });
+
+      return messageId;
     });
 
     return {
@@ -1210,8 +1442,8 @@ export const sandboxTransferFunction = inngest.createFunction(
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
 
     const fragment = await step.run("get-fragment", async () => {
-      return await prisma.fragment.findUnique({
-        where: { id: event.data.fragmentId },
+      return await convex.query(api.messages.getFragmentForSystem, {
+        fragmentId: event.data.fragmentId as Id<"fragments">,
       });
     });
 
@@ -1252,11 +1484,9 @@ export const sandboxTransferFunction = inngest.createFunction(
     });
 
     await step.run("update-fragment", async () => {
-      return await prisma.fragment.update({
-        where: { id: event.data.fragmentId },
-        data: {
-          sandboxUrl,
-        },
+      return await convex.mutation(api.messages.updateFragmentForSystem, {
+        fragmentId: event.data.fragmentId as Id<"fragments">,
+        sandboxUrl,
       });
     });
 
@@ -1277,8 +1507,8 @@ export const errorFixFunction = inngest.createFunction(
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
 
     const fragment = await step.run("get-fragment", async () => {
-      return await prisma.fragment.findUnique({
-        where: { id: event.data.fragmentId },
+      return await convex.query(api.messages.getFragmentForSystem, {
+        fragmentId: event.data.fragmentId as Id<"fragments">,
       });
     });
 
@@ -1302,17 +1532,17 @@ export const errorFixFunction = inngest.createFunction(
       }
     });
 
-    const toJsonObject = (value: unknown): Prisma.JsonObject => {
+    const toJsonObject = (value: unknown): FragmentMetadata => {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return {} as Prisma.JsonObject;
+        return {} as FragmentMetadata;
       }
 
-      return { ...(value as Prisma.JsonObject) };
+      return { ...(value as FragmentMetadata) };
     };
 
     const fragmentRecord = fragment as Record<string, unknown>;
     const supportsMetadata = Object.prototype.hasOwnProperty.call(fragmentRecord, "metadata");
-    const initialMetadata = supportsMetadata ? toJsonObject(fragmentRecord.metadata) : ({} as Prisma.JsonObject);
+    const initialMetadata = supportsMetadata ? toJsonObject(fragmentRecord.metadata) : ({} as FragmentMetadata);
 
     const fragmentFiles = (fragment.files || {}) as Record<string, string>;
     const originalFiles = { ...fragmentFiles };
@@ -1458,7 +1688,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
       ]);
 
       const remainingErrors = [newLintErrors, newBuildErrors].filter(Boolean).join("\n\n");
-      
+
       if (remainingErrors) {
         console.warn("[WARN] Some errors remain after fix attempt:", remainingErrors);
       } else {
@@ -1469,9 +1699,9 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
       await step.run("sync-fixed-files-to-sandbox", async () => {
         const fixedFiles = result.state.data.files || {};
         const sandbox = await getSandbox(sandboxId);
-        
+
         console.log("[DEBUG] Writing fixed files back to sandbox:", Object.keys(fixedFiles).length);
-        
+
         for (const [path, content] of Object.entries(fixedFiles)) {
           try {
             await sandbox.files.write(path, content);
@@ -1479,7 +1709,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
             console.error(`[ERROR] Failed to write file ${path} to sandbox:`, error);
           }
         }
-        
+
         console.log("[DEBUG] All fixed files synced to sandbox");
       });
 
@@ -1490,17 +1720,15 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
         }
 
         console.log("[DEBUG] Backing up original files before applying fixes");
-        const metadata: Prisma.JsonObject = {
+        const metadata: FragmentMetadata = {
           ...initialMetadata,
           previousFiles: originalFiles,
           fixedAt: new Date().toISOString(),
         };
 
-        await prisma.fragment.update({
-          where: { id: event.data.fragmentId },
-          data: {
-            metadata,
-          } as Prisma.FragmentUpdateInput,
+        await convex.mutation(api.messages.updateFragmentForSystem, {
+          fragmentId: event.data.fragmentId as Id<"fragments">,
+          metadata: sanitizeJsonForDatabase(metadata),
         });
 
         return metadata;
@@ -1509,26 +1737,24 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
       await step.run("update-fragment-files", async () => {
         const metadataUpdate = supportsMetadata
           ? ({
-              ...((backupMetadata ?? initialMetadata) as Prisma.JsonObject),
-              previousFiles: originalFiles,
-              fixedAt: new Date().toISOString(),
-              lastFixSuccess: {
-                summary: result.state.data.summary,
-                occurredAt: new Date().toISOString(),
-              },
-            } satisfies Prisma.JsonObject)
+            ...((backupMetadata ?? initialMetadata) as FragmentMetadata),
+            previousFiles: originalFiles,
+            fixedAt: new Date().toISOString(),
+            lastFixSuccess: {
+              summary: result.state.data.summary,
+              occurredAt: new Date().toISOString(),
+            },
+          } as FragmentMetadata)
           : null;
 
-        return await prisma.fragment.update({
-          where: { id: event.data.fragmentId },
-          data: {
-            files: result.state.data.files,
-            ...(metadataUpdate
-              ? {
-                  metadata: metadataUpdate,
-                }
-              : {}),
-          } as Prisma.FragmentUpdateInput,
+        return await convex.mutation(api.messages.updateFragmentForSystem, {
+          fragmentId: event.data.fragmentId as Id<"fragments">,
+          files: sanitizeJsonForDatabase(result.state.data.files || {}),
+          ...(metadataUpdate
+            ? {
+              metadata: sanitizeJsonForDatabase(metadataUpdate),
+            }
+            : {}),
         });
       });
 
@@ -1557,8 +1783,8 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
 
         let latestMetadata = initialMetadata;
         try {
-          const latestFragment = await prisma.fragment.findUnique({
-            where: { id: event.data.fragmentId },
+          const latestFragment = await convex.query(api.messages.getFragmentForSystem, {
+            fragmentId: event.data.fragmentId as Id<"fragments">,
           });
 
           if (latestFragment) {
@@ -1569,7 +1795,7 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
           console.error("[ERROR] Failed to load latest metadata:", metadataReadError);
         }
 
-        const failureMetadata: Prisma.JsonObject = {
+        const failureMetadata: FragmentMetadata = {
           ...latestMetadata,
           lastFixFailure: {
             message: errorMessage,
@@ -1579,11 +1805,9 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
         };
 
         try {
-          await prisma.fragment.update({
-            where: { id: event.data.fragmentId },
-            data: {
-              metadata: failureMetadata,
-            } as Prisma.FragmentUpdateInput,
+          await convex.mutation(api.messages.updateFragmentForSystem, {
+            fragmentId: event.data.fragmentId as Id<"fragments">,
+            metadata: sanitizeJsonForDatabase(failureMetadata),
           });
         } catch (metadataError) {
           console.error("[ERROR] Failed to persist failure metadata:", metadataError);
