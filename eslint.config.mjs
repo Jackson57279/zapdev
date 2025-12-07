@@ -1,32 +1,60 @@
-import { createRequire } from "module";
+import js from "@eslint/js";
+import globals from "globals";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import { fileURLToPath } from "url";
 
-const require = createRequire(import.meta.url);
-const nextConfig = require("eslint-config-next");
-const nextTypescriptConfig = require("eslint-config-next/typescript");
+const tsconfigRootDir = fileURLToPath(new URL(".", import.meta.url));
 
-const eslintConfig = [
-  ...nextConfig,
-  ...nextTypescriptConfig,
+export default [
   {
     ignores: [
-      "**/generated/*", 
-      "**/node_modules/*", 
-      "**/.next/*", 
+      "**/generated/*",
+      "**/node_modules/*",
+      "**/.next/*",
       "**/out/*",
       "**/.bun_tmp/*",
       "**/dist/*",
-      "**/build/*"
-    ]
+      "**/build/*",
+      "convex/**",
+      "scripts/**",
+      "mcp/**",
+      "check_zod.js",
+      "next.config.mjs",
+      "next.config.ts.bak",
+      "proxy.ts",
+      "jest.config.js",
+      "loaders/**",
+    ],
   },
+  js.configs.recommended,
   {
+    files: ["src/**/*.{ts,tsx,js,jsx}"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        project: "./tsconfig.json",
+        tsconfigRootDir,
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+    },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-unused-vars": ["error", { 
-        argsIgnorePattern: "^_",
-        varsIgnorePattern: "^_"
-      }],
-    }
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
+      ],
+    },
   },
 ];
-
-export default eslintConfig;

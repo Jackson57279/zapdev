@@ -17,26 +17,37 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
     "paths": {
       "@/*": [
         "./src/*"
       ],
       "@/convex/*": [
         "./convex/*"
+      ],
+      "next/*": [
+        "./src/next-compat/*"
+      ],
+      "next": [
+        "./src/next-compat/index"
+      ],
+      "@sentry/nextjs": [
+        "./src/next-compat/sentry"
+      ],
+      "convex/nextjs": [
+        "./src/next-compat/convex-nextjs"
+      ],
+      "@clerk/nextjs": [
+        "./src/next-compat/clerk"
+      ],
+      "@clerk/nextjs/server": [
+        "./src/next-compat/clerk-server"
       ]
     }
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "src/routeTree.gen.ts"
   ],
   "exclude": [
     "node_modules",

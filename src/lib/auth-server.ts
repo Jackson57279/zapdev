@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { verifyToken } from "@clerk/backend";
 import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import type { FunctionReference, FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
@@ -9,26 +9,48 @@ import { api } from "@/convex/_generated/api";
  * Note: With Convex Auth, authentication is primarily client-side
  * For server-side API routes, users should be verified through Convex queries
  */
-export async function getUser() {
+export async function getUser(req?: Request) {
   try {
-    const { getToken, userId } = auth();
-    if (!userId) return null;
+    const token = await extractClerkToken(req);
+    if (!token) {
+      return null;
+    }
 
-    const token = await getToken({ template: "convex" });
-    const options = token ? { token } : undefined;
+    const secretKey = process.env.CLERK_SECRET_KEY;
+    if (!secretKey) {
+      console.warn("CLERK_SECRET_KEY is not set; skipping auth verification");
+      return null;
+    }
 
-    const user = options
-      ? await fetchQuery(api.users.getCurrentUser, {}, options)
-      : await fetchQuery(api.users.getCurrentUser);
-    if (!user) return null;
+    const claims = await verifyToken(token, { secretKey });
+
+    // Try to enrich from Convex if available
+    try {
+      const user = await fetchQuery(api.users.getCurrentUser, {}, { token });
+      if (user) {
+        return {
+          id: user.tokenIdentifier ?? claims.sub ?? "",
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          primaryEmail: user.email,
+          displayName: user.name ?? user.email ?? claims.sub ?? "",
+        };
+      }
+    } catch (convexError) {
+      console.warn("Convex user fetch failed, falling back to Clerk claims", convexError);
+    }
 
     return {
-      id: user.tokenIdentifier ?? userId,
-      email: user.email,
-      name: user.name,
-      image: user.image,
-      primaryEmail: user.email,
-      displayName: user.name,
+      id: claims.sub ?? "",
+      email: (claims as any).email ?? null,
+      name:
+        `${(claims as any).firstName ?? ""} ${(claims as any).lastName ?? ""}`.trim() ||
+        (claims as any).email ??
+        null,
+      image: null,
+      primaryEmail: (claims as any).email ?? null,
+      displayName: (claims as any).email ?? claims.sub ?? "",
     };
   } catch (error) {
     console.error("Failed to get user:", error);
@@ -40,10 +62,9 @@ export async function getUser() {
  * Get the authentication token for Convex
  * Returns the token if user is authenticated
  */
-export async function getToken() {
+export async function getToken(req?: Request) {
   try {
-    const { getToken } = auth();
-    return await getToken({ template: "convex" });
+    return await extractClerkToken(req);
   } catch (error) {
     console.error("Failed to get token:", error);
     return null;
@@ -54,10 +75,10 @@ export async function getToken() {
  * Get auth headers for API calls
  * Convex Auth handles this automatically, this is for manual use if needed
  */
-export async function getAuthHeaders() {
-  const user = await getUser();
-  if (!user) return {};
-  return {};
+export async function getAuthHeaders(req?: Request) {
+  const token = await extractClerkToken(req);
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
 }
 
 /**
@@ -66,12 +87,11 @@ export async function getAuthHeaders() {
  */
 export async function fetchQueryWithAuth<T>(
   query: any,
-  args: any = {}
+  args: any = {},
+  req?: Request,
 ): Promise<T> {
-  const { getToken } = auth();
-  const token = await getToken({ template: "convex" });
+  const token = await extractClerkToken(req);
   const options = token ? { token } : undefined;
-
   return options ? fetchQuery(query, args, options) : fetchQuery(query, args);
 }
 
@@ -81,10 +101,10 @@ export async function fetchQueryWithAuth<T>(
  */
 export async function fetchMutationWithAuth<T>(
   mutation: any,
-  args: any = {}
+  args: any = {},
+  req?: Request,
 ): Promise<T> {
-  const { getToken } = auth();
-  const token = await getToken({ template: "convex" });
+  const token = await extractClerkToken(req);
   const options = token ? { token } : undefined;
 
   return options
@@ -115,9 +135,8 @@ type ConvexClientWithAuth = {
  * from Convex Auth cookies when calling queries, mutations, or actions.
  * Use this in API routes and server components that need to talk to Convex.
  */
-export async function getConvexClientWithAuth(): Promise<ConvexClientWithAuth> {
-  const { getToken } = auth();
-  const token = await getToken({ template: "convex" });
+export async function getConvexClientWithAuth(req?: Request): Promise<ConvexClientWithAuth> {
+  const token = await extractClerkToken(req);
   const options = token ? { token } : undefined;
 
   const client: ConvexClientWithAuth = {
@@ -151,4 +170,31 @@ export async function getConvexClientWithAuth(): Promise<ConvexClientWithAuth> {
   };
 
   return client;
+}
+
+async function extractClerkToken(req?: Request): Promise<string | null> {
+  if (!req) return null;
+
+  const authHeader = req.headers.get("authorization");
+  if (authHeader?.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice(7);
+  }
+
+  const cookieHeader = req.headers.get("cookie");
+  if (cookieHeader) {
+    const token = getCookieValue(cookieHeader, "__session");
+    if (token) return token;
+  }
+
+  return null;
+}
+
+function getCookieValue(cookieHeader: string, name: string): string | null {
+  const cookies = cookieHeader.split(";").map((c) => c.trim());
+  for (const cookie of cookies) {
+    if (cookie.startsWith(`${name}=`)) {
+      return decodeURIComponent(cookie.substring(name.length + 1));
+    }
+  }
+  return null;
 }

@@ -3,9 +3,8 @@ import { cache } from 'react';
 import superjson from "superjson";
 import { getUser } from '@/lib/auth-server';
 
-export const createTRPCContext = cache(async () => {
-  const user = await getUser();
-  
+export const createTRPCContext = cache(async (req?: Request) => {
+  const user = await getUser(req);
   return { user };
 });
 
