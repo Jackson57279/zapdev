@@ -26,8 +26,9 @@ function getConvexClient(stackApp: any) {
 }
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-  const stackApp = useStackApp();
-  
+  const hasStack = Boolean(process.env.NEXT_PUBLIC_STACK_PROJECT_ID);
+  const stackApp = hasStack ? useStackApp() : null;
+
   const convex = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_CONVEX_URL;
     if (!url) {
@@ -37,8 +38,11 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
       console.error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
       return new ConvexReactClient("https://placeholder.convex.cloud");
     }
+    if (!hasStack || !stackApp) {
+      return new ConvexReactClient(url, { expectAuth: false });
+    }
     return getConvexClient(stackApp);
-  }, [stackApp]);
+  }, [hasStack, stackApp]);
 
   return <ConvexProvider client={convex}>{children}</ConvexProvider>;
 }

@@ -1,18 +1,24 @@
 import { ConvexHttpClient } from "convex/browser";
 import { StackServerApp } from "@stackframe/stack";
 
-const stackProjectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID;
-const stackServerApp = stackProjectId
-  ? new StackServerApp({
-      tokenStore: "nextjs-cookie",
-    })
-  : null;
+const stackProjectId =
+  process.env.NEXT_PUBLIC_STACK_PROJECT_ID ||
+  "00000000-0000-4000-8000-000000000000";
+process.env.NEXT_PUBLIC_STACK_PROJECT_ID = stackProjectId;
+process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY =
+  process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ||
+  "pk_stack_placeholder";
+process.env.STACK_SECRET_SERVER_KEY =
+  process.env.STACK_SECRET_SERVER_KEY || "sk_stack_placeholder";
+
+const stackServerApp = new StackServerApp({
+  tokenStore: "nextjs-cookie",
+});
 
 /**
  * Get the authenticated user from Stack Auth
  */
 export async function getUser() {
-  if (!stackServerApp) return null;
   try {
     const user = await stackServerApp.getUser();
     return user;
@@ -27,7 +33,6 @@ export async function getUser() {
  * Stack Auth handles token management automatically for Convex through setAuth
  */
 export async function getToken() {
-  if (!stackServerApp) return null;
   try {
     const user = await stackServerApp.getUser();
     // When user exists, they are authenticated
@@ -57,9 +62,6 @@ export async function getConvexClientWithAuth() {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!convexUrl) {
     throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
-  }
-  if (!stackServerApp) {
-    throw new Error("NEXT_PUBLIC_STACK_PROJECT_ID is not set");
   }
 
   const httpClient = new ConvexHttpClient(convexUrl);

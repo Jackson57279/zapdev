@@ -58,40 +58,33 @@ export const metadata: Metadata = {
   },
 };
 
-const stackProjectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID;
-const stackServerApp = stackProjectId
-  ? new StackServerApp({
-      tokenStore: "nextjs-cookie",
-      urls: {
-        // Keep handler routes as fallback for direct URL access
-        signIn: "/handler/sign-in",
-        signUp: "/handler/sign-up",
-        afterSignIn: "/",
-        afterSignUp: "/",
-      },
-    })
-  : null;
+const stackProjectId =
+  process.env.NEXT_PUBLIC_STACK_PROJECT_ID ||
+  "00000000-0000-4000-8000-000000000000";
+process.env.NEXT_PUBLIC_STACK_PROJECT_ID = stackProjectId;
+const stackPublishableKey =
+  process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ||
+  "pk_stack_placeholder";
+process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = stackPublishableKey;
+process.env.STACK_SECRET_SERVER_KEY =
+  process.env.STACK_SECRET_SERVER_KEY || "sk_stack_placeholder";
+
+const stackServerApp = new StackServerApp({
+  tokenStore: "nextjs-cookie",
+  urls: {
+    // Keep handler routes as fallback for direct URL access
+    signIn: "/handler/sign-in",
+    signUp: "/handler/sign-up",
+    afterSignIn: "/",
+    afterSignUp: "/",
+  },
+});
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const appShell = (
-    <ConvexClientProvider>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-        <Toaster />
-        <WebVitalsReporter />
-        {children}
-      </ThemeProvider>
-    </ConvexClientProvider>
-  );
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -121,13 +114,22 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        {stackServerApp ? (
-          <StackProvider app={stackServerApp}>
-            <StackTheme>{appShell}</StackTheme>
-          </StackProvider>
-        ) : (
-          appShell
-        )}
+        <StackProvider app={stackServerApp}>
+          <StackTheme>
+            <ConvexClientProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                <Toaster />
+                <WebVitalsReporter />
+                {children}
+              </ThemeProvider>
+            </ConvexClientProvider>
+          </StackTheme>
+        </StackProvider>
       </body>
       <SpeedInsights />
     </html>
