@@ -58,22 +58,40 @@ export const metadata: Metadata = {
   },
 };
 
-const stackServerApp = new StackServerApp({
-  tokenStore: "nextjs-cookie",
-  urls: {
-    // Keep handler routes as fallback for direct URL access
-    signIn: "/handler/sign-in",
-    signUp: "/handler/sign-up",
-    afterSignIn: "/",
-    afterSignUp: "/",
-  },
-});
+const stackProjectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID;
+const stackServerApp = stackProjectId
+  ? new StackServerApp({
+      tokenStore: "nextjs-cookie",
+      urls: {
+        // Keep handler routes as fallback for direct URL access
+        signIn: "/handler/sign-in",
+        signUp: "/handler/sign-up",
+        afterSignIn: "/",
+        afterSignUp: "/",
+      },
+    })
+  : null;
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const appShell = (
+    <ConvexClientProvider>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <Toaster />
+        <WebVitalsReporter />
+        {children}
+      </ThemeProvider>
+    </ConvexClientProvider>
+  );
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -103,22 +121,13 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <StackProvider app={stackServerApp}>
-          <StackTheme>
-            <ConvexClientProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-              >
-                <Toaster />
-                <WebVitalsReporter />
-                {children}
-              </ThemeProvider>
-            </ConvexClientProvider>
-          </StackTheme>
-        </StackProvider>
+        {stackServerApp ? (
+          <StackProvider app={stackServerApp}>
+            <StackTheme>{appShell}</StackTheme>
+          </StackProvider>
+        ) : (
+          appShell
+        )}
       </body>
       <SpeedInsights />
     </html>
