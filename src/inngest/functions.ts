@@ -1196,7 +1196,7 @@ export const codeAgentFunction = inngest.createFunction(
           content: "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task."
         };
         
-        network.state.addMessage(summaryRequestMessage);
+        network.state.messages.push(summaryRequestMessage);
         
         return codeAgent;
       },
@@ -2120,7 +2120,7 @@ export const errorFixFunction = inngest.createFunction(
           content: "You have completed the error fixes. Now provide your final <task_summary> tag with a brief description of what was fixed. This is required to complete the task."
         };
         
-        network.state.addMessage(summaryRequestMessage);
+        network.state.messages.push(summaryRequestMessage);
         
         return codeAgent;
       },
