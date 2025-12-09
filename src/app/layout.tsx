@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import Script from "next/script";
+import {
+  ClerkProvider,
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
 import { StackProvider, StackTheme, StackServerApp } from "@stackframe/stack";
 
 import { Toaster } from "@/components/ui/sonner";
@@ -86,52 +94,65 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <Script
-          id="ld-json-schema"
-          type="application/ld+json"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "Organization",
-              name: "Zapdev",
-              url: "https://zapdev.link",
-              logo: "https://zapdev.link/logo.png",
-              description: "Zapdev is a leading software development company specializing in building scalable web applications, mobile apps, and enterprise solutions.",
-              contactPoint: {
-                "@type": "ContactPoint",
-                contactType: "sales",
-                availableLanguage: "English"
-              },
-              sameAs: [
-                "https://twitter.com/zapdev",
-                "https://linkedin.com/company/zapdev"
-              ]
-            }),
-          }}
-        />
-      </head>
-      <body className="antialiased">
-        <StackProvider app={stackServerApp}>
-          <StackTheme>
-            <ConvexClientProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-              >
-                <Toaster />
-                <WebVitalsReporter />
-                {children}
-              </ThemeProvider>
-            </ConvexClientProvider>
-          </StackTheme>
-        </StackProvider>
-      </body>
-      <SpeedInsights />
-    </html>
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          <Script
+            id="ld-json-schema"
+            type="application/ld+json"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                name: "Zapdev",
+                url: "https://zapdev.link",
+                logo: "https://zapdev.link/logo.png",
+                description: "Zapdev is a leading software development company specializing in building scalable web applications, mobile apps, and enterprise solutions.",
+                contactPoint: {
+                  "@type": "ContactPoint",
+                  contactType: "sales",
+                  availableLanguage: "English",
+                },
+                sameAs: [
+                  "https://twitter.com/zapdev",
+                  "https://linkedin.com/company/zapdev"
+                ],
+              }),
+            }}
+          />
+        </head>
+        <body className="antialiased">
+          <StackProvider app={stackServerApp}>
+            <StackTheme>
+              <ConvexClientProvider>
+                <ThemeProvider
+                  attribute="class"
+                  defaultTheme="system"
+                  enableSystem
+                  disableTransitionOnChange
+                >
+                  <header className="flex items-center justify-end gap-3 px-6 py-3">
+                    <SignedOut>
+                      <div className="flex items-center gap-3">
+                        <SignInButton />
+                        <SignUpButton />
+                      </div>
+                    </SignedOut>
+                    <SignedIn>
+                      <UserButton />
+                    </SignedIn>
+                  </header>
+                  <Toaster />
+                  <WebVitalsReporter />
+                  {children}
+                </ThemeProvider>
+              </ConvexClientProvider>
+            </StackTheme>
+          </StackProvider>
+        </body>
+        <SpeedInsights />
+      </html>
+    </ClerkProvider>
   );
 };
