@@ -2425,3 +2425,5 @@ export const sandboxCleanupFunction = inngest.createFunction(
 
 // Export auto-pause function
 export { autoPauseSandboxes } from "./functions/auto-pause";
+export { processFigmaImport } from "./functions/process-figma-import";
+export { processFigmaDirect } from "./functions/process-figma-direct";
