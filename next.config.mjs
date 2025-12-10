@@ -98,6 +98,18 @@ const nextConfig = {
       }
     ];
   },
+  redirects: async () => [
+    {
+      source: "/dashboard",
+      destination: "/",
+      permanent: true,
+    },
+    {
+      source: "/dashboard/:path*",
+      destination: "/",
+      permanent: true,
+    },
+  ],
   images: {
     remotePatterns: [
       {

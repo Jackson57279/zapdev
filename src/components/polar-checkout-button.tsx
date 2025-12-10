@@ -42,7 +42,7 @@ export function PolarCheckoutButton({
         },
         body: JSON.stringify({
           productId,
-          successUrl: `${window.location.origin}/dashboard?subscription=success`,
+          successUrl: `${window.location.origin}/?subscription=success`,
           cancelUrl: `${window.location.origin}/pricing?canceled=true`,
         }),
       });

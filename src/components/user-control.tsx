@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings } from "lucide-react";
+import { LogOut, Settings, Home } from "lucide-react";
 
 interface Props {
   showName?: boolean;
@@ -64,9 +64,9 @@ export const UserControl = ({ showName }: Props) => {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/dashboard")}>
-          <User className="mr-2 h-4 w-4" />
-          <span>Dashboard</span>
+        <DropdownMenuItem onClick={() => router.push("/")}>
+          <Home className="mr-2 h-4 w-4" />
+          <span>Home</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => router.push("/settings")}>
           <Settings className="mr-2 h-4 w-4" />

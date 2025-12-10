@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         userEmail: user.primaryEmail || "",
       },
       customerEmail: user.primaryEmail || undefined,
-      successUrl: successUrl || `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?subscription=success`,
+      successUrl: successUrl || `${process.env.NEXT_PUBLIC_APP_URL}/?subscription=success`,
       // Allow customer to return to pricing page if they cancel
       // Polar will handle the redirect automatically
     });
