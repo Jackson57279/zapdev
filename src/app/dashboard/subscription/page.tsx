@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useUser } from "@stackframe/stack";
+import { useUser, SignInButton } from "@clerk/nextjs";
 import { format } from "date-fns";
 import {
   Card,
@@ -15,19 +15,36 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PolarCheckoutButton } from "@/components/polar-checkout-button";
-import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Loader2, CheckCircle2, Clock } from "lucide-react";
 import Link from "next/link";
 
 export default function SubscriptionPage() {
-  const user = useUser();
-  const subscription = useQuery(api.subscriptions.getSubscription);
-  const usage = useQuery(api.usage.getUsage);
+  const { isLoaded, isSignedIn } = useUser();
+  const subscription = useQuery(
+    isSignedIn ? api.subscriptions.getSubscription : undefined
+  );
+  const usage = useQuery(isSignedIn ? api.usage.getUsage : undefined);
 
-  if (!user) {
+  if (!isLoaded) {
+    return (
+      <div className="container mx-auto p-6 max-w-4xl">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
     return (
       <div className="container mx-auto p-6 max-w-4xl">
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Please sign in to view your subscription.</p>
+          <p className="text-muted-foreground mb-4">
+            Please sign in to view your subscription.
+          </p>
+          <SignInButton mode="modal">
+            <Button>Sign in</Button>
+          </SignInButton>
         </div>
       </div>
     );

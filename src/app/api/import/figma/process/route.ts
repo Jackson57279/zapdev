@@ -5,12 +5,12 @@ import { api } from "@/convex/_generated/api";
 import { inngest } from "@/inngest/client";
 
 export async function POST(request: Request) {
-  const stackUser = await getUser();
-  if (!stackUser) {
+  const user = await getUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!stackUser.id) {
+  if (!user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

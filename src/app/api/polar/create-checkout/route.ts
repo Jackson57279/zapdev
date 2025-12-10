@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Authenticate user via Stack Auth
+    // Authenticate user via Clerk
     const user = await getUser();
     if (!user) {
       return NextResponse.json(
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const checkout = await polar.checkouts.create({
       // Products array (can include multiple product IDs)
       products: [productId],
-      // Pass user ID in metadata to link subscription to Stack Auth user
+      // Pass user ID in metadata to link subscription to Clerk user
       metadata: {
         userId: user.id,
         userEmail: user.primaryEmail || "",

@@ -4,12 +4,12 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 
 export async function GET() {
-  const stackUser = await getUser();
-  if (!stackUser) {
+  const user = await getUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!stackUser.id) {
+  if (!user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

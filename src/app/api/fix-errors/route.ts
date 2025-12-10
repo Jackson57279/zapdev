@@ -19,8 +19,8 @@ function isFixErrorsRequestBody(value: unknown): value is FixErrorsRequestBody {
 
 export async function POST(request: Request) {
   try {
-    const stackUser = await getUser();
-    if (!stackUser) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }

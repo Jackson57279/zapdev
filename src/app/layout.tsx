@@ -9,7 +9,6 @@ import {
   SignUpButton,
   UserButton,
 } from "@clerk/nextjs";
-import { StackProvider, StackTheme, StackServerApp } from "@stackframe/stack";
 
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals-reporter";
@@ -66,28 +65,6 @@ export const metadata: Metadata = {
   },
 };
 
-const stackProjectId =
-  process.env.NEXT_PUBLIC_STACK_PROJECT_ID ||
-  "00000000-0000-4000-8000-000000000000";
-process.env.NEXT_PUBLIC_STACK_PROJECT_ID = stackProjectId;
-const stackPublishableKey =
-  process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ||
-  "pk_stack_placeholder";
-process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = stackPublishableKey;
-process.env.STACK_SECRET_SERVER_KEY =
-  process.env.STACK_SECRET_SERVER_KEY || "sk_stack_placeholder";
-
-const stackServerApp = new StackServerApp({
-  tokenStore: "nextjs-cookie",
-  urls: {
-    // Keep handler routes as fallback for direct URL access
-    signIn: "/handler/sign-in",
-    signUp: "/handler/sign-up",
-    afterSignIn: "/",
-    afterSignUp: "/",
-  },
-});
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -123,33 +100,29 @@ export default function RootLayout({
           />
         </head>
         <body className="antialiased">
-          <StackProvider app={stackServerApp}>
-            <StackTheme>
-              <ConvexClientProvider>
-                <ThemeProvider
-                  attribute="class"
-                  defaultTheme="system"
-                  enableSystem
-                  disableTransitionOnChange
-                >
-                  <header className="flex items-center justify-end gap-3 px-6 py-3">
-                    <SignedOut>
-                      <div className="flex items-center gap-3">
-                        <SignInButton />
-                        <SignUpButton />
-                      </div>
-                    </SignedOut>
-                    <SignedIn>
-                      <UserButton />
-                    </SignedIn>
-                  </header>
-                  <Toaster />
-                  <WebVitalsReporter />
-                  {children}
-                </ThemeProvider>
-              </ConvexClientProvider>
-            </StackTheme>
-          </StackProvider>
+          <ConvexClientProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <header className="flex items-center justify-end gap-3 px-6 py-3">
+                <SignedOut>
+                  <div className="flex items-center gap-3">
+                    <SignInButton mode="modal" />
+                    <SignUpButton mode="modal" />
+                  </div>
+                </SignedOut>
+                <SignedIn>
+                  <UserButton afterSignOutUrl="/" />
+                </SignedIn>
+              </header>
+              <Toaster />
+              <WebVitalsReporter />
+              {children}
+            </ThemeProvider>
+          </ConvexClientProvider>
         </body>
         <SpeedInsights />
       </html>
