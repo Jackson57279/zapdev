@@ -39,7 +39,11 @@ interface DirectFigmaImportEvent {
 async function decodeFigJson(fileBase64?: string) {
   if (!fileBase64) return null;
   const buffer = Buffer.from(fileBase64, "base64");
-  const figJson = await parseFigmaFigFile(buffer);
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength
+  );
+  const figJson = await parseFigmaFigFile(arrayBuffer);
   return figJson;
 }
 
