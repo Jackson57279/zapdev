@@ -30,9 +30,9 @@ export async function getUser(): Promise<AuthenticatedUser | null> {
 
 export async function getToken(): Promise<string | null> {
   try {
-    const { getToken } = auth();
-    if (!getToken) return null;
-    return (await getToken({ template: clerkJwtTemplate })) ?? null;
+    const authResult = await auth();
+    const token = await authResult.getToken?.({ template: clerkJwtTemplate });
+    return token ?? null;
   } catch (error) {
     console.error("Failed to get token:", error);
     return null;
@@ -51,12 +51,11 @@ export async function getConvexClientWithAuth() {
   }
 
   const httpClient = new ConvexHttpClient(convexUrl);
-  const { getToken } = auth();
 
-  httpClient.setAuth(async () => {
-    const token = await getToken({ template: clerkJwtTemplate });
-    return token ?? null;
-  });
+  const token = await getToken();
+  if (token) {
+    httpClient.setAuth(token);
+  }
 
   return httpClient;
 }
