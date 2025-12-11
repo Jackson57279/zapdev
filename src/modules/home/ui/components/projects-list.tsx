@@ -17,17 +17,17 @@ type ProjectWithPreview = Doc<"projects"> & {
 
 export const ProjectsList = () => {
   const { user, isLoaded, isSignedIn } = useUser();
-  const projects = useQuery(
-    isSignedIn ? api.projects.list : undefined
-  ) as ProjectWithPreview[] | undefined;
-
+  
   if (!isLoaded || !isSignedIn || !user) return null;
-
-  const userName =
-    user.firstName ||
+  
+  return <ProjectsListInner userName={user.firstName ||
     user.fullName?.split(" ")?.[0] ||
     user.primaryEmailAddress?.emailAddress?.split("@")[0] ||
-    "";
+    ""} />;
+};
+
+const ProjectsListInner = ({ userName }: { userName: string }) => {
+  const projects = useQuery(api.projects.list) as ProjectWithPreview[] | undefined;
 
   if (projects === undefined) {
     return (
