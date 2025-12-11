@@ -118,6 +118,13 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
+  "google/gemini-3-pro": {
+    name: "Gemini 3 Pro",
+    provider: "google",
+    description: "Google's most intelligent model with state-of-the-art reasoning",
+    temperature: 0.7,
+    frequency_penalty: 0.5,
+  },
 } as const;
 
 export type ModelId = keyof typeof MODEL_CONFIGS | "auto";
