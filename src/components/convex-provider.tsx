@@ -1,48 +1,25 @@
 "use client";
 
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { useStackApp } from "@stackframe/stack";
-import { useMemo } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ConvexReactClient } from "convex/react";
 import type { ReactNode } from "react";
 
-let convexClient: ConvexReactClient | null = null;
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 
-function getConvexClient(stackApp: any) {
-  if (!convexClient) {
-    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
-    if (!url) {
-      throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
-    }
-    convexClient = new ConvexReactClient(url, {
-      // Optionally pause queries until the user is authenticated
-      // Set to false if you have public routes
-      expectAuth: false,
-    });
-    // Set up Stack Auth for Convex
-    // IMPORTANT: Must include tokenStore parameter for JWT authentication
-    convexClient.setAuth(stackApp.getConvexClientAuth({ tokenStore: "nextjs-cookie" }));
-  }
-  return convexClient;
-}
+const convexClient = new ConvexReactClient(
+  convexUrl || "https://placeholder.convex.cloud",
+  { expectAuth: false }
+);
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-  const hasStack = Boolean(process.env.NEXT_PUBLIC_STACK_PROJECT_ID);
-  const stackApp = hasStack ? useStackApp() : null;
+  if (!convexUrl && typeof window !== "undefined") {
+    console.error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
+  }
 
-  const convex = useMemo(() => {
-    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
-    if (!url) {
-      if (typeof window === "undefined") {
-        return new ConvexReactClient("https://placeholder.convex.cloud");
-      }
-      console.error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
-      return new ConvexReactClient("https://placeholder.convex.cloud");
-    }
-    if (!hasStack || !stackApp) {
-      return new ConvexReactClient(url, { expectAuth: false });
-    }
-    return getConvexClient(stackApp);
-  }, [hasStack, stackApp]);
-
-  return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+  return (
+    <ConvexProviderWithClerk client={convexClient} useAuth={useAuth}>
+      {children}
+    </ConvexProviderWithClerk>
+  );
 }

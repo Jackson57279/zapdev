@@ -1,9 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
-// Named export keeps compatibility with Next.js proxy entrypoint.
-export const proxy = clerkMiddleware();
-
-export default proxy;
+export default clerkMiddleware();
 
 export const config = {
   matcher: [
@@ -13,3 +10,4 @@ export const config = {
     "/(api|trpc)(.*)",
   ],
 };
+

@@ -1,8 +1,7 @@
 import { QueryCtx, MutationCtx } from "./_generated/server";
 
 /**
- * Get the current authenticated user's ID from Stack Auth
- * Stack Auth automatically sets ctx.auth when a user is authenticated
+ * Get the current authenticated user's ID from Clerk (via Convex JWT)
  */
 export async function getCurrentUserId(
   ctx: QueryCtx | MutationCtx
@@ -56,7 +55,7 @@ export async function hasProAccess(ctx: QueryCtx | MutationCtx): Promise<boolean
 }
 
 /**
- * Legacy compatibility: Get user ID (now just returns Stack Auth user ID)
+ * Legacy compatibility: Get user ID (now just returns Clerk user ID)
  * @deprecated Use getCurrentUserId instead
  */
 export async function getCurrentUserClerkId(

@@ -116,10 +116,12 @@ export const MessageForm = ({ projectId }: Props) => {
   const handleFigmaImport = async () => {
     setIsImportMenuOpen(false);
     try {
-      // Navigate to Figma OAuth flow
-      window.location.href = "/api/import/figma/auth";
+      const url = new URL("/import", window.location.origin);
+      url.searchParams.set("source", "figma");
+      url.searchParams.set("projectId", projectId);
+      window.location.href = url.toString();
     } catch {
-      toast.error("Failed to start Figma import");
+      toast.error("Failed to open Figma import");
     }
   };
 

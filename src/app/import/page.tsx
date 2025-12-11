@@ -59,9 +59,13 @@ function ImportPageContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div
               className="p-6 rounded-lg border border-border bg-card hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer"
-              onClick={() =>
-                router.push("/api/import/figma/auth")
-              }
+              onClick={() => {
+                const url = new URL("/import", window.location.origin);
+                url.searchParams.set("source", "figma");
+                const projectId = searchParams?.get("projectId");
+                if (projectId) url.searchParams.set("projectId", projectId);
+                router.push(url.toString());
+              }}
             >
               <div className="flex items-center justify-center w-12 h-12 bg-[#0ACE4E] rounded-lg mb-4">
                 <svg

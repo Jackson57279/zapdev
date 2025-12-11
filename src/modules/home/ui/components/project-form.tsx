@@ -115,10 +115,40 @@ export const ProjectForm = () => {
   const handleFigmaImport = async () => {
     setIsImportMenuOpen(false);
     try {
-      // Navigate to Figma OAuth flow
-      window.location.href = "/api/import/figma/auth";
-    } catch {
-      toast.error("Failed to start Figma import");
+      if (isUploading) {
+        toast.error("Please wait for uploads to finish");
+        return;
+      }
+
+      const rawValue = form.getValues("value")?.trim() || "";
+      const projectValue = rawValue || "Start this project from a Figma import.";
+
+      setIsCreating(true);
+      const result = await createProjectWithMessageAndAttachments({
+        value: projectValue,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
+
+      const url = new URL("/import", window.location.origin);
+      url.searchParams.set("source", "figma");
+      url.searchParams.set("projectId", result.id);
+      window.location.href = url.toString();
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+
+        if (error.message.includes("Unauthenticated") || error.message.includes("Not authenticated")) {
+          router.push("/sign-in");
+        }
+
+        if (error.message.includes("credits") || error.message.includes("out of credits")) {
+          router.push("/pricing");
+        }
+      } else {
+        toast.error("Failed to start Figma import");
+      }
+    } finally {
+      setIsCreating(false);
     }
   };
 

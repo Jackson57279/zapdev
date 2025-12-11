@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import Script from "next/script";
-import { StackProvider, StackTheme, StackServerApp } from "@stackframe/stack";
+import {
+  ClerkProvider,
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
 
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals-reporter";
@@ -58,80 +65,67 @@ export const metadata: Metadata = {
   },
 };
 
-const stackProjectId =
-  process.env.NEXT_PUBLIC_STACK_PROJECT_ID ||
-  "00000000-0000-4000-8000-000000000000";
-process.env.NEXT_PUBLIC_STACK_PROJECT_ID = stackProjectId;
-const stackPublishableKey =
-  process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ||
-  "pk_stack_placeholder";
-process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = stackPublishableKey;
-process.env.STACK_SECRET_SERVER_KEY =
-  process.env.STACK_SECRET_SERVER_KEY || "sk_stack_placeholder";
-
-const stackServerApp = new StackServerApp({
-  tokenStore: "nextjs-cookie",
-  urls: {
-    // Keep handler routes as fallback for direct URL access
-    signIn: "/handler/sign-in",
-    signUp: "/handler/sign-up",
-    afterSignIn: "/",
-    afterSignUp: "/",
-  },
-});
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <Script
-          id="ld-json-schema"
-          type="application/ld+json"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "Organization",
-              name: "Zapdev",
-              url: "https://zapdev.link",
-              logo: "https://zapdev.link/logo.png",
-              description: "Zapdev is a leading software development company specializing in building scalable web applications, mobile apps, and enterprise solutions.",
-              contactPoint: {
-                "@type": "ContactPoint",
-                contactType: "sales",
-                availableLanguage: "English"
-              },
-              sameAs: [
-                "https://twitter.com/zapdev",
-                "https://linkedin.com/company/zapdev"
-              ]
-            }),
-          }}
-        />
-      </head>
-      <body className="antialiased">
-        <StackProvider app={stackServerApp}>
-          <StackTheme>
-            <ConvexClientProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-              >
-                <Toaster />
-                <WebVitalsReporter />
-                {children}
-              </ThemeProvider>
-            </ConvexClientProvider>
-          </StackTheme>
-        </StackProvider>
-      </body>
-      <SpeedInsights />
-    </html>
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          <Script
+            id="ld-json-schema"
+            type="application/ld+json"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                name: "Zapdev",
+                url: "https://zapdev.link",
+                logo: "https://zapdev.link/logo.png",
+                description: "Zapdev is a leading software development company specializing in building scalable web applications, mobile apps, and enterprise solutions.",
+                contactPoint: {
+                  "@type": "ContactPoint",
+                  contactType: "sales",
+                  availableLanguage: "English",
+                },
+                sameAs: [
+                  "https://twitter.com/zapdev",
+                  "https://linkedin.com/company/zapdev"
+                ],
+              }),
+            }}
+          />
+        </head>
+        <body className="antialiased">
+          <ConvexClientProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <header className="flex items-center justify-end gap-3 px-6 py-3">
+                <SignedOut>
+                  <div className="flex items-center gap-3">
+                    <SignInButton mode="modal" />
+                    <SignUpButton mode="modal" />
+                  </div>
+                </SignedOut>
+                <SignedIn>
+                  <UserButton afterSignOutUrl="/" />
+                </SignedIn>
+              </header>
+              <Toaster />
+              <WebVitalsReporter />
+              {children}
+            </ThemeProvider>
+          </ConvexClientProvider>
+        </body>
+        <SpeedInsights />
+      </html>
+    </ClerkProvider>
   );
 };

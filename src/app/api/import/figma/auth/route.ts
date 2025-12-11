@@ -5,13 +5,13 @@ const FIGMA_CLIENT_ID = process.env.FIGMA_CLIENT_ID;
 const FIGMA_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/import/figma/callback`;
 
 export async function GET() {
-  const stackUser = await getUser();
+  const user = await getUser();
   
-  if (!stackUser) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = stackUser.id;
+  const userId = user.id;
 
   if (!FIGMA_CLIENT_ID) {
     return NextResponse.json(
