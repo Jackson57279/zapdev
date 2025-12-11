@@ -118,6 +118,13 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
+  "google/gemini-3-pro": {
+    name: "Gemini 3 Pro",
+    provider: "google",
+    description: "Google's most intelligent model with state-of-the-art reasoning",
+    temperature: 0.7,
+    // Note: Gemini models do not support frequency_penalty parameter
+  },
 } as const;
 
 export type ModelId = keyof typeof MODEL_CONFIGS | "auto";
@@ -1126,7 +1133,8 @@ export const codeAgentFunction = inngest.createFunction(
           process.env.AI_GATEWAY_BASE_URL || "https://ai-gateway.vercel.sh/v1",
         defaultParameters: {
           temperature: modelConfig.temperature,
-          frequency_penalty: modelConfig.frequency_penalty,
+          // Only include frequency_penalty if the model supports it (Google models don't)
+          ...("frequency_penalty" in modelConfig && { frequency_penalty: (modelConfig as { frequency_penalty?: number }).frequency_penalty }),
         },
       }),
       tools: createCodeAgentTools(sandboxId),
@@ -2052,7 +2060,8 @@ export const errorFixFunction = inngest.createFunction(
           process.env.AI_GATEWAY_BASE_URL || "https://ai-gateway.vercel.sh/v1",
         defaultParameters: {
           temperature: errorFixModelConfig.temperature,
-          frequency_penalty: errorFixModelConfig.frequency_penalty,
+          // Only include frequency_penalty if the model supports it (Google models don't)
+          ...("frequency_penalty" in errorFixModelConfig && { frequency_penalty: (errorFixModelConfig as { frequency_penalty?: number }).frequency_penalty }),
         },
       }),
       tools: createCodeAgentTools(sandboxId),

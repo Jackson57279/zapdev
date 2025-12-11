@@ -107,17 +107,6 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <header className="flex items-center justify-end gap-3 px-6 py-3">
-                <SignedOut>
-                  <div className="flex items-center gap-3">
-                    <SignInButton mode="modal" />
-                    <SignUpButton mode="modal" />
-                  </div>
-                </SignedOut>
-                <SignedIn>
-                  <UserButton afterSignOutUrl="/" />
-                </SignedIn>
-              </header>
               <Toaster />
               <WebVitalsReporter />
               {children}

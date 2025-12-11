@@ -12,7 +12,8 @@
     "convex:deploy": "bunx convex deploy"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.36.1",
+    "@clerk/backend": "^2.27.0",
+    "@clerk/nextjs": "^6.36.2",
     "@databuddy/sdk": "^2.2.1",
     "@e2b/code-interpreter": "^1.5.1",
     "@hookform/resolvers": "^3.3.4",
