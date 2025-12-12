@@ -121,7 +121,8 @@ export const MODEL_CONFIGS = {
   "google/gemini-3-pro": {
     name: "Gemini 3 Pro",
     provider: "google",
-    description: "Google's most intelligent model with state-of-the-art reasoning",
+    description:
+      "Google's most intelligent model with state-of-the-art reasoning",
     temperature: 0.7,
     // Note: Gemini models do not support frequency_penalty parameter
   },
@@ -315,7 +316,9 @@ const runLintCheck = async (sandboxId: string): Promise<string | null> => {
 
     // Exit code 127 means command not found - gracefully skip validation
     if (result.exitCode === 127) {
-      console.warn("[WARN] Lint script not found in package.json, skipping lint check");
+      console.warn(
+        "[WARN] Lint script not found in package.json, skipping lint check",
+      );
       return null;
     }
 
@@ -343,13 +346,13 @@ const runLintCheck = async (sandboxId: string): Promise<string | null> => {
 };
 
 const runBuildCheck = async (sandboxId: string): Promise<string | null> => {
-  try {
-    const sandbox = await getSandbox(sandboxId);
-    const buffers: { stdout: string; stderr: string } = {
-      stdout: "",
-      stderr: "",
-    };
+  const sandbox = await getSandbox(sandboxId);
+  const buffers: { stdout: string; stderr: string } = {
+    stdout: "",
+    stderr: "",
+  };
 
+  try {
     // Try to build the project to catch build-time errors
     const buildCommand = "npm run build";
     console.log("[DEBUG] Running build check with command:", buildCommand);
@@ -368,7 +371,9 @@ const runBuildCheck = async (sandboxId: string): Promise<string | null> => {
 
     // Exit code 127 means command not found - gracefully skip validation
     if (result.exitCode === 127) {
-      console.warn("[WARN] Build script not found in package.json, skipping build check");
+      console.warn(
+        "[WARN] Build script not found in package.json, skipping build check",
+      );
       return null;
     }
 
@@ -392,23 +397,36 @@ const runBuildCheck = async (sandboxId: string): Promise<string | null> => {
     console.log("[DEBUG] Build check passed successfully");
     return null;
   } catch (error) {
+    // When CommandExitError is thrown, we still have the output in buffers
+    const output = buffers.stdout + buffers.stderr;
+
     console.error("[DEBUG] Build check failed with exception:", error);
-    if (error instanceof Error && error.stack) {
-      console.error("[DEBUG] Stack trace:", error.stack);
-    } else {
-      console.error(
-        "[DEBUG] Serialized exception:",
-        inspect(error, { depth: null }),
+    console.log("[DEBUG] Build output from buffers:\n", output);
+
+    // If we have output, use that instead of the stack trace
+    if (output && output.trim().length > 0) {
+      // Extract meaningful error information from the output
+      const lines = output.split("\n");
+      const errorLines = lines.filter(
+        (line) =>
+          AUTO_FIX_ERROR_PATTERNS.some((pattern) => pattern.test(line)) ||
+          line.includes("Error:") ||
+          line.includes("error ") ||
+          line.includes("ERROR"),
       );
+
+      // If we found specific error lines, return those
+      if (errorLines.length > 0) {
+        return `Build failed with errors:\n${errorLines.join("\n")}\n\nFull output:\n${output}`;
+      }
+
+      // Otherwise return the full output
+      return `Build failed with errors:\n${output}`;
     }
 
-    const serializedError =
-      error instanceof Error
-        ? `${error.message}${error.stack ? `\n${error.stack}` : ""}`.trim()
-        : inspect(error, { depth: null });
-
-    // Return the error as it likely indicates a build problem
-    return `Build check exception: ${serializedError}`;
+    // Fallback to error message if no output
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return `Build check exception: ${errorMessage}`;
   }
 };
 
@@ -1134,7 +1152,10 @@ export const codeAgentFunction = inngest.createFunction(
         defaultParameters: {
           temperature: modelConfig.temperature,
           // Only include frequency_penalty if the model supports it (Google models don't)
-          ...("frequency_penalty" in modelConfig && { frequency_penalty: (modelConfig as { frequency_penalty?: number }).frequency_penalty }),
+          ...("frequency_penalty" in modelConfig && {
+            frequency_penalty: (modelConfig as { frequency_penalty?: number })
+              .frequency_penalty,
+          }),
         },
       }),
       tools: createCodeAgentTools(sandboxId),
@@ -1196,16 +1217,17 @@ export const codeAgentFunction = inngest.createFunction(
         console.log(
           `[DEBUG] No <task_summary> yet; retrying agent to request summary (attempt ${nextRetry}).`,
         );
-        
+
         // Add explicit message to agent requesting the summary
         const summaryRequestMessage: Message = {
           type: "text",
           role: "user",
-          content: "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task."
+          content:
+            "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
         };
-        
+
         network.state.messages.push(summaryRequestMessage);
-        
+
         return codeAgent;
       },
     });
@@ -1215,22 +1237,29 @@ export const codeAgentFunction = inngest.createFunction(
 
     // Post-network fallback: If no summary but files exist, make one more explicit request
     let summaryText = extractSummaryText(result.state.data.summary ?? "");
-    const hasGeneratedFiles = Object.keys(result.state.data.files || {}).length > 0;
-    
+    const hasGeneratedFiles =
+      Object.keys(result.state.data.files || {}).length > 0;
+
     if (!summaryText && hasGeneratedFiles) {
-      console.log("[DEBUG] No summary detected after network run, requesting explicitly...");
+      console.log(
+        "[DEBUG] No summary detected after network run, requesting explicitly...",
+      );
       result = await network.run(
         "IMPORTANT: You have successfully generated files, but you forgot to provide the <task_summary> tag. Please provide it now with a brief description of what you built. This is required to complete the task.",
-        { state: result.state }
+        { state: result.state },
       );
-      
+
       // Re-extract summary after explicit request
       summaryText = extractSummaryText(result.state.data.summary ?? "");
-      
+
       if (summaryText) {
-        console.log("[DEBUG] Summary successfully extracted after explicit request");
+        console.log(
+          "[DEBUG] Summary successfully extracted after explicit request",
+        );
       } else {
-        console.warn("[WARN] Summary still missing after explicit request, will use fallback");
+        console.warn(
+          "[WARN] Summary still missing after explicit request, will use fallback",
+        );
       }
     }
 
@@ -1302,29 +1331,42 @@ export const codeAgentFunction = inngest.createFunction(
       );
 
       result = await network.run(
-        `CRITICAL ERROR DETECTED - IMMEDIATE FIX REQUIRED
+        `CRITICAL BUILD/LINT ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
 
-The previous attempt encountered an error that must be corrected before proceeding.
+Your previous code generation resulted in build or lint errors. You MUST fix these errors now.
 
-Error details:
+=== ERROR OUTPUT ===
 ${errorDetails}
 
-REQUIRED ACTIONS:
-1. Carefully analyze the error message to identify the root cause
-2. Check for common issues:
-   - Missing imports or incorrect import paths
-   - TypeScript type errors or incorrect type usage
-   - Missing package installations
-   - Syntax errors or typos
-   - Security vulnerabilities (XSS, injection, etc.)
-   - Runtime errors (undefined variables, null references)
-3. Apply the necessary fix to resolve the error completely
-4. Verify the fix by checking the code logic and types
-5. If needed, install missing packages or update configurations
-6. Rerun any commands that failed and verify they now succeed
-7. Provide an updated <task_summary> only after the error is fully resolved
+=== DEBUGGING STEPS ===
+1. READ THE ERROR CAREFULLY: Look for specific file names, line numbers, and error types
+2. IDENTIFY THE ROOT CAUSE:
+   ${lintErrors ? "- Lint errors: Check for unused variables, type issues, ESLint violations" : ""}
+   ${buildErrors ? "- Build errors: Check for syntax errors, import issues, type mismatches" : ""}
+   - Look for missing dependencies that need to be installed
+   - Check for incorrect import paths (e.g., '@/components/ui/...')
+   - Verify all required files exist
 
-DO NOT proceed until the error is completely fixed. The fix must be thorough and address the root cause, not just mask the symptoms.`,
+3. FIX THE ERROR:
+   - Use createOrUpdateFiles to update the problematic files
+   - If packages are missing, use terminal to run: npm install <package-name>
+   - Make sure all imports are correct and files are properly structured
+   - Fix TypeScript type errors by adding proper types or fixing type mismatches
+
+4. VERIFY YOUR FIX:
+   - After making changes, run: npm run lint
+   - Then run: npm run build
+   - Check that both commands succeed with exit code 0
+
+5. PROVIDE SUMMARY:
+   - Once all errors are fixed and build/lint succeed, provide <task_summary>
+   - If you cannot fix it in this attempt, explain what you tried
+
+IMPORTANT:
+- Use the readFiles tool to check current file contents before modifying
+- Use the terminal tool to run commands and verify fixes
+- DO NOT just repeat the same code - analyze what went wrong and fix it
+- This is attempt ${autoFixAttempts} of ${AUTO_FIX_MAX_ATTEMPTS} - make it count!`,
         { state: result.state },
       );
 
@@ -2061,7 +2103,11 @@ export const errorFixFunction = inngest.createFunction(
         defaultParameters: {
           temperature: errorFixModelConfig.temperature,
           // Only include frequency_penalty if the model supports it (Google models don't)
-          ...("frequency_penalty" in errorFixModelConfig && { frequency_penalty: (errorFixModelConfig as { frequency_penalty?: number }).frequency_penalty }),
+          ...("frequency_penalty" in errorFixModelConfig && {
+            frequency_penalty: (
+              errorFixModelConfig as { frequency_penalty?: number }
+            ).frequency_penalty,
+          }),
         },
       }),
       tools: createCodeAgentTools(sandboxId),
@@ -2121,16 +2167,17 @@ export const errorFixFunction = inngest.createFunction(
         console.log(
           `[DEBUG] Error-fix agent missing <task_summary>; retrying (attempt ${nextRetry}).`,
         );
-        
+
         // Add explicit message to agent requesting the summary
         const summaryRequestMessage: Message = {
           type: "text",
           role: "user",
-          content: "You have completed the error fixes. Now provide your final <task_summary> tag with a brief description of what was fixed. This is required to complete the task."
+          content:
+            "You have completed the error fixes. Now provide your final <task_summary> tag with a brief description of what was fixed. This is required to complete the task.",
         };
-        
+
         network.state.messages.push(summaryRequestMessage);
-        
+
         return codeAgent;
       },
     });
@@ -2160,22 +2207,29 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
 
       // Post-network fallback: If no summary but files were modified, make one more explicit request
       let summaryText = extractSummaryText(result.state.data.summary ?? "");
-      const hasModifiedFiles = Object.keys(result.state.data.files || {}).length > 0;
-      
+      const hasModifiedFiles =
+        Object.keys(result.state.data.files || {}).length > 0;
+
       if (!summaryText && hasModifiedFiles) {
-        console.log("[DEBUG] No summary detected after error-fix, requesting explicitly...");
+        console.log(
+          "[DEBUG] No summary detected after error-fix, requesting explicitly...",
+        );
         result = await network.run(
           "IMPORTANT: You have successfully fixed the errors, but you forgot to provide the <task_summary> tag. Please provide it now with a brief description of what errors you fixed. This is required to complete the task.",
-          { state: result.state }
+          { state: result.state },
         );
-        
+
         // Re-extract summary after explicit request
         summaryText = extractSummaryText(result.state.data.summary ?? "");
-        
+
         if (summaryText) {
-          console.log("[DEBUG] Summary successfully extracted after explicit request");
+          console.log(
+            "[DEBUG] Summary successfully extracted after explicit request",
+          );
         } else {
-          console.warn("[WARN] Summary still missing after explicit request, will use fallback");
+          console.warn(
+            "[WARN] Summary still missing after explicit request, will use fallback",
+          );
         }
       }
 
