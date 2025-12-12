@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ExternalLinkIcon, RefreshCcwIcon, DownloadIcon, BotIcon, Loader2Icon } from "lucide-react";
-import JSZip from "jszip";
 import { toast } from "sonner";
 
 import { Hint } from "@/components/hint";
@@ -11,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 interface FragmentWebProps {
   data: Doc<"fragments">;
+  projectId: string;
 }
 
 const normalizeFiles = (value: Doc<"fragments">["files"]): Record<string, string> => {
@@ -29,7 +29,7 @@ const normalizeFiles = (value: Doc<"fragments">["files"]): Record<string, string
   );
 };
 
-export function FragmentWeb({ data }: FragmentWebProps) {
+export function FragmentWeb({ data, projectId }: FragmentWebProps) {
   const [copied, setCopied] = useState(false);
   const [fragmentKey, setFragmentKey] = useState(0);
   const [isResuming, setIsResuming] = useState(false);
@@ -41,6 +41,8 @@ export function FragmentWeb({ data }: FragmentWebProps) {
   const resumeAttemptRef = useRef(0);
 
   const files = useMemo(() => normalizeFiles(data.files), [data.files]);
+  const aiGeneratedFiles = useMemo(() => filterAIGeneratedFiles(files), [files]);
+  const hasDownloadableFiles = Object.keys(aiGeneratedFiles).length > 0;
 
   const modelInfo = useMemo(() => {
     const metadata = data.metadata as Record<string, unknown> | undefined;
@@ -99,23 +101,7 @@ export function FragmentWeb({ data }: FragmentWebProps) {
       return;
     }
 
-    const hasFiles = Object.keys(files).length > 0;
-    if (!hasFiles) {
-      toast.error("No files available to download yet.");
-      return;
-    }
-
-    const aiGeneratedFiles = filterAIGeneratedFiles(files);
-    const fileEntries = Object.entries(aiGeneratedFiles);
-
-    if (fileEntries.length === 0) {
-      if (process.env.NODE_ENV !== "production") {
-        const filteredOutFiles = Object.keys(files).filter((filePath) => !(filePath in aiGeneratedFiles));
-        console.debug("Fragment download skipped: no AI-generated files after filtering", {
-          fragmentId: data._id,
-          filteredOutFiles,
-        });
-      }
+    if (!hasDownloadableFiles) {
       toast.error("No AI-generated files are ready to download.");
       return;
     }
@@ -126,22 +112,35 @@ export function FragmentWeb({ data }: FragmentWebProps) {
     let downloadLink: HTMLAnchorElement | null = null;
 
     try {
-      const zip = new JSZip();
+      const response = await fetch(`/api/projects/${projectId}/download`);
 
-      fileEntries.forEach(([filename, content]) => {
-        zip.file(filename, content);
-      });
+      if (response.status === 404) {
+        toast.error("No AI-generated files are ready to download.");
+        return;
+      }
 
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      objectUrl = URL.createObjectURL(zipBlob);
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
 
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        toast.error("Downloaded file is empty. Please try again.");
+        return;
+      }
+
+      const disposition = response.headers.get("content-disposition");
+      const filenameMatch = disposition?.match(/filename=\"?([^\";]+)\"?/i);
+      const filename = filenameMatch?.[1] ?? `project-${projectId}-latest.zip`;
+
+      objectUrl = URL.createObjectURL(blob);
       downloadLink = document.createElement("a");
       downloadLink.href = objectUrl;
-      downloadLink.download = `ai-generated-code-${data._id}.zip`;
+      downloadLink.download = filename;
       document.body.appendChild(downloadLink);
       downloadLink.click();
 
-      toast.success(`Downloaded ${fileEntries.length} file${fileEntries.length === 1 ? "" : "s"}`);
+      toast.success("Download started");
     } catch (error) {
       console.error("Download failed:", error);
       toast.error("Failed to download files. Please try again.");
@@ -292,7 +291,7 @@ export function FragmentWeb({ data }: FragmentWebProps) {
             size="sm"
             variant="outline"
             onClick={handleDownload}
-            disabled={isDownloading || Object.keys(files).length === 0}
+            disabled={isDownloading || !hasDownloadableFiles}
           >
             {isDownloading ? <Loader2Icon className="size-4 animate-spin" /> : <DownloadIcon />}
           </Button>

@@ -1465,7 +1465,7 @@ DO NOT proceed until the error is completely fixed. The fix must be thorough and
     if (!isError && hasSummary && hasFiles) {
       try {
         const titleModel = openai({
-          model: "google/gemini-2.5-flash-lite",
+          model: "openai/gpt-5-nano",
           apiKey: process.env.AI_GATEWAY_API_KEY!,
           baseUrl:
             process.env.AI_GATEWAY_BASE_URL ||
