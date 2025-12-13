@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
-import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon, FigmaIcon } from "lucide-react";
+import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon, FigmaIcon, SparklesIcon } from "lucide-react";
 import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
@@ -53,6 +53,7 @@ export const MessageForm = ({ projectId }: Props) => {
   const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   // Model configurations matching backend
   const modelOptions = [
@@ -136,9 +137,58 @@ export const MessageForm = ({ projectId }: Props) => {
     }
   };
 
+  const handleEnhancePrompt = async () => {
+    const currentValue = form.getValues("value").trim();
+    
+    if (!currentValue) {
+      toast.error("Please enter a prompt first");
+      return;
+    }
+
+    if (currentValue.length < 10) {
+      toast.error("Prompt is too short to enhance");
+      return;
+    }
+
+    try {
+      setIsEnhancing(true);
+      
+      const response = await fetch("/api/enhance-prompt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt: currentValue }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to enhance prompt");
+      }
+
+      const data = await response.json();
+      
+      if (data.enhancedPrompt) {
+        form.setValue("value", data.enhancedPrompt, {
+          shouldDirty: true,
+          shouldValidate: true,
+          shouldTouch: true,
+        });
+        toast.success("Prompt enhanced successfully!");
+      } else {
+        throw new Error("No enhanced prompt received");
+      }
+    } catch (error) {
+      console.error("Enhance prompt error:", error);
+      toast.error("Failed to enhance prompt. Please try again.");
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const [isFocused, setIsFocused] = useState(false);
   const isPending = isCreating;
   const isButtonDisabled = isPending || !form.formState.isValid || isUploading;
+  const isEnhanceDisabled = isEnhancing || isPending || isUploading;
   const showUsage = !!usage;
 
   return (
@@ -208,7 +258,22 @@ export const MessageForm = ({ projectId }: Props) => {
           </div>
         )}
         <div className="flex gap-x-2 items-end justify-between pt-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              type="button"
+              onClick={handleEnhancePrompt}
+              disabled={isEnhanceDisabled}
+              title="Enhance prompt with AI"
+            >
+              {isEnhancing ? (
+                <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+              ) : (
+                <SparklesIcon className="size-4 text-muted-foreground" />
+              )}
+            </Button>
             <UploadButton<OurFileRouter, "imageUploader">
               endpoint="imageUploader"
               onClientUploadComplete={(res) => {

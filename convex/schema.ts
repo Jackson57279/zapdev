@@ -178,30 +178,31 @@ export default defineSchema({
     .index("by_key", ["key"])
     .index("by_windowStart", ["windowStart"]),
 
-  // Subscriptions table - Polar.sh subscription tracking
+  // Subscriptions table - Clerk Billing subscription tracking
   subscriptions: defineTable({
-    userId: v.string(), // Stack Auth user ID
-    polarCustomerId: v.string(), // Polar.sh customer ID
-    polarSubscriptionId: v.string(), // Polar.sh subscription ID
-    productId: v.string(), // Polar product ID
-    productName: v.string(), // "Free" | "Pro" | "Enterprise"
+    userId: v.string(), // Clerk user ID
+    clerkSubscriptionId: v.string(), // Clerk subscription ID
+    planId: v.string(), // Clerk plan ID (e.g., "plan_xxxxx")
+    planName: v.string(), // Plan name (e.g., "Free", "Pro")
     status: v.union(
       v.literal("incomplete"),
       v.literal("active"),
       v.literal("canceled"),
       v.literal("past_due"),
-      v.literal("unpaid")
+      v.literal("unpaid"),
+      v.literal("trialing")
     ),
     currentPeriodStart: v.number(), // Timestamp
     currentPeriodEnd: v.number(), // Timestamp
     cancelAtPeriodEnd: v.boolean(), // Scheduled cancellation flag
-    metadata: v.optional(v.any()), // Additional Polar metadata
+    features: v.optional(v.array(v.string())), // Array of feature IDs granted by this plan
+    metadata: v.optional(v.any()), // Additional metadata from Clerk
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_polarCustomerId", ["polarCustomerId"])
-    .index("by_polarSubscriptionId", ["polarSubscriptionId"])
+    .index("by_clerkSubscriptionId", ["clerkSubscriptionId"])
+    .index("by_planId", ["planId"])
     .index("by_status", ["status"]),
 
   // Sandbox Sessions table - E2B sandbox persistence tracking

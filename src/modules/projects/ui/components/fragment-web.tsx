@@ -112,21 +112,39 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
     let downloadLink: HTMLAnchorElement | null = null;
 
     try {
-      const response = await fetch(`/api/projects/${projectId}/download`);
+      const response = await fetch(`/api/projects/${projectId}/download`, {
+        method: "GET",
+        headers: {
+          "Accept": "application/zip",
+        },
+      });
 
       if (response.status === 404) {
-        toast.error("No AI-generated files are ready to download.");
+        const errorData = await response.json().catch(() => ({ error: "Not found" }));
+        toast.error(errorData.error || "No AI-generated files are ready to download.");
+        return;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        toast.error("You don't have permission to download this project.");
         return;
       }
 
       if (!response.ok) {
-        throw new Error(`Download failed with status ${response.status}`);
+        const errorData = await response.json().catch(() => ({ error: "Download failed" }));
+        throw new Error(errorData.error || `Download failed with status ${response.status}`);
       }
 
       const blob = await response.blob();
+      
       if (blob.size === 0) {
         toast.error("Downloaded file is empty. Please try again.");
         return;
+      }
+
+      // Verify it's actually a zip file
+      if (blob.type && !blob.type.includes("zip") && !blob.type.includes("octet-stream")) {
+        console.warn("Unexpected content type:", blob.type);
       }
 
       const disposition = response.headers.get("content-disposition");
@@ -137,20 +155,30 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
       downloadLink = document.createElement("a");
       downloadLink.href = objectUrl;
       downloadLink.download = filename;
+      downloadLink.style.display = "none";
       document.body.appendChild(downloadLink);
       downloadLink.click();
 
-      toast.success("Download started");
+      // Small delay before cleanup to ensure download starts
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      toast.success(`Download started: ${filename}`);
     } catch (error) {
       console.error("Download failed:", error);
-      toast.error("Failed to download files. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to download files";
+      toast.error(errorMessage + ". Please try again.");
     } finally {
-      if (downloadLink) {
+      // Cleanup
+      if (downloadLink && downloadLink.parentNode) {
         downloadLink.remove();
       }
 
       if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+        // Delay cleanup to ensure download completes
+        const urlToRevoke = objectUrl;
+        setTimeout(() => {
+          URL.revokeObjectURL(urlToRevoke);
+        }, 1000);
       }
 
       setIsDownloading(false);

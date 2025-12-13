@@ -27,21 +27,22 @@ export async function requireAuth(
 
 /**
  * Check if user has pro access
- * Checks for active Polar.sh subscription with Pro or Enterprise tier
+ * Checks for active Clerk Billing subscription with Pro plan
  */
 export async function hasProAccess(ctx: QueryCtx | MutationCtx): Promise<boolean> {
   const userId = await getCurrentUserId(ctx);
   if (!userId) return false;
   
-  // Check active subscription from Polar
+  // Check active subscription from Clerk Billing
   const subscription = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .filter((q) => q.eq(q.field("status"), "active"))
     .first();
   
-  // Pro access if active subscription exists and productName is "Pro" or "Enterprise"
-  if (subscription && ["Pro", "Enterprise"].includes(subscription.productName)) {
+  // Pro access if active subscription exists and planName is "Pro"
+  // Note: Plan names should match what you create in Clerk Dashboard
+  if (subscription && subscription.planName === "Pro") {
     return true;
   }
   
@@ -52,6 +53,48 @@ export async function hasProAccess(ctx: QueryCtx | MutationCtx): Promise<boolean
     .first();
   
   return usage?.planType === "pro";
+}
+
+/**
+ * Check if user has a specific plan
+ * @param ctx - Query or Mutation context
+ * @param planName - Name of the plan to check (e.g., "Free", "Pro")
+ */
+export async function hasPlan(
+  ctx: QueryCtx | MutationCtx,
+  planName: string
+): Promise<boolean> {
+  const userId = await getCurrentUserId(ctx);
+  if (!userId) return false;
+  
+  const subscription = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .filter((q) => q.eq(q.field("status"), "active"))
+    .first();
+  
+  return subscription?.planName === planName;
+}
+
+/**
+ * Check if user has a specific feature
+ * @param ctx - Query or Mutation context
+ * @param featureId - ID of the feature to check
+ */
+export async function hasFeature(
+  ctx: QueryCtx | MutationCtx,
+  featureId: string
+): Promise<boolean> {
+  const userId = await getCurrentUserId(ctx);
+  if (!userId) return false;
+  
+  const subscription = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .filter((q) => q.eq(q.field("status"), "active"))
+    .first();
+  
+  return subscription?.features?.includes(featureId) ?? false;
 }
 
 /**
