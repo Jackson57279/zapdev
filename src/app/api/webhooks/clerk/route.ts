@@ -4,6 +4,14 @@ import { WebhookEvent } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
+// Extend WebhookEvent type to include Clerk Billing subscription events
+// These events are sent by Clerk Billing but not yet in the official types
+type ClerkBillingEvent = 
+  | WebhookEvent 
+  | { type: "subscription.created"; data: any }
+  | { type: "subscription.updated"; data: any }
+  | { type: "subscription.deleted"; data: any };
+
 export async function POST(req: Request) {
   // You can find this in the Clerk Dashboard -> Webhooks -> choose the webhook
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -34,7 +42,7 @@ export async function POST(req: Request) {
   // Create a new Svix instance with your secret.
   const wh = new Webhook(WEBHOOK_SECRET);
 
-  let evt: WebhookEvent;
+  let evt: ClerkBillingEvent;
 
   // Verify the payload with the headers
   try {
@@ -42,7 +50,7 @@ export async function POST(req: Request) {
       "svix-id": svix_id,
       "svix-timestamp": svix_timestamp,
       "svix-signature": svix_signature,
-    }) as WebhookEvent;
+    }) as ClerkBillingEvent;
   } catch (err) {
     console.error("Error verifying webhook:", err);
     return new Response("Error occured", {
@@ -55,7 +63,7 @@ export async function POST(req: Request) {
 
   const eventType = evt.type;
 
-  console.log(`Webhook with ID of ${evt.data.id} and type of ${eventType}`);
+  console.log(`Webhook with type of ${eventType}`);
 
   try {
     switch (eventType) {
