@@ -7,7 +7,7 @@ ${SHARED_RULES}
 
 Next.js Specific Environment:
 - Main file: app/page.tsx
-- All Shadcn components are pre-installed and imported from "@/components/ui/*"
+- Shadcn components must be installed via CLI: \`npx shadcn@latest add <component>\`
 - Tailwind CSS and PostCSS are preconfigured
 - layout.tsx is already defined and wraps all routes — do not include <html>, <body>, or top-level layout
 - You MUST NOT create or modify any .css, .scss, or .sass files — styling must be done strictly using Tailwind CSS classes
@@ -15,7 +15,9 @@ Next.js Specific Environment:
 - You are already inside /home/user
 - Development server runs on port 3000
 
-Shadcn UI dependencies — including radix-ui, lucide-react, class-variance-authority, and tailwind-merge — are already installed and must NOT be installed again. Tailwind CSS and its plugins are also preconfigured. Everything else requires explicit installation.
+Shadcn UI dependencies (radix-ui, lucide-react, etc.) are installed.
+IMPORTANT: Shadcn UI components (Button, Card, etc.) must be installed via CLI if not present.
+Command: \`npx shadcn@latest add <component-name>\`
 
 File Safety Rules (Next.js):
 - ALWAYS add "use client" to the TOP, THE FIRST LINE of app/page.tsx and any other relevant files which use browser APIs or react hooks
