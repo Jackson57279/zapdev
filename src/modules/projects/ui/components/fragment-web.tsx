@@ -2,11 +2,11 @@ import { useState, useEffect } from "react";
 import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 
 import { Hint } from "@/components/hint";
-import { Fragment } from "@/generated/prisma";
 import { Button } from "@/components/ui/button";
+import type { Doc } from "@/convex/_generated/dataModel";
 
 interface Props {
-  data: Fragment;
+  data: Doc<"fragments">;
 };
 
 export function FragmentWeb({ data }: Props) {
@@ -28,9 +28,10 @@ export function FragmentWeb({ data }: Props) {
   // Check if sandbox is older than 55 minutes and auto-transfer
   useEffect(() => {
     const checkAndTransferSandbox = async () => {
+      // Convex createdAt is a number (timestamp) or optional
       if (!data.createdAt) return;
 
-      const sandboxAge = Date.now() - new Date(data.createdAt).getTime();
+      const sandboxAge = Date.now() - data.createdAt;
       const FIFTY_FIVE_MINUTES = 55 * 60 * 1000;
 
       if (sandboxAge >= FIFTY_FIVE_MINUTES) {
@@ -43,7 +44,7 @@ export function FragmentWeb({ data }: Props) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              fragmentId: data.id,
+              fragmentId: data._id,
             }),
           });
 
@@ -59,7 +60,7 @@ export function FragmentWeb({ data }: Props) {
             attempts++;
 
             try {
-              const checkResponse = await fetch(`/api/fragment/${data.id}`);
+              const checkResponse = await fetch(`/api/fragment/${data._id}`);
               if (checkResponse.ok) {
                 const updatedFragment = await checkResponse.json();
 
@@ -88,7 +89,7 @@ export function FragmentWeb({ data }: Props) {
     };
 
     checkAndTransferSandbox();
-  }, [data.id, data.createdAt, currentUrl]);
+  }, [data._id, data.createdAt, currentUrl]);
 
   if (isTransferring) {
     return (
