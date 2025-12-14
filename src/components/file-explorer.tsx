@@ -24,9 +24,32 @@ import { TreeView } from "./tree-view";
 type FileCollection = { [path: string]: string };
 
 function getLanguageFromExtension(filename: string): string {
-  const extension = filename.split(".").pop()?.toLowerCase();
+  // Extract the file extension
+  const parts = filename.split(".");
+  const extension = parts.length > 1 ? parts.pop()?.toLowerCase() : "";
+  
+  // Special case for dotfiles
+  if (filename.startsWith(".") && parts.length === 1) {
+    const dotfile = filename.toLowerCase();
+    if (dotfile === ".gitignore") return "bash";
+    if (dotfile === ".env") return "bash";
+    if (dotfile === ".dockerignore") return "bash";
+    if (dotfile === ".eslintrc") return "json";
+    if (dotfile === ".prettierrc") return "json";
+    if (dotfile === ".babelrc") return "json";
+  }
+  
+  // Special case for specific filenames
+  const basename = filename.toLowerCase();
+  if (basename === "dockerfile") return "docker";
+  if (basename === "makefile") return "bash";
+  if (basename === "gemfile") return "ruby";
+  if (basename === "rakefile") return "ruby";
+  if (basename === "procfile") return "yaml";
+  
+  // Return the extension or default to "text"
   return extension || "text";
-};
+}
 
 interface FileBreadcrumbProps {
   filePath: string;

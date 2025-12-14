@@ -124,16 +124,19 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
         headers: {
           "Accept": "application/zip",
         },
+        credentials: "include", // Include credentials for auth
       });
 
       if (response.status === 404) {
         const errorData = await response.json().catch(() => ({ error: "Not found" }));
         toast.error(errorData.error || "No AI-generated files are ready to download.");
+        setIsDownloading(false);
         return;
       }
 
       if (response.status === 401 || response.status === 403) {
         toast.error("You don't have permission to download this project.");
+        setIsDownloading(false);
         return;
       }
 
@@ -146,24 +149,26 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
 
       if (blob.size === 0) {
         toast.error("Downloaded file is empty. Please try again.");
+        setIsDownloading(false);
         return;
       }
 
-      // Verify it's actually a zip file
-      if (blob.type && !blob.type.includes("zip") && !blob.type.includes("octet-stream")) {
-        console.warn("Unexpected content type:", blob.type);
-      }
+      // Create a proper zip blob if needed
+      const zipBlob = new Blob([blob], { type: "application/zip" });
 
       const disposition = response.headers.get("content-disposition");
       const filenameMatch = disposition?.match(/filename=\"?([^\";]+)\"?/i);
-      const filename = filenameMatch?.[1] ?? `project-${projectId}-latest.zip`;
+      const filename = filenameMatch?.[1] ?? `project-${projectId}-fragment-${data._id.slice(-6)}.zip`;
 
-      objectUrl = URL.createObjectURL(blob);
+      // Use different download method for better compatibility
+      objectUrl = URL.createObjectURL(zipBlob);
       downloadLink = document.createElement("a");
       downloadLink.href = objectUrl;
       downloadLink.download = filename;
       downloadLink.style.display = "none";
       document.body.appendChild(downloadLink);
+      
+      // Trigger download
       downloadLink.click();
 
       // Small delay before cleanup to ensure download starts
@@ -177,15 +182,16 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
     } finally {
       // Cleanup
       if (downloadLink && downloadLink.parentNode) {
-        downloadLink.remove();
+        setTimeout(() => {
+          downloadLink.remove();
+        }, 1000);
       }
 
       if (objectUrl) {
         // Delay cleanup to ensure download completes
-        const urlToRevoke = objectUrl;
         setTimeout(() => {
-          URL.revokeObjectURL(urlToRevoke);
-        }, 1000);
+          URL.revokeObjectURL(objectUrl);
+        }, 5000);
       }
 
       setIsDownloading(false);
@@ -308,22 +314,43 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
       )}
 
       <Tabs defaultValue="preview" className="flex flex-col w-full h-full">
-        <TabsList className="w-full h-12 p-1 bg-muted/50 rounded-lg">
-          <TabsTrigger
-            value="preview"
-            className="flex-1 h-full gap-x-2 text-base font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
-          >
-            <EyeIcon className="size-4" />
-            Preview
-          </TabsTrigger>
-          <TabsTrigger
-            value="code"
-            className="flex-1 h-full gap-x-2 text-base font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
-          >
-            <CodeIcon className="size-4" />
-            Code
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-2 px-2 py-1 bg-muted/50 rounded-t-lg">
+          <TabsList className="flex-1 h-10 p-1 bg-transparent">
+            <TabsTrigger
+              value="preview"
+              className="flex-1 h-full gap-x-2 text-sm font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
+            >
+              <EyeIcon className="size-4" />
+              Preview
+            </TabsTrigger>
+            <TabsTrigger
+              value="code"
+              className="flex-1 h-full gap-x-2 text-sm font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
+            >
+              <CodeIcon className="size-4" />
+              Code
+            </TabsTrigger>
+          </TabsList>
+          
+          {hasDownloadableFiles && (
+            <Hint text="Download project files" side="bottom">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className="gap-2"
+              >
+                {isDownloading ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <DownloadIcon className="size-4" />
+                )}
+                Download
+              </Button>
+            </Hint>
+          )}
+        </div>
 
         <TabsContent value="preview" className="flex-1 w-full h-full data-[state=inactive]:hidden m-0 p-0 border-none">
           <iframe
