@@ -53,15 +53,33 @@ export async function GET(
     // Ensure the project exists and belongs to the user
     await convex.query(api.projects.get, { projectId: convexProjectId });
 
-    const messages = await convex.query(api.messages.list, {
-      projectId: convexProjectId,
-    }) as MessageWithFragment[];
+    const searchParams = new URL(_request.url).searchParams;
+    const fragmentId = searchParams.get("fragmentId");
 
-    const latestWithFragment = [...messages].reverse().find(
-      (message) => message.Fragment,
-    );
+    let fragment = null;
 
-    const fragment = latestWithFragment?.Fragment;
+    if (fragmentId) {
+      const specificFragment = await convex.query(api.messages.getFragmentById, {
+        fragmentId: fragmentId as Id<"fragments">,
+      });
+      if (specificFragment) {
+        fragment = specificFragment;
+      }
+    }
+
+    // Fallback to latest fragment if no specific ID provided or not found
+    if (!fragment) {
+      const messages = await convex.query(api.messages.list, {
+        projectId: convexProjectId,
+      }) as MessageWithFragment[];
+
+      const latestWithFragment = [...messages].reverse().find(
+        (message) => message.Fragment,
+      );
+
+      fragment = latestWithFragment?.Fragment;
+    }
+
     if (!fragment) {
       return NextResponse.json(
         { error: "No AI-generated files are ready to download." },

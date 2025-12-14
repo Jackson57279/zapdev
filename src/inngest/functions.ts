@@ -479,6 +479,21 @@ const getFrameworkPrompt = (framework: Framework): string => {
   }
 };
 
+const getStartCommand = (framework: Framework): string => {
+  switch (framework) {
+    case "nextjs":
+      return "npm run dev";
+    case "angular":
+      return "ng serve --host 0.0.0.0 --disable-host-check";
+    case "react":
+    case "vue":
+    case "svelte":
+      return "npm run dev";
+    default:
+      return "npm run dev";
+  }
+};
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export const MAX_FILE_COUNT = 500;
 const MAX_SCREENSHOTS = 20;
@@ -1762,15 +1777,15 @@ IMPORTANT:
     if (totalSizeMB > MAX_SIZE_MB) {
       throw new Error(
         `Merged files size (${totalSizeMB.toFixed(2)} MB) exceeds maximum limit (${MAX_SIZE_MB} MB). ` +
-          `This usually indicates that large build artifacts or dependencies were not filtered out. ` +
-          `File count: ${fileCount}. Please review the file filtering logic.`,
+        `This usually indicates that large build artifacts or dependencies were not filtered out. ` +
+        `File count: ${fileCount}. Please review the file filtering logic.`,
       );
     }
 
     if (totalSizeMB > WARN_SIZE_MB) {
       console.warn(
         `[WARN] Merged files size (${totalSizeMB.toFixed(2)} MB) is approaching limit (${MAX_SIZE_MB} MB). ` +
-          `Current file count: ${fileCount}. Consider reviewing file filtering to reduce size.`,
+        `Current file count: ${fileCount}. Consider reviewing file filtering to reduce size.`,
       );
     }
 
@@ -1807,8 +1822,8 @@ IMPORTANT:
       const warningsNote =
         warningReasons.length > 0
           ? sanitizeTextForDatabase(
-              `\n\nWarnings:\n- ${warningReasons.join("\n- ")}`,
-            )
+            `\n\nWarnings:\n- ${warningReasons.join("\n- ")}`,
+          )
           : "";
       const responseContent = sanitizeTextForDatabase(
         `${baseResponseContent}${warningsNote}`,
@@ -1916,6 +1931,23 @@ export const sandboxTransferFunction = inngest.createFunction(
       } catch (error) {
         console.error("[ERROR] Failed to resume sandbox:", error);
         throw new Error("Sandbox resume failed. Please trigger a new build.");
+      }
+    });
+
+    await step.run("ensure-server-running", async () => {
+      try {
+        const startCommand = getStartCommand(framework);
+        const sandbox = await getSandbox(sandboxId);
+
+        console.log(`[DEBUG] Ensuring server is running with command: ${startCommand}`);
+        // Run in background to avoid blocking
+        await sandbox.commands.run(`${startCommand} > /dev/null 2>&1 &`);
+
+        // Give it a moment to start
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.error("[ERROR] Failed to start server:", error);
+        // We don't throw here, just log, as it might already be running
       }
     });
 
@@ -2320,14 +2352,14 @@ DO NOT proceed until all errors are completely resolved. Focus on fixing the roo
           backupMetadata ?? initialMetadata;
         const metadataUpdate = supportsMetadata
           ? {
-              ...baseMetadata,
-              previousFiles: originalFiles,
-              fixedAt: new Date().toISOString(),
-              lastFixSuccess: {
-                summary: result.state.data.summary,
-                occurredAt: new Date().toISOString(),
-              },
-            }
+            ...baseMetadata,
+            previousFiles: originalFiles,
+            fixedAt: new Date().toISOString(),
+            lastFixSuccess: {
+              summary: result.state.data.summary,
+              occurredAt: new Date().toISOString(),
+            },
+          }
           : undefined;
 
         return await convex.mutation(api.messages.createFragmentForUser, {
