@@ -136,7 +136,7 @@ export function FragmentWeb({ data, projectId }: FragmentWebProps) {
       }
 
       const blob = await response.blob();
-      
+
       if (blob.size === 0) {
         toast.error("Downloaded file is empty. Please try again.");
         return;

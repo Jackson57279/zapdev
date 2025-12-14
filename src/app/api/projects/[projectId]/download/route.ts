@@ -51,22 +51,11 @@ export async function GET(
     const convexProjectId = projectId as Id<"projects">;
 
     // Ensure the project exists and belongs to the user
-    const project = await convex.query(api.projects.get, { projectId: convexProjectId });
-    
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
+    await convex.query(api.projects.get, { projectId: convexProjectId });
 
     const messages = await convex.query(api.messages.list, {
       projectId: convexProjectId,
     }) as MessageWithFragment[];
-
-    if (!messages || messages.length === 0) {
-      return NextResponse.json(
-        { error: "No messages found for this project." },
-        { status: 404 },
-      );
-    }
 
     const latestWithFragment = [...messages].reverse().find(
       (message) => message.Fragment,
@@ -91,54 +80,28 @@ export async function GET(
       );
     }
 
-    console.log(`[INFO] Preparing download for project ${projectId} with ${fileEntries.length} files`);
-
     const zip = new JSZip();
     fileEntries.forEach(([filename, content]) => {
       zip.file(filename, content);
     });
 
-    const archive = await zip.generateAsync({ 
-      type: "uint8array",
-      compression: "DEFLATE",
-      compressionOptions: {
-        level: 6
-      }
-    });
-    
-    if (archive.byteLength === 0) {
-      console.error("[ERROR] Generated zip file is empty");
-      return NextResponse.json(
-        { error: "Failed to generate download file" },
-        { status: 500 },
-      );
-    }
-
+    const archive = await zip.generateAsync({ type: "uint8array" });
     const archiveBuffer = new ArrayBuffer(archive.byteLength);
     new Uint8Array(archiveBuffer).set(archive);
     const filename = `project-${projectId}-latest-fragment.zip`;
-
-    console.log(`[INFO] Successfully prepared download: ${filename} (${archive.byteLength} bytes)`);
 
     return new NextResponse(archiveBuffer, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${filename}"`,
-        "Content-Length": archive.byteLength.toString(),
-        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {
     if (error instanceof Error) {
       const message = error.message.toLowerCase();
-      
-      console.error("[ERROR] Download failed:", {
-        message: error.message,
-        stack: error.stack,
-      });
-
-      if (message.includes("unauthorized") || message.includes("forbidden")) {
+      if (message.includes("unauthorized")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       if (message.includes("not found")) {
@@ -148,9 +111,8 @@ export async function GET(
 
     console.error("[ERROR] Failed to prepare project download:", error);
     return NextResponse.json(
-      { error: "Failed to prepare download. Please try again." },
+      { error: "Failed to prepare download" },
       { status: 500 },
     );
   }
 }
-
