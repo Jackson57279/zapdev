@@ -523,7 +523,12 @@ export const isValidFilePath = (filePath: string): boolean => {
       normalizedPath.startsWith(`./`),
   );
 
-  return isInWorkspace || normalizedPath.startsWith("/home/user/");
+  // Allow relative paths without ./ prefix (e.g., "app/components/file.tsx")
+  // Allow absolute paths in /home/user/
+  // This ensures agent-generated files are properly validated
+  const isRelativePath = !normalizedPath.startsWith("/");
+
+  return isInWorkspace || normalizedPath.startsWith("/home/user/") || isRelativePath;
 };
 
 const getFindCommand = (framework: Framework): string => {
