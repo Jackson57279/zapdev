@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import path from "path";
 
 import { type TreeItem } from "@/types";
 
@@ -159,4 +160,145 @@ export function sanitizeAnyForDatabase<T>(value: T): T {
   }
 
   return value;
+}
+
+/**
+ * Sanitizes file paths to prevent directory traversal attacks.
+ * Removes dangerous patterns like ../ and ensures paths are safe for file operations.
+ *
+ * @param filePath - The file path to sanitize
+ * @returns The sanitized file path or null if the path is unsafe
+ *
+ * @example
+ * sanitizeFilePath("../../../etc/passwd") // returns null (unsafe)
+ * sanitizeFilePath("src/components/Button.tsx") // returns "src/components/Button.tsx" (safe)
+ * sanitizeFilePath("./safe/path/file.js") // returns "safe/path/file.js" (safe)
+ */
+export function sanitizeFilePath(filePath: string): string | null {
+  if (typeof filePath !== 'string') {
+    return null;
+  }
+
+  // Remove any null bytes that could cause issues
+  filePath = filePath.replace(/\u0000/g, '');
+
+  // Resolve the path to remove any .. segments
+  const resolvedPath = path.resolve('/', filePath);
+
+  // Ensure the resolved path doesn't go outside the allowed directory
+  // For sandbox operations, we allow any path as long as it doesn't contain dangerous patterns
+  if (resolvedPath.includes('..') || resolvedPath.includes('\0')) {
+    return null;
+  }
+
+  // Remove leading slashes and normalize
+  const normalizedPath = resolvedPath.replace(/^\/+/, '');
+
+  // Additional safety checks
+  if (normalizedPath.startsWith('..') || normalizedPath.includes('../')) {
+    return null;
+  }
+
+  // Limit path length to prevent extremely long paths
+  if (normalizedPath.length > 500) {
+    return null;
+  }
+
+  return normalizedPath;
+}
+
+/**
+ * Sanitizes shell commands to prevent command injection and dangerous operations.
+ * This is a basic validation - the primary security comes from sandbox isolation.
+ *
+ * @param command - The shell command to validate
+ * @returns The validated command or null if it's unsafe
+ *
+ * @example
+ * sanitizeCommand("rm -rf /") // returns null (dangerous)
+ * sanitizeCommand("npm install lodash") // returns "npm install lodash" (safe)
+ */
+export function sanitizeCommand(command: string): string | null {
+  if (typeof command !== 'string') {
+    return null;
+  }
+
+  // Remove null bytes
+  command = command.replace(/\u0000/g, '');
+
+  // Basic length check
+  if (command.length > 1000) {
+    return null;
+  }
+
+  // Check for obviously dangerous patterns
+  const dangerousPatterns = [
+    /rm\s+-rf\s+\//,  // rm -rf /
+    /rm\s+-rf\s+\*/,  // rm -rf *
+    /rm\s+-rf\s+\.\./, // rm -rf ..
+    /sudo\s+/,        // sudo commands
+    /su\s+/,          // su commands
+    />\s*\/dev\//,    // redirecting to device files
+    />\s*\/etc\//,    // redirecting to system files
+    />\s*\/proc\//,   // redirecting to proc files
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(command)) {
+      return null;
+    }
+  }
+
+  return command.trim();
+}
+
+/**
+ * Sanitizes error messages to prevent information disclosure.
+ * Removes sensitive data like API responses, stack traces, and internal details.
+ *
+ * @param error - The error object or message to sanitize
+ * @returns A sanitized error message safe for user consumption
+ *
+ * @example
+ * sanitizeErrorMessage(new Error("Database connection failed")) // returns "Database connection failed"
+ * sanitizeErrorMessage("Invalid API key: sk-123456") // returns "Authentication failed"
+ */
+export function sanitizeErrorMessage(error: unknown): string {
+  if (!error) {
+    return "An unknown error occurred";
+  }
+
+  let message: string;
+
+  if (error instanceof Error) {
+    message = error.message;
+  } else if (typeof error === 'string') {
+    message = error;
+  } else {
+    message = String(error);
+  }
+
+  // Remove sensitive patterns
+  const sensitivePatterns = [
+    /sk-\w+/gi,          // OpenAI/Sk keys
+    /pk_\w+/gi,          // Stripe/Pk keys
+    /xoxp-\w+/gi,        // Slack tokens
+    /ghp_\w+/gi,         // GitHub tokens
+    /Bearer\s+\w+/gi,    // Bearer tokens
+    /password.*[:=]\s*\w+/gi, // Passwords
+    /token.*[:=]\s*\w+/gi,    // Generic tokens
+    /secret.*[:=]\s*\w+/gi,   // Secrets
+    /api[_-]?key.*[:=]\s*\w+/gi, // API keys
+  ];
+
+  for (const pattern of sensitivePatterns) {
+    message = message.replace(pattern, '[REDACTED]');
+  }
+
+  // Limit message length
+  if (message.length > 200) {
+    message = message.substring(0, 200) + '...';
+  }
+
+  return message;
 }

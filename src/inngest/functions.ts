@@ -53,7 +53,7 @@ import {
   lastAssistantTextMessageContent,
   parseAgentOutput,
 } from "./utils";
-import { sanitizeTextForDatabase, sanitizeJsonForDatabase } from "@/lib/utils";
+import { sanitizeTextForDatabase, sanitizeJsonForDatabase, sanitizeFilePath, sanitizeCommand } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 // Multi-agent workflow removed; only single code agent is used.
 
@@ -742,6 +742,12 @@ const createCodeAgentTools = (sandboxId: string) => [
       opts: Tool.Options<AgentState>,
     ) => {
       return await opts.step?.run("terminal", async () => {
+        // Validate command for security
+        const sanitizedCommand = sanitizeCommand(command);
+        if (!sanitizedCommand) {
+          throw new Error("Invalid or dangerous command");
+        }
+
         const buffers: { stdout: string; stderr: string } = {
           stdout: "",
           stderr: "",
@@ -749,7 +755,7 @@ const createCodeAgentTools = (sandboxId: string) => [
 
         try {
           const sandbox = await getSandbox(sandboxId);
-          const result = await sandbox.commands.run(command, {
+          const result = await sandbox.commands.run(sanitizedCommand, {
             onStdout: (data: string) => {
               buffers.stdout += data;
             },
@@ -783,9 +789,16 @@ const createCodeAgentTools = (sandboxId: string) => [
         try {
           const updatedFiles = network.state.data.files || {};
           const sandbox = await getSandbox(sandboxId);
+
           for (const file of files) {
-            await sandbox.files.write(file.path, file.content);
-            updatedFiles[file.path] = file.content;
+            // Validate and sanitize file path
+            const sanitizedPath = sanitizeFilePath(file.path);
+            if (!sanitizedPath) {
+              throw new Error(`Invalid file path: ${file.path}`);
+            }
+
+            await sandbox.files.write(sanitizedPath, file.content);
+            updatedFiles[sanitizedPath] = file.content;
           }
 
           return updatedFiles;
@@ -811,8 +824,14 @@ const createCodeAgentTools = (sandboxId: string) => [
           const sandbox = await getSandbox(sandboxId);
           const contents = [];
           for (const file of files) {
-            const content = await sandbox.files.read(file);
-            contents.push({ path: file, content });
+            // Validate and sanitize file path
+            const sanitizedPath = sanitizeFilePath(file);
+            if (!sanitizedPath) {
+              throw new Error(`Invalid file path: ${file}`);
+            }
+
+            const content = await sandbox.files.read(sanitizedPath);
+            contents.push({ path: sanitizedPath, content });
           }
           return JSON.stringify(contents);
         } catch (e) {
@@ -828,12 +847,7 @@ export const codeAgentFunction = inngest.createFunction(
   { event: "code-agent/run" },
   async ({ event, step }) => {
     console.log("[DEBUG] Starting code-agent function");
-    console.log("[DEBUG] Event data:", JSON.stringify(event.data));
-    console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
-    console.log(
-      "[DEBUG] AI_GATEWAY_API_KEY present:",
-      !!process.env.AI_GATEWAY_API_KEY,
-    );
+    // Removed sensitive API key presence logging for security
 
     // Get project to check if framework is already set
     const project = await step.run("get-project", async () => {
@@ -1237,7 +1251,7 @@ export const codeAgentFunction = inngest.createFunction(
       },
     });
 
-    console.log("[DEBUG] Running network with input:", event.data.value);
+    // Removed sensitive input logging for security
     let result = await network.run(event.data.value, { state });
 
     // Post-network fallback: If no summary but files exist, make one more explicit request
@@ -1870,7 +1884,7 @@ export const sandboxTransferFunction = inngest.createFunction(
   { event: "sandbox-transfer/run" },
   async ({ event, step }) => {
     console.log("[DEBUG] Starting sandbox resume function");
-    console.log("[DEBUG] Event data:", JSON.stringify(event.data));
+    // Removed sensitive event data logging for security
 
     const fragment = await step.run("get-fragment", async () => {
       return await convex.query(api.messages.getFragmentById, {
@@ -1967,7 +1981,7 @@ export const errorFixFunction = inngest.createFunction(
   { event: "error-fix/run" },
   async ({ event, step }) => {
     console.log("[DEBUG] Starting error-fix function (no credit charge)");
-    console.log("[DEBUG] Event data:", JSON.stringify(event.data));
+    // Removed sensitive event data logging for security
 
     const fragment = await step.run("get-fragment", async () => {
       return await convex.query(api.messages.getFragmentById, {

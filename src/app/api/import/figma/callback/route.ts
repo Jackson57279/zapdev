@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchQuery, fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
+import { sanitizeErrorMessage } from "@/lib/utils";
 
 const FIGMA_CLIENT_ID = process.env.FIGMA_CLIENT_ID;
 const FIGMA_CLIENT_SECRET = process.env.FIGMA_CLIENT_SECRET;
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
 
     if (!tokenResponse.ok) {
       const error = await tokenResponse.text();
-      console.error("Figma token exchange error:", error);
+      console.error("Figma token exchange error:", sanitizeErrorMessage(error));
       throw new Error("Failed to exchange authorization code");
     }
 
@@ -103,10 +104,11 @@ export async function GET(request: Request) {
       )
     );
   } catch (error) {
-    console.error("Figma OAuth callback error:", error);
+    const sanitizedError = sanitizeErrorMessage(error);
+    console.error("Figma OAuth callback error:", sanitizedError);
     return NextResponse.redirect(
       new URL(
-        `/import?error=${encodeURIComponent(error instanceof Error ? error.message : "OAuth failed")}`,
+        `/import?error=${encodeURIComponent("OAuth authentication failed")}`,
         request.url
       )
     );
