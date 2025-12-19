@@ -97,10 +97,10 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
-  "moonshotai/kimi-k2-thinking": {
-    name: "Kimi K2 Thinking",
-    provider: "moonshot",
-    description: "Fast and efficient for speed-critical tasks",
+  "zhipu/glm-4.6": {
+    name: "GLM 4.6",
+    provider: "zhipu",
+    description: "Ultra-fast inference for speed-critical tasks",
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
@@ -188,14 +188,14 @@ export function selectModelForTask(
     chosenModel = "alibaba/qwen3-max";
   }
 
-  // Speed-critical tasks favor Kimi, but only override if clearly requested
+  // Speed-critical tasks favor GLM 4.6, but only override if clearly requested
   const speedIndicators = ["quick", "fast", "simple", "basic", "prototype"];
   const needsSpeed = speedIndicators.some((indicator) =>
     lowercasePrompt.includes(indicator),
   );
 
   if (needsSpeed && !hasComplexityIndicators) {
-    chosenModel = "moonshotai/kimi-k2-thinking";
+    chosenModel = "zhipu/glm-4.6";
   }
 
   // Highly complex or long tasks stick with Haiku
