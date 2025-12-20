@@ -10,6 +10,7 @@ import {
   SunMoonIcon,
   DownloadIcon,
 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +37,40 @@ export const ProjectHeader = ({ projectId }: Props) => {
   });
 
   const { setTheme, theme } = useTheme();
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    
+    setIsDownloading(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/download`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `project-${projectId}-latest-fragment.zip`;
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+    } catch (error) {
+      console.error('Download error:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download project files');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   if (!project) {
     return <header className="p-2 flex justify-between items-center border-b">Loading...</header>;
@@ -94,12 +129,11 @@ export const ProjectHeader = ({ projectId }: Props) => {
       <Button
         variant="ghost"
         size="sm"
-        asChild
+        onClick={handleDownload}
+        disabled={isDownloading}
       >
-        <a href={`/api/projects/${projectId}/download`} download>
-          <DownloadIcon className="size-4 mr-2" />
-          Download Code
-        </a>
+        <DownloadIcon className="size-4 mr-2" />
+        {isDownloading ? 'Downloading...' : 'Download Code'}
       </Button>
     </header>
   );

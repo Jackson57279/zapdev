@@ -85,16 +85,15 @@ export async function GET(
       zip.file(filename, content);
     });
 
-    const archive = await zip.generateAsync({ type: "uint8array" });
-    const archiveBuffer = new ArrayBuffer(archive.byteLength);
-    new Uint8Array(archiveBuffer).set(archive);
+    const archive = await zip.generateAsync({ type: "blob" });
     const filename = `project-${projectId}-latest-fragment.zip`;
 
-    return new NextResponse(archiveBuffer, {
+    return new NextResponse(archive, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": archive.size.toString(),
         "Cache-Control": "no-store",
       },
     });
