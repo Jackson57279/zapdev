@@ -97,8 +97,8 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
-  "zhipu/glm-4.6": {
-    name: "GLM 4.6",
+  "zai/glm-4.6": {
+    name: "Zai GLM 4.6",
     provider: "zhipu",
     description: "Ultra-fast inference for speed-critical tasks",
     temperature: 0.7,
@@ -108,13 +108,6 @@ export const MODEL_CONFIGS = {
     name: "Qwen 3 Max",
     provider: "qwen",
     description: "Specialized for coding tasks",
-    temperature: 0.7,
-    frequency_penalty: 0.5,
-  },
-  "xai/grok-4-fast-reasoning": {
-    name: "Grok 4 Fast",
-    provider: "xai",
-    description: "Good at nothing",
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
@@ -194,8 +187,8 @@ export function selectModelForTask(
     lowercasePrompt.includes(indicator),
   );
 
-  if (needsSpeed && !hasComplexityIndicators) {
-    chosenModel = "zhipu/glm-4.6";
+    if (needsSpeed && !hasComplexityIndicators) {
+    chosenModel = "zai/glm-4.6";
   }
 
   // Highly complex or long tasks stick with Haiku
@@ -482,10 +475,10 @@ const getFrameworkPrompt = (framework: Framework): string => {
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export const MAX_FILE_COUNT = 500;
 const MAX_SCREENSHOTS = 20;
-const FILE_READ_BATCH_SIZE = 10;
+const FILE_READ_BATCH_SIZE = 50;
 const FILE_READ_TIMEOUT_MS = 5000;
 const INNGEST_STEP_OUTPUT_SIZE_LIMIT = 1024 * 1024;
-const FILES_PER_STEP_BATCH = 50;
+const FILES_PER_STEP_BATCH = 100;
 
 const ALLOWED_WORKSPACE_PATHS = ["/home/user", "."];
 
