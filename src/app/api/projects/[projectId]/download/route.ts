@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getConvexClientWithAuth, getUser } from "@/lib/auth-server";
-import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
+import { filterFilesForDownload } from "@/lib/filter-ai-files";
 
 type FragmentFileMap = Record<string, string>;
 
@@ -70,7 +70,7 @@ export async function GET(
     }
 
     const normalizedFiles = normalizeFiles(fragment.files);
-    const aiFiles = filterAIGeneratedFiles(normalizedFiles);
+    const aiFiles = filterFilesForDownload(normalizedFiles);
 
     const fileEntries = Object.entries(aiFiles);
     if (fileEntries.length === 0) {

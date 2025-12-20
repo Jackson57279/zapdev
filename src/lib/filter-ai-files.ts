@@ -126,3 +126,56 @@ export function filterAIGeneratedFiles(
 
   return filtered;
 }
+
+/**
+ * Filters files for download, including essential project configuration files
+ * but excluding lock files, cache, and secrets.
+ */
+export function filterFilesForDownload(
+  files: Record<string, string>
+): Record<string, string> {
+  const filtered: Record<string, string> = {};
+
+  // Patterns for files to EXCLUDE (Lock files, cache, secrets)
+  const excludePatterns = [
+    // Lock files
+    /^package-lock\.json$/,
+    /^bun\.lockb$/,
+    /^yarn\.lock$/,
+    /^pnpm-lock\.yaml$/,
+    /\.lock$/,
+    
+    // Environment files (Security)
+    /^\.env/,
+    
+    // Cache and build directories
+    /^node_modules\//,
+    /^\.next\//,
+    /^\.cache\//,
+    /^dist\//,
+    /^build\//,
+    /^\.git\//,
+    /^\.idea\//,
+    /^\.vscode\//,
+    
+    // System files
+    /^\.DS_Store$/,
+    /^Thumbs\.db$/,
+  ];
+
+  // We implicitly include everything else to ensure the project is runnable
+  // This includes package.json, tsconfig.json, next.config.js, etc.
+
+  for (const [path, content] of Object.entries(files)) {
+    // Skip if matches any exclude pattern
+    const shouldExclude = excludePatterns.some(pattern => pattern.test(path));
+    if (shouldExclude) {
+      continue;
+    }
+
+    // Include everything else
+    filtered[path] = content;
+  }
+
+  return filtered;
+}
