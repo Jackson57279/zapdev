@@ -1449,28 +1449,35 @@ IMPORTANT:
       );
     }
 
-    const errorReasons: string[] = [];
+    const criticalErrorReasons: string[] = [];
     const warningReasons: string[] = [];
     const shadcnCompliant =
       selectedFramework !== "nextjs" || usesShadcnComponents(files);
 
+    // Critical errors: truly prevent showing results
     if (!hasFiles) {
-      errorReasons.push("no files generated");
+      criticalErrorReasons.push("no files generated");
     }
     if (!hasSummary) {
-      errorReasons.push("no summary available");
+      criticalErrorReasons.push("no summary available");
     }
-    if (agentReportedError) {
-      errorReasons.push("agent reported unresolved error");
+
+    // Warnings: code was generated but has issues
+    if (agentReportedError && hasFiles && hasSummary) {
+      warningReasons.push("validation errors detected");
+    } else if (agentReportedError) {
+      // If agent reported error AND no files/summary, it's critical
+      criticalErrorReasons.push("agent reported unresolved error");
     }
-    if (!shadcnCompliant) {
+    
+    if (!shadcnCompliant && hasFiles) {
       warningReasons.push("missing Shadcn UI components");
     }
 
-    const isError = errorReasons.length > 0;
-    if (isError) {
+    const isCriticalError = criticalErrorReasons.length > 0;
+    if (isCriticalError) {
       console.warn(
-        `[WARN] Completion flagged as error: ${errorReasons.join(", ")}`,
+        `[WARN] Completion flagged as critical error: ${criticalErrorReasons.join(", ")}`,
       );
     } else {
       console.log("[DEBUG] Completion flagged as success.");
@@ -1502,7 +1509,7 @@ IMPORTANT:
     let fragmentTitleOutput: Message[] | undefined;
     let responseOutput: Message[] | undefined;
 
-    if (!isError && hasSummary && hasFiles) {
+    if (!isCriticalError && hasSummary && hasFiles) {
       try {
         const titleModel = openai({
           model: "openai/gpt-5-nano",
@@ -1574,7 +1581,7 @@ IMPORTANT:
     });
 
     const filePathsList = await step.run("find-sandbox-files", async () => {
-      if (isError) {
+      if (isCriticalError) {
         return [];
       }
 
@@ -1775,7 +1782,7 @@ IMPORTANT:
     const finalFiles = validatedMergedFiles;
 
     await step.run("save-result", async () => {
-      if (isError) {
+      if (isCriticalError) {
         const errorContent = sanitizeTextForDatabase(
           "Something went wrong. Please try again.",
         );
@@ -1794,6 +1801,7 @@ IMPORTANT:
         });
       }
 
+      // If we reach here, we have files and summary (success with possible warnings)
       const parsedResponse = parseAgentOutput(responseOutput);
       const parsedTitle = parseAgentOutput(fragmentTitleOutput);
 
@@ -1801,11 +1809,11 @@ IMPORTANT:
       const baseResponseContent =
         sanitizedResponse.length > 0
           ? sanitizedResponse
-          : "Generated code is ready.";
+          : sanitizeTextForDatabase(summaryText) || "Generated code is ready.";
       const warningsNote =
         warningReasons.length > 0
           ? sanitizeTextForDatabase(
-              `\n\nWarnings:\n- ${warningReasons.join("\n- ")}`,
+              `\n\n⚠️ Warnings:\n- ${warningReasons.join("\n- ")}`,
             )
           : "";
       const responseContent = sanitizeTextForDatabase(
