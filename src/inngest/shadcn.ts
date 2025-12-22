@@ -15,6 +15,7 @@ import { SANDBOX_TIMEOUT, type Framework, type AgentState } from "./types";
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { createCodeAgentTools, MODEL_CONFIGS } from "./functions";
 import { NEXTJS_PROMPT } from "@/prompt";
+import { getShadcnSystemPrompt } from "@/prompts/shared";
 import { lastAssistantTextMessageContent } from "./utils";
 
 // Get Convex client lazily
@@ -166,7 +167,7 @@ export const shadcnCreateFunction = inngest.createFunction(
         const codeAgent = createAgent<AgentState>({
           name: "shadcn-builder-agent",
           description: "An expert Next.js coding agent",
-          system: NEXTJS_PROMPT + "\n\nIMPORTANT: You are working in a project that has just been scaffolded with Shadcn UI. The files are already present. You should READ the files first to understand the structure, then implement the user's request.",
+          system: getShadcnSystemPrompt(NEXTJS_PROMPT, style),
           model: openai({
             model: "anthropic/claude-haiku-4.5",
             apiKey: process.env.AI_GATEWAY_API_KEY!,
