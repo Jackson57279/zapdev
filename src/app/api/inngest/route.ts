@@ -9,6 +9,7 @@ import {
   processFigmaImport,
   processFigmaDirect,
 } from "@/inngest/functions";
+import { shadcnCreateFunction } from "@/inngest/shadcn";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -19,6 +20,7 @@ export const { GET, POST, PUT } = serve({
     sandboxCleanupFunction,
     processFigmaImport,
     processFigmaDirect,
+    shadcnCreateFunction,
   ],
   signingKey: process.env.INNGEST_SIGNING_KEY,
 });

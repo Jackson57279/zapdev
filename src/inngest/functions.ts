@@ -119,6 +119,14 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     // Note: Gemini models do not support frequency_penalty parameter
   },
+  "google/gemini-3-flash": {
+    name: "Gemini 3 Flash",
+    provider: "google",
+    description: "Ultra-fast inference optimized for speed - skips validation",
+    temperature: 0.3,
+    skipValidation: true, // Skip build/lint checks for maximum speed
+    // Note: Gemini models do not support frequency_penalty parameter
+  },
 } as const;
 
 export type ModelId = keyof typeof MODEL_CONFIGS | "auto";
@@ -181,14 +189,14 @@ export function selectModelForTask(
     chosenModel = "alibaba/qwen3-max";
   }
 
-  // Speed-critical tasks favor GLM 4.6, but only override if clearly requested
+  // Speed-critical tasks favor Gemini 3 Flash for ultra-fast inference
   const speedIndicators = ["quick", "fast", "simple", "basic", "prototype"];
   const needsSpeed = speedIndicators.some((indicator) =>
     lowercasePrompt.includes(indicator),
   );
 
-    if (needsSpeed && !hasComplexityIndicators) {
-    chosenModel = "zai/glm-4.6";
+  if (needsSpeed && !hasComplexityIndicators) {
+    chosenModel = "google/gemini-3-flash";
   }
 
   // Highly complex or long tasks stick with Haiku
@@ -723,7 +731,7 @@ const validateMergeStrategy = (
   };
 };
 
-const createCodeAgentTools = (sandboxId: string) => [
+export const createCodeAgentTools = (sandboxId: string) => [
   createTool({
     name: "terminal",
     description: "Use the terminal to run commands",
