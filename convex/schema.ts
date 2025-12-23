@@ -190,7 +190,8 @@ export default defineSchema({
       v.literal("canceled"),
       v.literal("past_due"),
       v.literal("unpaid"),
-      v.literal("trialing")
+      v.literal("trialing"),
+      v.literal("revoked")
     ),
     currentPeriodStart: v.number(), // Timestamp
     currentPeriodEnd: v.number(), // Timestamp

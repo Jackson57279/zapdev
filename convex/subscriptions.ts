@@ -54,7 +54,8 @@ export const createOrUpdateSubscription = mutation({
       v.literal("canceled"),
       v.literal("past_due"),
       v.literal("unpaid"),
-      v.literal("trialing")
+      v.literal("trialing"),
+      v.literal("revoked")
     ),
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
@@ -187,7 +188,7 @@ export const revokeSubscription = mutation({
     }
 
     await ctx.db.patch(subscription._id, {
-      status: "canceled",
+      status: "revoked",
       cancelAtPeriodEnd: false,
       updatedAt: Date.now(),
     });

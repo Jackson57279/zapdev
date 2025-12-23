@@ -102,9 +102,8 @@ export async function POST(request: NextRequest) {
 
         await convex.mutation(api.subscriptions.createOrUpdateSubscription, {
           userId,
-          polarSubscriptionId: subscription.id,
-          polarCustomerId: subscription.customerId ?? undefined,
-          polarProductId: subscription.productId,
+          clerkSubscriptionId: subscription.id,
+          planId: subscription.productId,
           planName: extractPlanName(subscription.product?.name),
           status: mapPolarStatus(subscription.status),
           currentPeriodStart: periodStart,
@@ -121,7 +120,7 @@ export async function POST(request: NextRequest) {
         const subscription = event.data;
         
         await convex.mutation(api.subscriptions.markSubscriptionForCancellation, {
-          polarSubscriptionId: subscription.id,
+          clerkSubscriptionId: subscription.id,
         });
 
         console.log(`✅ Subscription marked for cancellation: ${subscription.id}`);
@@ -132,7 +131,7 @@ export async function POST(request: NextRequest) {
         const subscription = event.data;
         
         await convex.mutation(api.subscriptions.revokeSubscription, {
-          polarSubscriptionId: subscription.id,
+          clerkSubscriptionId: subscription.id,
         });
 
         console.log(`✅ Subscription revoked: ${subscription.id}`);
@@ -143,7 +142,7 @@ export async function POST(request: NextRequest) {
         const subscription = event.data;
         
         await convex.mutation(api.subscriptions.reactivateSubscription, {
-          polarSubscriptionId: subscription.id,
+          clerkSubscriptionId: subscription.id,
         });
 
         console.log(`✅ Subscription reactivated: ${subscription.id}`);
