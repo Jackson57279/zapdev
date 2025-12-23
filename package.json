@@ -12,6 +12,9 @@
     "convex:deploy": "bunx convex deploy"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "1.1.6",
+    "@ai-sdk/google": "1.1.6",
+    "@ai-sdk/openai": "1.1.9",
     "@clerk/backend": "^2.27.0",
     "@clerk/nextjs": "^6.36.2",
     "@databuddy/sdk": "^2.2.1",
@@ -60,6 +63,7 @@
     "@typescript/native-preview": "^7.0.0-dev.20251104.1",
     "@uploadthing/react": "^7.3.3",
     "@vercel/speed-insights": "^1.2.0",
+    "ai": "4.2.0",
     "class-variance-authority": "^0.7.1",
     "claude": "^0.1.2",
     "client-only": "^0.0.1",

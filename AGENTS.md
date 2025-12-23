@@ -31,7 +31,7 @@ bun run test           # Run Jest tests (if configured)
 # Build E2B templates for AI code generation (requires Docker)
 cd sandbox-templates/[framework]  # nextjs, angular, react, vue, or svelte
 e2b template build --name your-template-name --cmd "/compile_page.sh"
-# Update template name in src/inngest/functions.ts after building
+# Update template name in API route after building
 ```
 
 ## Architecture Overview
@@ -39,27 +39,31 @@ e2b template build --name your-template-name --cmd "/compile_page.sh"
 ### Tech Stack
 - **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4, Shadcn/ui
 - **Backend**: Convex (real-time database), tRPC (type-safe APIs)
-- **Auth**: Clerk with JWT authentication
-- **AI**: Vercel AI Gateway (Claude via Anthropic), Inngest Agent Kit
+- **Auth**: Stack Auth with JWT authentication (migrated from Clerk)
+- **AI**: Vercel AI SDK (multi-provider: Anthropic, OpenAI, Google, Qwen, Grok)
 - **Code Execution**: E2B Code Interpreter (isolated sandboxes)
-- **Background Jobs**: Inngest
+- **Streaming**: Server-Sent Events (SSE) for real-time progress updates
 
 ### Core Architecture
 
-**AI-Powered Code Generation Flow**
+**Streaming-First AI Code Generation**
 1. User creates project and sends message describing desired app
-2. Framework selector agent chooses appropriate framework (Next.js/Angular/React/Vue/Svelte)
-3. Single code generation agent runs inside E2B sandbox:
-   - Writes/updates files using sandbox file APIs
-   - Runs commands (install, lint, build) via terminal tool
-   - Follows framework-specific prompts from `src/prompts/`
-   - Produces `<task_summary>` when complete
-4. Automatic validation: `bun run lint` and `bun run build` in sandbox
-5. Generated files and metadata saved to Convex as project fragments
+2. `/api/generate-ai-code-stream` handles request:
+   - Selects appropriate AI model based on task complexity
+   - Streams AI responses via Server-Sent Events (SSE)
+   - Maintains conversation state in memory (or Convex in production)
+3. `/api/apply-ai-code-stream` processes AI response:
+   - Parses `<file>` XML tags from AI output
+   - Detects npm packages from import statements
+   - Writes files to E2B sandbox
+   - Installs detected packages via npm
+   - Streams progress updates via SSE
+4. Dev server runs in background sandbox on port 3000
+5. Generated files accessible via live preview iframe
 
 **Data Flow**
 - User actions → tRPC mutations → Convex database
-- AI processing → Inngest background jobs → E2B sandboxes → Convex
+- AI generation → API routes → E2B sandboxes → Real-time SSE updates
 - Real-time updates → Convex subscriptions → React components
 
 ### Directory Structure
@@ -67,12 +71,17 @@ e2b template build --name your-template-name --cmd "/compile_page.sh"
 ```
 src/
   app/              # Next.js App Router pages and layouts
+    api/            # API routes (streaming code generation)
+      generate-ai-code-stream/  # AI code generation endpoint
+      apply-ai-code-stream/      # Apply code to sandbox endpoint
+      fix-errors/                # Error fixing endpoint
+      transfer-sandbox/          # Sandbox resume endpoint
+      import/                    # Figma/GitHub import endpoints
   components/       # Reusable UI components (Shadcn/ui based)
-  inngest/          # Background job functions and AI agent logic
-    functions/      # Inngest function definitions
-    functions.ts    # Main agent orchestration (framework selection, code generation)
   lib/              # Utilities (Convex API, utils, frameworks config)
-  modules/          # Feature modules (home, projects, messages, usage)
+    streaming/       # Streaming utilities (SSE, types, providers)
+  modules/          # Feature modules (home, projects, messages, usage, sandbox)
+    sandbox/         # Sandbox management module
   prompts/          # Framework-specific AI prompts (nextjs.ts, angular.ts, etc.)
   trpc/             # tRPC router and client setup
 convex/             # Convex backend (schema, queries, mutations, actions)
@@ -92,20 +101,35 @@ sandbox-templates/  # E2B sandbox templates for each framework
 - `usage`: Daily credit tracking for rate limiting
 - `attachments`: Figma/GitHub imports
 - `imports`: Import job status tracking
+- `sandboxSessions`: E2B sandbox persistence tracking
+- `subscriptions`: Subscription management (Polar billing)
 
-**Inngest Functions** (`src/inngest/functions.ts`)
-- Framework detection using AI
-- Code generation agents with tools: `createOrUpdateFiles`, `readFiles`, `terminal`
-- Auto-fix retry logic for build/lint errors (max 2 attempts)
-- URL crawling and web content integration
-- Figma/GitHub import processing
+**API Routes**
+- `src/app/api/generate-ai-code-stream/route.ts`:
+  - Handles AI code generation with streaming
+  - Model selection (auto, Anthropic, OpenAI, Google, Qwen)
+  - Conversation context management
+  - Server-Sent Events for real-time streaming
+- `src/app/api/apply-ai-code-stream/route.ts`:
+  - Applies AI-generated code to E2B sandbox
+  - Parses `<file>` XML tags and `<package>` tags
+  - Auto-detects npm packages from imports
+  - Installs packages via npm in sandbox
+  - Streams progress via SSE
 
-**Code Standards for AI Agents**
+**Streaming Library** (`src/lib/streaming/`)
+- `index.ts`: Main streaming utilities
+- `sse.ts`: Server-Sent Events helper functions
+- `ai-provider.ts`: AI provider configuration
+- `types.ts`: TypeScript types for streaming
+- `context-selector.ts`: Context-aware prompt building
+
+**Code Standards**
 - Strict TypeScript (avoid `any`)
 - Modern framework patterns (Next.js App Router, React hooks)
 - Accessibility and responsive design
-- Never start dev servers in sandboxes
-- Always run `bun run lint` and `bun run build` for validation
+- Streaming-first architecture (no blocking operations)
+- Use Tailwind CSS classes only (no custom CSS imports)
 
 ## Important Notes
 
@@ -123,35 +147,40 @@ Required for development:
 - `AI_GATEWAY_API_KEY`: Vercel AI Gateway key
 - `AI_GATEWAY_BASE_URL`: https://ai-gateway.vercel.sh/v1/
 - `E2B_API_KEY`: E2B sandbox API key
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Clerk auth
-- `CLERK_SECRET_KEY`: Clerk secret
-- `INNGEST_EVENT_KEY`: Inngest event key
-- `INNGEST_SIGNING_KEY`: Inngest signing key
+- Stack Auth keys (migrated from Clerk):
+  - `NEXT_PUBLIC_STACK_APP_ID`: Stack App ID
+  - `NEXT_PUBLIC_STACK_PROJECT_ID`: Stack Project ID
+  - `STACK_SECRET_KEY`: Stack Secret Key
 
 ### E2B Templates
 Before running AI code generation:
 1. Build E2B templates with Docker
-2. Update template name in `src/inngest/functions.ts` (line ~22)
+2. Update template name in relevant API route
 3. Templates available: nextjs, angular, react, vue, svelte
 
 ### Convex Development
 - Run `bun run convex:dev` in separate terminal during development
 - Convex uses real-time subscriptions for live updates
 - Schema changes auto-migrate in dev mode
-- See `README_CONVEX.md` for migration from PostgreSQL
 
 ## Troubleshooting
-
-**Framework Detection Errors**
-- Check `FRAMEWORK_SELECTOR_PROMPT` in `src/prompts/framework-selector.ts`
-- Ensure recent messages exist for context
 
 **Code Generation Failures**
 - Verify E2B sandbox templates are built and accessible
 - Check AI Gateway credentials in environment
-- Review framework prompt instructions in `src/prompts/`
+- Check API route logs for streaming errors
 
-**Build or Lint Failures in Sandbox**
-- Inspect Inngest logs for command output
-- Auto-fix will retry up to 2 times for detected errors
-- Test locally: `cd sandbox-templates/[framework] && bun run lint && bun run build`
+**Sandbox Connection Issues**
+- Ensure E2B_API_KEY is valid
+- Check sandbox template exists and is accessible
+- Use global `activeSandbox` for reuse across requests
+
+**Package Installation Failures**
+- Check npm is working in sandbox
+- Verify network connectivity in sandbox
+- Look at npm stderr in API route logs
+
+**Streaming Issues**
+- Ensure `dynamic = 'force-dynamic'` is set in API routes
+- Check SSE headers are correctly set
+- Verify client-side EventSource is properly configured
