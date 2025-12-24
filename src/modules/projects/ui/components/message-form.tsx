@@ -10,7 +10,8 @@ import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon
 import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
-import type { ModelId } from "@/inngest/functions";
+import type { ModelId } from "@/types/models";
+import { useCodeStream } from "@/hooks/use-code-stream";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ export const MessageForm = ({ projectId }: Props) => {
 
   const usage = useQuery(api.usage.getUsage);
   const createMessageWithAttachments = useAction(api.messages.createWithAttachments);
+  const { isStreaming, streamStatus, startStream } = useCodeStream();
 
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -82,19 +84,14 @@ export const MessageForm = ({ projectId }: Props) => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      // Trigger Inngest event for AI processing
-      await fetch("/api/inngest/trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: result.projectId,
-          value: result.value,
-          model: selectedModel,
-        }),
-      });
-
       form.reset();
       setAttachments([]);
+
+      await startStream({
+        projectId: result.projectId,
+        prompt: result.value,
+        model: selectedModel,
+      });
     } catch (error) {
       if (error instanceof Error) {
         toast.error(error.message);
@@ -185,7 +182,7 @@ export const MessageForm = ({ projectId }: Props) => {
   };
 
   const [isFocused, setIsFocused] = useState(false);
-  const isPending = isCreating;
+  const isPending = isCreating || isStreaming;
   const isButtonDisabled = isPending || !form.formState.isValid || isUploading;
   const isEnhanceDisabled = isEnhancing || isPending || isUploading;
   const showUsage = !!usage;
