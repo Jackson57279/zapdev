@@ -17,3 +17,9 @@ RUN npx --yes shadcn@2.6.3 add --all --yes
 
 # Move the Nextjs app to the home directory and remove the nextjs-app directory
 RUN mv /home/user/nextjs-app/* /home/user/ && rm -rf /home/user/nextjs-app
+
+# Set working directory
+WORKDIR /home/user
+
+# Auto-start dev server when sandbox starts
+CMD ["/bin/bash", "-c", "npm run dev -- --port 3000"]
