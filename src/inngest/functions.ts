@@ -388,6 +388,44 @@ const runDevServerCheck = async (sandboxId: string, framework: Framework): Promi
   }
 };
 
+const waitForDevServer = async (sandboxId: string, framework: Framework, maxRetries = 30): Promise<boolean> => {
+  const sandbox = await getSandbox(sandboxId);
+  const port = getFrameworkPort(framework);
+  
+  console.log(`[DEBUG] Waiting for dev server on port ${port}...`);
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await sandbox.commands.run(
+        `curl -f -s -o /dev/null -w "%{http_code}" http://localhost:${port}`,
+        { timeoutMs: 5000 }
+      );
+      
+      const httpCode = result.stdout.trim();
+      
+      // Accept any HTTP response (200, 404, etc.) - server is running
+      if (httpCode && httpCode.match(/^[2-5]\d{2}$/)) {
+        console.log(`[DEBUG] Dev server ready on port ${port} (HTTP ${httpCode}) after ${attempt} attempts`);
+        return true;
+      }
+    } catch (error) {
+      // Server not ready yet, continue polling
+    }
+    
+    // Log progress every 5 attempts
+    if (attempt % 5 === 0) {
+      console.log(`[DEBUG] Still waiting for dev server... (attempt ${attempt}/${maxRetries})`);
+    }
+    
+    // Exponential backoff: 1s, 2s, 4s, then 5s max
+    const delay = Math.min(1000 * Math.pow(2, Math.floor(attempt / 3)), 5000);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  
+  console.warn(`[WARN] Dev server failed to start after ${maxRetries} attempts`);
+  return false;
+};
+
 const runBuildCheck = async (sandboxId: string): Promise<string | null> => {
   // Build check is now deprecated in favor of dev server validation
   // keeping function signature for compatibility but returning null
@@ -954,22 +992,49 @@ export const codeAgentFunction = inngest.createFunction(
       }
     });
 
-    // Start dev server in background
+    // Start dev server and wait for it to be ready
     await step.run("start-dev-server", async () => {
       try {
         const sandbox = await getSandbox(sandboxId);
         const port = getFrameworkPort(selectedFramework);
         
-        // Start dev server in background (don't wait for it)
-        sandbox.commands.run(`npm run dev -- --port ${port}`, {
-          background: true,
-          onStdout: (data) => console.log("[DEV SERVER]", data),
-          onStderr: (data) => console.error("[DEV SERVER]", data),
-        }).catch(err => console.warn("[DEV SERVER] Failed to start:", err));
+        // Check if dev server is already running (from CMD in Dockerfile)
+        let serverReady = false;
+        try {
+          const checkResult = await sandbox.commands.run(
+            `curl -f -s -o /dev/null -w "%{http_code}" http://localhost:${port}`,
+            { timeoutMs: 2000 }
+          );
+          const httpCode = checkResult.stdout.trim();
+          serverReady = httpCode && httpCode.match(/^[2-5]\d{2}$/) !== null;
+        } catch {
+          // Server not running yet
+        }
         
-        console.log(`[DEBUG] Dev server starting on port ${port}`);
+        if (!serverReady) {
+          console.log(`[DEBUG] Dev server not detected, starting manually on port ${port}...`);
+          // Start dev server in background (fallback if CMD didn't start it)
+          sandbox.commands.run(`npm run dev -- --port ${port}`, {
+            background: true,
+            onStdout: (data: string) => console.log("[DEV SERVER]", data),
+            onStderr: (data: string) => console.error("[DEV SERVER]", data),
+          }).catch((err: unknown) => console.warn("[DEV SERVER] Failed to start:", err));
+        } else {
+          console.log(`[DEBUG] Dev server already running on port ${port}`);
+        }
+        
+        // Wait for server to be ready (either from CMD or manual start)
+        const isReady = await waitForDevServer(sandboxId, selectedFramework, 30);
+        
+        if (!isReady) {
+          console.error("[ERROR] Dev server failed to become ready within timeout");
+          throw new Error(`Dev server failed to start on port ${port}`);
+        }
+        
+        console.log(`[DEBUG] Dev server confirmed ready on port ${port}`);
       } catch (error) {
-        console.warn("[WARN] Failed to start dev server:", error);
+        console.error("[ERROR] Failed to start/verify dev server:", error);
+        throw error;
       }
     });
 
