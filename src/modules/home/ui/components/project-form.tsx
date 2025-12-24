@@ -12,7 +12,8 @@ import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, FigmaIcon, Gi
 import { UploadButton } from "@uploadthing/react";
 import { useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
-import type { ModelId } from "@/inngest/functions";
+import type { ModelId } from "@/types/models";
+import { useCodeStream } from "@/hooks/use-code-stream";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ export const ProjectForm = () => {
   });
 
   const createProjectWithMessageAndAttachments = useAction(api.projects.createWithMessageAndAttachments);
+  const { isStreaming, streamStatus, startStream } = useCodeStream();
   const [isCreating, setIsCreating] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -76,20 +78,15 @@ export const ProjectForm = () => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      // Trigger Inngest event for AI processing
-      await fetch("/api/inngest/trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: result.id,
-          value: result.value,
-          model: selectedModel,
-        }),
-      });
-
       form.reset();
       setAttachments([]);
       router.push(`/projects/${result.id}`);
+
+      await startStream({
+        projectId: result.id,
+        prompt: result.value,
+        model: selectedModel,
+      });
     } catch (error) {
       if (error instanceof Error) {
         toast.error(error.message);
@@ -220,7 +217,7 @@ export const ProjectForm = () => {
   };
 
   const [isFocused, setIsFocused] = useState(false);
-  const isPending = isCreating;
+  const isPending = isCreating || isStreaming;
   const isButtonDisabled = isPending || !form.formState.isValid || isUploading;
   const isEnhanceDisabled = isEnhancing || isPending || isUploading;
 
