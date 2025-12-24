@@ -19,11 +19,11 @@ describe('Model Selection Logic', () => {
     expect(result).toBe('alibaba/qwen3-max');
   });
 
-   it('prefers GLM 4.7 for clearly speed-focused prompts without complexity', () => {
+   it('prefers Gemini 3 Flash for clearly speed-focused prompts without complexity', () => {
      const prompt = 'Need a quick prototype landing page mockup.';
      const result = selectModelForTask(prompt);
 
-     expect(result).toBe('zai/glm-4.7');
+     expect(result).toBe('google/gemini-3-flash');
    });
 
   it('keeps Claude Haiku when complexity indicators are present even if speed is requested', () => {

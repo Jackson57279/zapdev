@@ -1006,7 +1006,7 @@ export const codeAgentFunction = inngest.createFunction(
             { timeoutMs: 2000 }
           );
           const httpCode = checkResult.stdout.trim();
-          serverReady = httpCode && httpCode.match(/^[2-5]\d{2}$/) !== null;
+          serverReady = !!(httpCode && httpCode.match(/^[2-5]\d{2}$/));
         } catch {
           // Server not running yet
         }
@@ -1239,9 +1239,15 @@ export const codeAgentFunction = inngest.createFunction(
     let lintErrors: string | null = null;
     let buildErrors: string | null = null;
 
-    // Check if we should skip validation (e.g. for fast models)
+    // ALWAYS run dev server check for all models - it's critical
+    // Only skip lint/build for fast models
     if ("skipValidation" in modelConfig && modelConfig.skipValidation) {
-      console.log("[DEBUG] Skipping validation for fast model:", selectedModel);
+      console.log("[DEBUG] Skipping lint/build validation for fast model:", selectedModel);
+      console.log("[DEBUG] Running dev server check (always required)...");
+      
+      buildErrors = await step.run("post-completion-dev-server-check", async () => {
+        return await runDevServerCheck(sandboxId, selectedFramework);
+      });
     } else {
       await checkSandboxResources(sandboxId);
       
