@@ -97,13 +97,13 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
-  "zai/glm-4.6": {
-    name: "Zai GLM 4.6",
-    provider: "zhipu",
-    description: "Ultra-fast inference for speed-critical tasks",
-    temperature: 0.7,
-    frequency_penalty: 0.5,
-  },
+   "zai/glm-4.7": {
+     name: "Zai GLM 4.7",
+     provider: "zhipu",
+     description: "Ultra-fast inference for speed-critical tasks",
+     temperature: 0.7,
+     frequency_penalty: 0.5,
+   },
   "alibaba/qwen3-max": {
     name: "Qwen 3 Max",
     provider: "qwen",

@@ -19,12 +19,12 @@ describe('Model Selection Logic', () => {
     expect(result).toBe('alibaba/qwen3-max');
   });
 
-  it('prefers GLM 4.6 for clearly speed-focused prompts without complexity', () => {
-    const prompt = 'Need a quick prototype landing page mockup.';
-    const result = selectModelForTask(prompt);
+   it('prefers GLM 4.7 for clearly speed-focused prompts without complexity', () => {
+     const prompt = 'Need a quick prototype landing page mockup.';
+     const result = selectModelForTask(prompt);
 
-    expect(result).toBe('zhipu/glm-4.6');
-  });
+     expect(result).toBe('zai/glm-4.7');
+   });
 
   it('keeps Claude Haiku when complexity indicators are present even if speed is requested', () => {
     const prompt = 'Need a quick enterprise architecture overview with detailed security notes.';
