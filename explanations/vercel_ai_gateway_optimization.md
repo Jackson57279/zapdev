@@ -1,11 +1,11 @@
-# Vercel AI Gateway & Inngest Agent Optimization
+# OpenRouter & Inngest Agent Optimization
 
 ## Overview
-Implemented comprehensive performance optimizations to address 5-10 minute AI generation times. The bottleneck was identified as a combination of inefficient Vercel AI Gateway configuration, excessive agent iterations, and high token context.
+Implemented comprehensive performance optimizations to address 5-10 minute AI generation times. The bottleneck was identified as a combination of inefficient OpenRouter configuration, excessive agent iterations, and high token context.
 
 ## Changes Implemented
 
-### 1. Vercel AI Gateway Configuration Optimization
+### 1. OpenRouter Configuration Optimization
 
 #### Temperature Reduction
 - **Framework Selector**: 0.3 (was: unset, default 1.0)
@@ -45,7 +45,7 @@ take: 3
 
 **Impact**: Each additional message in the context window increases token count exponentially. Reducing from 5 to 3 previous messages:
 - Reduces input tokens by ~30-40%
-- Improves Vercel AI Gateway throughput (TPS)
+- Improves OpenRouter throughput (TPS)
 - Faster model response time
 - Lower latency for time-to-first-token
 

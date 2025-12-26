@@ -64,8 +64,8 @@ export const ProjectForm = () => {
     { id: "anthropic/claude-haiku-4.5" as ModelId, name: "Claude Haiku 4.5", image: "/haiku.svg", description: "Fast and efficient" },
     { id: "google/gemini-3-pro" as ModelId, name: "Gemini 3 Pro", image: "/gemini.svg", description: "Google's most intelligent model with state-of-the-art reasoning" },
     { id: "openai/gpt-5.1-codex" as ModelId, name: "GPT-5.1 Codex", image: "/openai.svg", description: "OpenAI's flagship model for complex tasks" },
-    { id: "zai/glm-4.6" as ModelId, name: "Zai GLM 4.6", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
-    { id: "alibaba/qwen3-max" as ModelId, name: "Qwen 3 Max", image: "/qwen.svg", description: "Specialized for coding tasks" },
+    { id: "z-ai/glm-4.7" as ModelId, name: "Z-AI GLM 4.7", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
+    { id: "moonshotai/kimi-k2-0905" as ModelId, name: "Kimi K2", image: "/globe.svg", description: "Specialized for coding tasks" },
   ];
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {

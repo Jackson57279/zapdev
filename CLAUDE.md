@@ -181,8 +181,8 @@ Subscriptions enable real-time UI updates when data changes.
 
 ```bash
 # AI Gateway
-AI_GATEWAY_API_KEY
-AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1/
+OPENROUTER_API_KEY
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
 # Convex Database
 NEXT_PUBLIC_CONVEX_URL

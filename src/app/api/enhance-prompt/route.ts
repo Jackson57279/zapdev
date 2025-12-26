@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.AI_GATEWAY_API_KEY;
-    const baseUrl = process.env.AI_GATEWAY_BASE_URL || "https://ai-gateway.vercel.sh/v1";
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const baseUrl = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 
     if (!apiKey) {
-      console.error("[ERROR] AI_GATEWAY_API_KEY not configured");
+      console.error("[ERROR] OPENROUTER_API_KEY not configured");
       return NextResponse.json(
         { error: "AI service not configured" },
         { status: 500 }

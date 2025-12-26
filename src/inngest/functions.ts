@@ -97,16 +97,16 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
-  "zai/glm-4.6": {
-    name: "Zai GLM 4.6",
-    provider: "zhipu",
+  "z-ai/glm-4.7": {
+    name: "Z-AI GLM 4.7",
+    provider: "z-ai",
     description: "Ultra-fast inference for speed-critical tasks",
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
-  "alibaba/qwen3-max": {
-    name: "Qwen 3 Max",
-    provider: "qwen",
+  "moonshotai/kimi-k2-0905": {
+    name: "Kimi K2",
+    provider: "moonshot",
     description: "Specialized for coding tasks",
     temperature: 0.7,
     frequency_penalty: 0.5,
@@ -165,7 +165,7 @@ export function selectModelForTask(
     return chosenModel;
   }
 
-  // Coding-specific keywords favor Qwen
+  // Coding-specific keywords favor Kimi
   const codingIndicators = [
     "refactor",
     "optimize",
@@ -178,17 +178,17 @@ export function selectModelForTask(
   );
 
   if (hasCodingFocus && !isVeryLongPrompt) {
-    chosenModel = "alibaba/qwen3-max";
+    chosenModel = "moonshotai/kimi-k2-0905";
   }
 
-  // Speed-critical tasks favor GLM 4.6, but only override if clearly requested
+  // Speed-critical tasks favor GLM 4.7, but only override if clearly requested
   const speedIndicators = ["quick", "fast", "simple", "basic", "prototype"];
   const needsSpeed = speedIndicators.some((indicator) =>
     lowercasePrompt.includes(indicator),
   );
 
     if (needsSpeed && !hasComplexityIndicators) {
-    chosenModel = "zai/glm-4.6";
+    chosenModel = "z-ai/glm-4.7";
   }
 
   // Highly complex or long tasks stick with Haiku
@@ -824,8 +824,8 @@ export const codeAgentFunction = inngest.createFunction(
     console.log("[DEBUG] Event data:", JSON.stringify(event.data));
     console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
     console.log(
-      "[DEBUG] AI_GATEWAY_API_KEY present:",
-      !!process.env.AI_GATEWAY_API_KEY,
+      "[DEBUG] OPENROUTER_API_KEY present:",
+      !!process.env.OPENROUTER_API_KEY,
     );
 
     // Get project to check if framework is already set
@@ -848,10 +848,10 @@ export const codeAgentFunction = inngest.createFunction(
         system: FRAMEWORK_SELECTOR_PROMPT,
         model: openai({
           model: "google/gemini-2.5-flash-lite",
-          apiKey: process.env.AI_GATEWAY_API_KEY!,
+          apiKey: process.env.OPENROUTER_API_KEY!,
           baseUrl:
-            process.env.AI_GATEWAY_BASE_URL ||
-            "https://ai-gateway.vercel.sh/v1",
+            process.env.OPENROUTER_BASE_URL ||
+            "https://openrouter.ai/api/v1",
           defaultParameters: {
             temperature: 0.3,
           },
@@ -1144,9 +1144,9 @@ export const codeAgentFunction = inngest.createFunction(
       system: frameworkPrompt,
       model: openai({
         model: selectedModel,
-        apiKey: process.env.AI_GATEWAY_API_KEY!,
+        apiKey: process.env.OPENROUTER_API_KEY!,
         baseUrl:
-          process.env.AI_GATEWAY_BASE_URL || "https://ai-gateway.vercel.sh/v1",
+          process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
         defaultParameters: {
           temperature: modelConfig.temperature,
           // Only include frequency_penalty if the model supports it (Google models don't)
@@ -1513,10 +1513,10 @@ IMPORTANT:
       try {
         const titleModel = openai({
           model: "openai/gpt-5-nano",
-          apiKey: process.env.AI_GATEWAY_API_KEY!,
+          apiKey: process.env.OPENROUTER_API_KEY!,
           baseUrl:
-            process.env.AI_GATEWAY_BASE_URL ||
-            "https://ai-gateway.vercel.sh/v1",
+            process.env.OPENROUTER_BASE_URL ||
+            "https://openrouter.ai/api/v1",
           defaultParameters: {
             temperature: 0.3,
           },
@@ -2103,9 +2103,9 @@ export const errorFixFunction = inngest.createFunction(
       system: frameworkPrompt,
       model: openai({
         model: fragmentModel,
-        apiKey: process.env.AI_GATEWAY_API_KEY!,
+        apiKey: process.env.OPENROUTER_API_KEY!,
         baseUrl:
-          process.env.AI_GATEWAY_BASE_URL || "https://ai-gateway.vercel.sh/v1",
+          process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
         defaultParameters: {
           temperature: errorFixModelConfig.temperature,
           // Only include frequency_penalty if the model supports it (Google models don't)

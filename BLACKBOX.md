@@ -60,8 +60,8 @@ DATABASE_URL="postgresql://..."
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 # Vercel AI Gateway (replaces direct OpenAI)
-AI_GATEWAY_API_KEY="your-vercel-ai-gateway-key"
-AI_GATEWAY_BASE_URL="https://ai-gateway.vercel.sh/v1/"
+OPENROUTER_API_KEY="your-openrouter-api-key"
+OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
 
 # E2B Sandboxes
 E2B_API_KEY="your-e2b-api-key"

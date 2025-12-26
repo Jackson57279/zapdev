@@ -1,0 +1,331 @@
+# Figma Design System for ZapDev
+
+## Overview
+ZapDev is an AI-powered code generation platform built with Next.js 15, React 19, Tailwind CSS v4, and Shadcn/ui components. This document provides design specifications for creating a comprehensive Figma design system.
+
+## Design Tokens
+
+### Color System (OKLCH Format)
+
+#### Light Mode Colors
+- **Background**: `oklch(0.9818 0.0054 95.0986)` - Off-white
+- **Foreground**: `oklch(0.3438 0.0269 95.7226)` - Dark gray
+- **Primary**: `oklch(0.6171 0.1375 39.0427)` - Orange/coral accent
+- **Primary Foreground**: `oklch(1.0000 0 0)` - White
+- **Secondary**: `oklch(0.9245 0.0138 92.9892)` - Light gray
+- **Muted**: `oklch(0.9341 0.0153 90.2390)` - Very light gray
+- **Accent**: `oklch(0.9245 0.0138 92.9892)` - Light gray
+- **Destructive**: `oklch(0.1908 0.0020 106.5859)` - Dark red
+- **Border**: `oklch(0.8847 0.0069 97.3627)` - Light border
+- **Sidebar**: `oklch(0.9663 0.0080 98.8792)` - Off-white sidebar
+
+#### Dark Mode Colors
+- **Background**: `oklch(0.2679 0.0036 106.6427)` - Dark blue-gray
+- **Foreground**: `oklch(0.8074 0.0142 93.0137)` - Light gray
+- **Primary**: `oklch(0.6724 0.1308 38.7559)` - Brighter orange
+- **Muted**: `oklch(0.2213 0.0038 106.7070)` - Dark muted
+- **Destructive**: `oklch(0.6368 0.2078 25.3313)` - Red
+- **Sidebar**: `oklch(0.2357 0.0024 67.7077)` - Dark sidebar
+
+### Typography
+
+#### Font Families
+- **Sans**: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto`
+- **Mono**: `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas`
+- **Serif**: `ui-serif, Georgia, Cambria, "Times New Roman"`
+
+#### Font Sizes
+- Hero Title: `text-2xl md:text-5xl` (24px / 48px)
+- Section Title: `text-2xl` (24px)
+- Body: `text-sm` (14px)
+- Small: `text-xs` (12px)
+- Tiny: `text-[10px]` (10px)
+
+### Spacing & Layout
+
+#### Border Radius
+- Default: `0.5rem` (8px)
+- Small: `calc(0.5rem - 4px)` (4px)
+- Medium: `calc(0.5rem - 2px)` (6px)
+- Large: `0.5rem` (8px)
+- Extra Large: `calc(0.5rem + 4px)` (12px)
+
+#### Shadows
+- 2xs: `0 1px 3px 0px hsl(0 0% 0% / 0.05)`
+- xs: `0 1px 3px 0px hsl(0 0% 0% / 0.05)`
+- sm: `0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10)`
+- md: `0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10)`
+- lg: `0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10)`
+
+#### Spacing Scale
+- Gap: `gap-2` (8px), `gap-4` (16px), `gap-6` (24px)
+- Padding: `p-2` (8px), `p-4` (16px), `p-8` (32px)
+- Margin: `m-2` (8px), `m-4` (16px)
+
+## Component Specifications
+
+### Button Variants
+
+#### Primary Button
+- Background: Primary color
+- Text: Primary foreground (white)
+- Shadow: `shadow-xs`
+- Hover: `bg-primary/90`
+- Height: `h-9` (36px)
+- Padding: `px-4 py-2`
+- Border Radius: `rounded-md` (8px)
+
+#### Tertiary Button
+- Background: `bg-primary/25 dark:bg-primary/30`
+- Text: Primary color
+- Shadow: `shadow-xs`
+- Hover: `bg-primary/20 dark:bg-primary/25`
+
+#### Outline Button
+- Border: `border`
+- Background: `bg-background`
+- Shadow: `shadow-xs`
+- Hover: `bg-accent hover:text-accent-foreground`
+
+#### Ghost Button
+- No background
+- Hover: `bg-accent hover:text-accent-foreground`
+
+### Input Components
+
+#### Project Form Textarea
+- Border: `border`
+- Background: `bg-sidebar dark:bg-sidebar`
+- Padding: `p-4 pt-1`
+- Border Radius: `rounded-xl` (12px)
+- Focus: `shadow-xs`
+- Min Rows: 2
+- Max Rows: 8
+- Placeholder: "What would you like to build?"
+
+#### Form Actions Bar
+- Flex layout with gap
+- Left: Action buttons (Enhance, Upload, Import, Model Selector)
+- Right: Submit button (circular, 32px)
+- Keyboard hint: `⌘Enter` to submit
+
+### Layout Components
+
+#### Resizable Panels
+- Left Panel: Default 35%, Min 20%
+- Right Panel: Default 65%, Min 50%
+- Handle: Hover effect with primary color transition
+
+#### Tab Navigation
+- Tabs: `h-8` (32px)
+- Border: `border-b`
+- Icons: `lucide-react` icons (EyeIcon, CodeIcon)
+- Active state: Background accent
+
+### Card Components
+
+#### Project Card
+- Border: `border`
+- Background: `bg-white dark:bg-sidebar`
+- Padding: `p-4`
+- Border Radius: `rounded-xl` (12px)
+- Layout: Flex row with image (48x48px) and text
+- Hover: Outline button variant
+
+#### Projects List Container
+- Background: `bg-white dark:bg-sidebar`
+- Border: `border`
+- Padding: `p-8`
+- Border Radius: `rounded-xl`
+- Grid: `grid-cols-1 sm:grid-cols-3` with `gap-6`
+
+## Screen Specifications
+
+### Home Page
+
+#### Hero Section
+- Vertical padding: `py-[16vh] 2xl:py-48`
+- Max width: `max-w-5xl`
+- Centered layout
+- Logo: 50x50px (hidden on mobile)
+- Title: "Build something with ZapDev"
+- Subtitle: "Create apps and websites by chatting with AI"
+- Project Form: `max-w-3xl`
+
+#### Project Form Section
+- Border: `border`
+- Background: `bg-sidebar dark:bg-sidebar`
+- Padding: `p-4 pt-1`
+- Border Radius: `rounded-xl`
+- Focus state: `shadow-xs`
+
+#### Project Templates
+- Hidden on mobile: `hidden md:flex`
+- Flex wrap with gap
+- Max width: `max-w-3xl`
+- Button variant: `outline`
+- Background: `bg-white dark:bg-sidebar`
+
+### Project Workspace
+
+#### Layout Structure
+- Full height: `h-screen`
+- Horizontal resizable panels
+- Left: Chat sidebar (35% default)
+- Right: Preview/Code area (65% default)
+
+#### Project Header
+- Padding: `p-2`
+- Border bottom: `border-b`
+- Flex: Space between
+- Left: Logo + Project name dropdown
+- Right: Download code button
+
+#### Messages Container
+- Scrollable area
+- Message bubbles (USER/ASSISTANT)
+- Streaming indicators
+- Timestamps
+
+#### Preview/Code Tabs
+- Tab bar: `p-2 border-b`
+- Tabs: Preview (Demo) and Code
+- Content area: Full height minus tab bar
+- Preview: Live iframe or rendered component
+- Code: File explorer with syntax highlighting
+
+### File Explorer
+- Tree view structure
+- File icons
+- Syntax highlighting
+- Copy buttons
+- File size indicators
+
+## Icon System
+
+### Icon Library
+- **Source**: `lucide-react`
+- **Size**: Default `size-4` (16px), Small `size-3` (12px)
+- **Color**: `text-muted-foreground` by default
+
+### Key Icons Used
+- `ArrowUpIcon` - Submit
+- `EyeIcon` - Preview
+- `CodeIcon` - Code view
+- `CrownIcon` - Upgrade/Pro
+- `ImageIcon` - Image upload
+- `DownloadIcon` - Download/Import
+- `FigmaIcon` - Figma import
+- `GitBranchIcon` - GitHub import
+- `SparklesIcon` - Enhance prompt
+- `Loader2Icon` - Loading state (animated spin)
+- `ChevronDownIcon` - Dropdown
+- `SunMoonIcon` - Theme toggle
+
+## Responsive Breakpoints
+
+- **Mobile**: Default (< 640px)
+- **Tablet**: `sm:` (640px+)
+- **Desktop**: `md:` (768px+)
+- **Large**: `lg:` (1024px+)
+- **XL**: `xl:` (1280px+)
+- **2XL**: `2xl:` (1536px+)
+
+## Animation & Transitions
+
+### Transitions
+- Default: `transition-all`
+- Colors: `transition-colors`
+- Opacity: `transition-opacity`
+
+### Loading States
+- Spinner: `animate-spin`
+- Pulse: `animate-pulse`
+
+### Keyframe Animations
+- `moveHorizontal` - 40s ease infinite
+- `moveInCircle` - 20s/40s linear infinite
+- `moveVertical` - 30s ease infinite
+
+## Accessibility
+
+### Focus States
+- Focus visible: `focus-visible:ring-ring/50 focus-visible:ring-[3px]`
+- Focus border: `focus-visible:border-ring`
+- Invalid state: `aria-invalid:ring-destructive/20`
+
+### Keyboard Navigation
+- Submit: `⌘Enter` or `Ctrl+Enter`
+- Tab navigation supported
+- Skip links for screen readers
+
+## Dark Mode
+
+### Implementation
+- Uses `.dark` class on root
+- All colors have dark mode variants
+- Smooth transitions between modes
+- System preference detection
+
+## Design Guidelines
+
+### Spacing
+- Use consistent spacing scale (4px base)
+- Group related elements
+- Maintain visual hierarchy
+
+### Typography
+- Use sans-serif for UI
+- Use mono for code
+- Maintain readable line heights
+
+### Colors
+- Use semantic color tokens
+- Ensure sufficient contrast (WCAG AA)
+- Test in both light and dark modes
+
+### Components
+- Follow Shadcn/ui patterns
+- Maintain consistency across variants
+- Use proper hover/focus states
+
+## Figma Design Checklist
+
+### Pages to Design
+- [ ] Home Page (Hero + Project Form)
+- [ ] Projects List Page
+- [ ] Project Workspace (Chat + Preview)
+- [ ] Import Flow (Figma/GitHub)
+- [ ] Pricing Page
+- [ ] Error States
+- [ ] Loading States
+- [ ] Empty States
+
+### Components Library
+- [ ] Buttons (all variants)
+- [ ] Inputs & Textareas
+- [ ] Cards
+- [ ] Tabs
+- [ ] Dropdowns
+- [ ] Modals/Dialogs
+- [ ] File Explorer
+- [ ] Message Bubbles
+- [ ] Project Cards
+- [ ] Navigation Elements
+
+### Design Tokens
+- [ ] Color Palette (Light + Dark)
+- [ ] Typography Scale
+- [ ] Spacing Scale
+- [ ] Border Radius
+- [ ] Shadows
+- [ ] Icons Set
+
+### States & Variants
+- [ ] Hover States
+- [ ] Focus States
+- [ ] Active States
+- [ ] Disabled States
+- [ ] Error States
+- [ ] Loading States
+- [ ] Empty States

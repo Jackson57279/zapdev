@@ -120,8 +120,8 @@ sandbox-templates/  # E2B sandbox templates for each framework
 ### Environment Variables
 Required for development:
 - `NEXT_PUBLIC_CONVEX_URL`: Convex backend URL
-- `AI_GATEWAY_API_KEY`: Vercel AI Gateway key
-- `AI_GATEWAY_BASE_URL`: https://ai-gateway.vercel.sh/v1/
+- `OPENROUTER_API_KEY`: OpenRouter API key
+- `OPENROUTER_BASE_URL`: https://openrouter.ai/api/v1
 - `E2B_API_KEY`: E2B sandbox API key
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Clerk auth
 - `CLERK_SECRET_KEY`: Clerk secret
