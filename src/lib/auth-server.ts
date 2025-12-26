@@ -1,5 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
+import { safeConsoleError } from "./security-utils";
 
 type AuthenticatedUser = {
   id: string;
@@ -23,7 +24,7 @@ export async function getUser(): Promise<AuthenticatedUser | null> {
       imageUrl: user.imageUrl ?? null,
     };
   } catch (error) {
-    console.error("Failed to get user:", error);
+    safeConsoleError("Failed to get user", error);
     return null;
   }
 }
@@ -34,7 +35,7 @@ export async function getToken(): Promise<string | null> {
     const token = await authResult.getToken?.({ template: clerkJwtTemplate });
     return token ?? null;
   } catch (error) {
-    console.error("Failed to get token:", error);
+    safeConsoleError("Failed to get token", error);
     return null;
   }
 }

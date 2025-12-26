@@ -81,6 +81,50 @@ function frameworkToConvexEnum(
 
 const AUTO_FIX_MAX_ATTEMPTS = 2;
 
+// Command sanitization utilities
+const ALLOWED_COMMANDS = [
+  'npm', 'yarn', 'bun', 'npx', 'node', 'python', 'pip',
+  'git', 'ls', 'cd', 'mkdir', 'rm', 'cp', 'mv', 'cat',
+  'echo', 'grep', 'find', 'which', 'pwd', 'chmod', 'chown'
+];
+
+const DANGEROUS_PATTERNS = [
+  /;/, /&/, /\|/, /`/, /\$\(/, /&&/, /\|\|/,
+  />/, /</, /2>/, /1>/, /0>/, /&\d+/, />\d+/,
+  /rm\s+(-rf|--force)/, /chmod\s+777/, /sudo/
+];
+
+function sanitizeCommand(command: string): string {
+  // Trim whitespace
+  const trimmed = command.trim();
+
+  // Check for dangerous patterns
+  for (const pattern of DANGEROUS_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      throw new Error(`Command contains potentially dangerous pattern: ${pattern}`);
+    }
+  }
+
+  // Split command into parts and validate first word
+  const parts = trimmed.split(/\s+/);
+  const baseCommand = parts[0];
+
+  if (!ALLOWED_COMMANDS.includes(baseCommand)) {
+    throw new Error(`Command '${baseCommand}' is not in the allowed commands list`);
+  }
+
+  // Additional validation for specific commands
+  if (baseCommand === 'rm' && parts.includes('-rf')) {
+    throw new Error('Recursive delete operations are not allowed');
+  }
+
+  if (baseCommand === 'chmod' && parts.some(part => part === '777' || part === 'a+rwx')) {
+    throw new Error('Dangerous permission changes are not allowed');
+  }
+
+  return trimmed;
+}
+
 // Model configurations for multi-model support
 export const MODEL_CONFIGS = {
   "anthropic/claude-haiku-4.5": {
@@ -756,8 +800,11 @@ const createCodeAgentTools = (sandboxId: string) => [
         };
 
         try {
+          // Sanitize command before execution
+          const sanitizedCommand = sanitizeCommand(command);
+
           const sandbox = await getSandbox(sandboxId);
-          const result = await sandbox.commands.run(command, {
+          const result = await sandbox.commands.run(sanitizedCommand, {
             onStdout: (data: string) => {
               buffers.stdout += data;
             },
