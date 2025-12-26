@@ -1511,11 +1511,11 @@ IMPORTANT:
     }
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      // Only start dev server if code generation was successful
+      const port = getFrameworkPort(selectedFramework);
+      
       if (!isCriticalError && hasSummary && hasFiles) {
         try {
           const sandbox = await getSandbox(sandboxId);
-          const port = getFrameworkPort(selectedFramework);
           const devCommand = getDevServerCommand(selectedFramework);
           
           console.log(`[DEBUG] Starting dev server for ${selectedFramework} on port ${port}...`);
@@ -1548,7 +1548,7 @@ IMPORTANT:
           
           if (!serverReady) {
             console.warn("[WARN] Dev server did not respond within timeout, using fallback URL");
-            const fallbackHost = `https://${sandboxId}.sandbox.e2b.dev`;
+            const fallbackHost = `https://${port}-${sandboxId}.e2b.dev`;
             return fallbackHost;
           }
           
@@ -1566,9 +1566,8 @@ IMPORTANT:
         }
       }
       
-      // Fallback to base URL if generation failed or server couldn't start
-      const fallbackHost = `https://${sandboxId}.sandbox.e2b.dev`;
-      console.log("[DEBUG] Using sandbox base URL (no dev server):", fallbackHost);
+      const fallbackHost = `https://${port}-${sandboxId}.e2b.dev`;
+      console.log("[DEBUG] Using fallback sandbox URL:", fallbackHost);
       return fallbackHost;
     });
 
@@ -1992,12 +1991,11 @@ export const sandboxTransferFunction = inngest.createFunction(
     });
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      // Try to get port-based URL if service is running
+      const port = getFrameworkPort(framework);
+      
       if (typeof (sandbox as SandboxWithHost).getHost === "function") {
         try {
-          const host = (sandbox as SandboxWithHost).getHost(
-            getFrameworkPort(framework),
-          );
+          const host = (sandbox as SandboxWithHost).getHost(port);
           if (host && host.length > 0) {
             const url = host.startsWith("http") ? host : `https://${host}`;
             console.log("[DEBUG] Using port-based sandbox URL:", url);
@@ -2008,9 +2006,8 @@ export const sandboxTransferFunction = inngest.createFunction(
         }
       }
 
-      // Fallback to base URL if no service is running
-      const fallbackHost = `https://${sandboxId}.sandbox.e2b.dev`;
-      console.log("[DEBUG] Using sandbox base URL:", fallbackHost);
+      const fallbackHost = `https://${port}-${sandboxId}.e2b.dev`;
+      console.log("[DEBUG] Using fallback sandbox URL:", fallbackHost);
       return fallbackHost;
     });
 
