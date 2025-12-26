@@ -12,7 +12,7 @@ function getConvexClient(): ConvexHttpClient {
   return new ConvexHttpClient(url);
 }
 
-type SubscriptionStatus = "incomplete" | "active" | "canceled" | "past_due" | "unpaid" | "trialing" | "revoked";
+type SubscriptionStatus = "incomplete" | "active" | "canceled" | "past_due" | "unpaid" | "trialing";
 
 function mapPolarStatus(polarStatus: string): SubscriptionStatus {
   const statusMap: Record<string, SubscriptionStatus> = {
@@ -23,7 +23,7 @@ function mapPolarStatus(polarStatus: string): SubscriptionStatus {
     past_due: "past_due",
     unpaid: "unpaid",
     trialing: "trialing",
-    revoked: "revoked",
+    revoked: "canceled",
   };
   return statusMap[polarStatus] ?? "incomplete";
 }
