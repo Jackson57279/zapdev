@@ -472,6 +472,21 @@ const getFrameworkPrompt = (framework: Framework): string => {
   }
 };
 
+const getDevServerCommand = (framework: Framework): string => {
+  switch (framework) {
+    case "nextjs":
+      return "npx next dev --turbopack";
+    case "angular":
+      return "ng serve --host 0.0.0.0 --port 4200";
+    case "react":
+    case "vue":
+    case "svelte":
+      return "npm run dev -- --host 0.0.0.0 --port 5173";
+    default:
+      return "npx next dev --turbopack";
+  }
+};
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export const MAX_FILE_COUNT = 500;
 const MAX_SCREENSHOTS = 20;
@@ -1496,20 +1511,64 @@ IMPORTANT:
     }
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      const sandbox = await getSandbox(sandboxId);
-
-      if (typeof (sandbox as SandboxWithHost).getHost === "function") {
-        const host = (sandbox as SandboxWithHost).getHost(
-          getFrameworkPort(selectedFramework),
-        );
-
-        if (host && host.length > 0) {
-          return host.startsWith("http") ? host : `https://${host}`;
+      // Only start dev server if code generation was successful
+      if (!isCriticalError && hasSummary && hasFiles) {
+        try {
+          const sandbox = await getSandbox(sandboxId);
+          const port = getFrameworkPort(selectedFramework);
+          const devCommand = getDevServerCommand(selectedFramework);
+          
+          console.log(`[DEBUG] Starting dev server for ${selectedFramework} on port ${port}...`);
+          
+          // Start dev server in background (don't wait for it to finish)
+          sandbox.commands.run(devCommand, { background: true });
+          
+          // Wait for server to be ready (max 30 seconds)
+          const maxAttempts = 60;
+          let serverReady = false;
+          
+          for (let i = 0; i < maxAttempts; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            try {
+              const checkResult = await sandbox.commands.run(
+                `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}`,
+                { timeoutMs: 2000 }
+              );
+              
+              if (checkResult.stdout.trim() === "200") {
+                serverReady = true;
+                console.log(`[DEBUG] Dev server ready after ${(i + 1) * 0.5} seconds`);
+                break;
+              }
+            } catch (error) {
+              // Server not ready yet, continue waiting
+            }
+          }
+          
+          if (!serverReady) {
+            console.warn("[WARN] Dev server did not respond within timeout, using fallback URL");
+            const fallbackHost = `https://${sandboxId}.sandbox.e2b.dev`;
+            return fallbackHost;
+          }
+          
+          // Get port-based URL now that server is running
+          if (typeof (sandbox as SandboxWithHost).getHost === "function") {
+            const host = (sandbox as SandboxWithHost).getHost(port);
+            if (host && host.length > 0) {
+              const url = host.startsWith("http") ? host : `https://${host}`;
+              console.log("[DEBUG] Dev server URL:", url);
+              return url;
+            }
+          }
+        } catch (error) {
+          console.warn("[WARN] Failed to start dev server, using fallback:", error);
         }
       }
-
+      
+      // Fallback to base URL if generation failed or server couldn't start
       const fallbackHost = `https://${sandboxId}.sandbox.e2b.dev`;
-      console.warn("[WARN] Using fallback sandbox host:", fallbackHost);
+      console.log("[DEBUG] Using sandbox base URL (no dev server):", fallbackHost);
       return fallbackHost;
     });
 
@@ -1933,17 +1992,25 @@ export const sandboxTransferFunction = inngest.createFunction(
     });
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
+      // Try to get port-based URL if service is running
       if (typeof (sandbox as SandboxWithHost).getHost === "function") {
-        const host = (sandbox as SandboxWithHost).getHost(
-          getFrameworkPort(framework),
-        );
-        if (host && host.length > 0) {
-          return host.startsWith("http") ? host : `https://${host}`;
+        try {
+          const host = (sandbox as SandboxWithHost).getHost(
+            getFrameworkPort(framework),
+          );
+          if (host && host.length > 0) {
+            const url = host.startsWith("http") ? host : `https://${host}`;
+            console.log("[DEBUG] Using port-based sandbox URL:", url);
+            return url;
+          }
+        } catch (error) {
+          console.warn("[WARN] Failed to get port-based URL, using fallback:", error);
         }
       }
 
+      // Fallback to base URL if no service is running
       const fallbackHost = `https://${sandboxId}.sandbox.e2b.dev`;
-      console.warn("[WARN] Using fallback sandbox host:", fallbackHost);
+      console.log("[DEBUG] Using sandbox base URL:", fallbackHost);
       return fallbackHost;
     });
 
