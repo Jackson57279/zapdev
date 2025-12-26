@@ -152,6 +152,8 @@ export const MessageForm = ({ projectId }: Props) => {
     try {
       setIsEnhancing(true);
       
+      console.log("[ENHANCE] Starting enhancement for prompt:", currentValue.substring(0, 50) + "...");
+      
       const response = await fetch("/api/enhance-prompt", {
         method: "POST",
         headers: {
@@ -160,25 +162,33 @@ export const MessageForm = ({ projectId }: Props) => {
         body: JSON.stringify({ prompt: currentValue }),
       });
 
+      console.log("[ENHANCE] Response status:", response.status);
+
       if (!response.ok) {
-        throw new Error("Failed to enhance prompt");
+        const errorData = await response.json();
+        console.error("[ENHANCE] Error response:", errorData);
+        throw new Error(errorData.error || "Failed to enhance prompt");
       }
 
       const data = await response.json();
+      console.log("[ENHANCE] Response data:", data);
       
       if (data.enhancedPrompt) {
+        console.log("[ENHANCE] Setting enhanced prompt, length:", data.enhancedPrompt.length);
         form.setValue("value", data.enhancedPrompt, {
           shouldDirty: true,
           shouldValidate: true,
           shouldTouch: true,
         });
+        console.log("[ENHANCE] Form value after setting:", form.getValues("value").substring(0, 50) + "...");
         toast.success("Prompt enhanced successfully!");
       } else {
+        console.error("[ENHANCE] No enhancedPrompt in response:", data);
         throw new Error("No enhanced prompt received");
       }
     } catch (error) {
-      console.error("Enhance prompt error:", error);
-      toast.error("Failed to enhance prompt. Please try again.");
+      console.error("[ENHANCE] Enhance prompt error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to enhance prompt. Please try again.");
     } finally {
       setIsEnhancing(false);
     }

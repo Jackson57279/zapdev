@@ -56,12 +56,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("[DEBUG] Enhancing prompt with length:", prompt.length);
+    console.log("[DEBUG] Using model: openai/gpt-5-nano");
+    console.log("[DEBUG] API Base URL:", baseUrl);
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "ZapDev Prompt Enhancer",
       },
       body: JSON.stringify({
         model: "openai/gpt-5-nano",
@@ -80,27 +84,34 @@ export async function POST(request: NextRequest) {
       }),
     });
 
+    console.log("[DEBUG] Response status:", response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[ERROR] AI Gateway error:", response.status, errorText);
       return NextResponse.json(
-        { error: "Failed to enhance prompt" },
+        { error: "Failed to enhance prompt", details: errorText },
         { status: 500 }
       );
     }
 
     const data = await response.json();
+    console.log("[DEBUG] Response data:", JSON.stringify(data, null, 2));
+    
     const enhancedPrompt = data.choices?.[0]?.message?.content?.trim();
 
     if (!enhancedPrompt) {
-      console.error("[ERROR] No enhanced prompt in response:", data);
+      console.error("[ERROR] No enhanced prompt in response:", JSON.stringify(data, null, 2));
       return NextResponse.json(
-        { error: "Failed to generate enhanced prompt" },
+        { error: "Failed to generate enhanced prompt", responseData: data },
         { status: 500 }
       );
     }
 
-    console.log("[DEBUG] Successfully enhanced prompt");
+    console.log("[DEBUG] Enhanced prompt generated successfully");
+    console.log("[DEBUG] Original length:", prompt.length);
+    console.log("[DEBUG] Enhanced length:", enhancedPrompt.length);
+    console.log("[DEBUG] Enhanced prompt preview:", enhancedPrompt.substring(0, 100) + "...");
 
     return NextResponse.json({
       enhancedPrompt,
