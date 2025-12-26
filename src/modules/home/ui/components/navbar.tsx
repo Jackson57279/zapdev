@@ -55,6 +55,20 @@ export const Navbar = () => {
                     </NavigationMenuLink>
                   </Link>
                 </NavigationMenuItem>
+                <NavigationMenuItem>
+                  <Link href="/terms" legacyBehavior passHref>
+                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+                      Terms
+                    </NavigationMenuLink>
+                  </Link>
+                </NavigationMenuItem>
+                <NavigationMenuItem>
+                  <Link href="/privacy" legacyBehavior passHref>
+                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+                      Privacy
+                    </NavigationMenuLink>
+                  </Link>
+                </NavigationMenuItem>
               </NavigationMenuList>
             </NavigationMenu>
           </div>

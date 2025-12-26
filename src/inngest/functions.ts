@@ -222,6 +222,10 @@ const AUTO_FIX_ERROR_PATTERNS = [
   /ESLint/i,
   /Type error/i,
   /TS\d+/i,
+  /Parsing.*failed/i,
+  /Unexpected token/i,
+  /Expected.*identifier/i,
+  /ecmascript/i,
 ];
 
 const usesShadcnComponents = (files: Record<string, string>) => {
