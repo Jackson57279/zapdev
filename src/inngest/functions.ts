@@ -1154,6 +1154,13 @@ export const codeAgentFunction = inngest.createFunction(
             frequency_penalty: (modelConfig as { frequency_penalty?: number })
               .frequency_penalty,
           }),
+          // Force Z.AI provider for GLM model through OpenRouter provider routing
+          ...(selectedModel === "z-ai/glm-4.7" && {
+            provider: {
+              order: ["Z.AI"],
+              allow_fallbacks: false,
+            },
+          }),
         },
       }),
       tools: createCodeAgentTools(sandboxId),
@@ -2113,6 +2120,13 @@ export const errorFixFunction = inngest.createFunction(
             frequency_penalty: (
               errorFixModelConfig as { frequency_penalty?: number }
             ).frequency_penalty,
+          }),
+          // Force Z.AI provider for GLM model through OpenRouter provider routing
+          ...(fragmentModel === "z-ai/glm-4.7" && {
+            provider: {
+              order: ["Z.AI"],
+              allow_fallbacks: false,
+            },
           }),
         },
       }),
