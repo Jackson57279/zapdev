@@ -23,8 +23,9 @@ export async function POST(request: NextRequest) {
     const { 
       productId = getPolarProProductId(),
       successUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?subscription=success`,
-      cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`
+      cancelUrl: _cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`
     } = body;
+    void _cancelUrl; // Unused but kept for API compatibility
 
     const polar = getPolarClient();
 

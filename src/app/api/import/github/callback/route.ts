@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
-import { fetchQuery, fetchMutation } from "convex/nextjs";
+import { fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;

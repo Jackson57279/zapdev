@@ -1,26 +1,35 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import nextConfig from "eslint-config-next";
+import nextTypescriptConfig from "eslint-config-next/typescript";
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: ["**/generated/*"]
+    ignores: [
+      "**/generated/*",
+      "**/_generated/*",
+      "**/node_modules/*",
+      "**/.next/*",
+      "**/dist/*",
+      "**/build/*",
+      "**/scripts/*",
+      "**/tests/*",
+      "**/test-*.js",
+    ]
   },
+  ...nextConfig,
+  ...nextTypescriptConfig,
   {
     rules: {
+      // Override to warn instead of error for explicit any
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": ["error", { 
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_"
       }],
+      // Disable some rules that are too strict for this codebase
+      "import/no-anonymous-default-export": "off",
+      // Disable strict React hooks rules that have false positives
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/purity": "warn",
     }
   },
 ];

@@ -133,7 +133,6 @@ export const getRateLimitStatus = query({
       return null;
     }
 
-    const now = Date.now();
     const resetTime = existing.windowStart + existing.windowMs;
     const remaining = Math.max(0, existing.limit - existing.count);
 

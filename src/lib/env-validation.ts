@@ -3,6 +3,7 @@
  * Provides runtime validation and helpful error messages for missing/invalid environment variables
  */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface EnvValidationError {
   variable: string;
   issue: string;

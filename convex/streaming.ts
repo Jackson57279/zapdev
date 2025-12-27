@@ -50,7 +50,8 @@ export const updateProgress = mutation({
 
 export const getProgress = query({
   args: { taskId: v.string() },
-  returns: v.optional(
+  returns: v.union(
+    v.null(),
     v.object({
       _id: v.id("taskProgress"),
       taskId: v.string(),
