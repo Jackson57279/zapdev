@@ -60,16 +60,20 @@ export const MessageForm = ({ projectId }: Props) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
   const [specModeEnabled, setSpecModeEnabled] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   // Model configurations matching backend
   const modelOptions = [
     { id: "auto" as ModelId, name: "Auto", image: "/auto.svg", description: "Auto-selects the best model" },
     { id: "anthropic/claude-haiku-4.5" as ModelId, name: "Claude Haiku 4.5", image: "/haiku.svg", description: "Fast and efficient" },
+    { id: "google/gemini-3-pro" as ModelId, name: "Gemini 3 Pro", image: "/gemini.svg", description: "Google's most intelligent model with state-of-the-art reasoning" },
     { id: "openai/gpt-5.1-codex" as ModelId, name: "GPT-5.1 Codex", image: "/openai.svg", description: "OpenAI's flagship model for complex tasks" },
     { id: "moonshotai/kimi-k2-thinking" as ModelId, name: "Kimi K2 Thinking", image: "/kimi.svg", description: "Fast and efficient for speed-critical tasks" },
     { id: "google/gemini-3-pro-preview" as ModelId, name: "Gemini 3 Pro", image: "/gemini.svg", description: "Specialized for coding tasks", isProOnly: true },
     { id: "xai/grok-4-fast-reasoning" as ModelId, name: "Grok 4 Fast", image: "/grok.svg", description: "Experimental model from xAI" },
     { id: "prime-intellect/intellect-3" as ModelId, name: "Intellect 3", image: "/intellect.svg", description: "Advanced reasoning model from Prime Intellect" },
+    { id: "z-ai/glm-4.7" as ModelId, name: "Z-AI GLM 4.7", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
+    { id: "moonshotai/kimi-k2-0905" as ModelId, name: "Kimi K2", image: "/globe.svg", description: "Specialized for coding tasks" },
   ];
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -93,7 +97,7 @@ export const MessageForm = ({ projectId }: Props) => {
       // Determine if we should use spec mode
       const useSpecMode = specModeEnabled && selectedModel === "openai/gpt-5.1-codex";
 
-      // Trigger Inngest event for AI processing
+      // Trigger agent for AI processing
       await fetch("/api/inngest/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,10 +134,12 @@ export const MessageForm = ({ projectId }: Props) => {
   const handleFigmaImport = async () => {
     setIsImportMenuOpen(false);
     try {
-      // Navigate to Figma OAuth flow
-      window.location.href = "/api/import/figma/auth";
+      const url = new URL("/import", window.location.origin);
+      url.searchParams.set("source", "figma");
+      url.searchParams.set("projectId", projectId);
+      window.location.href = url.toString();
     } catch {
-      toast.error("Failed to start Figma import");
+      toast.error("Failed to open Figma import");
     }
   };
 
@@ -147,10 +153,73 @@ export const MessageForm = ({ projectId }: Props) => {
     }
   };
 
+  const handleEnhancePrompt = async () => {
+    const currentValue = form.getValues("value").trim();
+    
+    if (!currentValue) {
+      toast.error("Please enter a prompt first");
+      return;
+    }
+
+    if (currentValue.length < 10) {
+      toast.error("Prompt is too short to enhance");
+      return;
+    }
+
+    try {
+      setIsEnhancing(true);
+      
+      console.log("[ENHANCE] Starting enhancement for prompt:", currentValue.substring(0, 50) + "...");
+      
+      const response = await fetch("/api/enhance-prompt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt: currentValue }),
+      });
+
+      console.log("[ENHANCE] Response status:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("[ENHANCE] Error response:", errorData);
+        throw new Error(errorData.error || "Failed to enhance prompt");
+      }
+
+      const data = await response.json();
+      console.log("[ENHANCE] Response data:", data);
+      
+      if (data.enhancedPrompt) {
+        console.log("[ENHANCE] Setting enhanced prompt, length:", data.enhancedPrompt.length);
+        form.setValue("value", data.enhancedPrompt, {
+          shouldDirty: true,
+          shouldValidate: true,
+          shouldTouch: true,
+        });
+        console.log("[ENHANCE] Form value after setting:", form.getValues("value").substring(0, 50) + "...");
+        toast.success("Prompt enhanced successfully!");
+      } else {
+        console.error("[ENHANCE] No enhancedPrompt in response:", data);
+        throw new Error("No enhanced prompt received");
+      }
+    } catch (error) {
+      console.error("[ENHANCE] Enhance prompt error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to enhance prompt. Please try again.");
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const [isFocused, setIsFocused] = useState(false);
   const isPending = isCreating;
   const isButtonDisabled = isPending || !form.formState.isValid || isUploading;
+<<<<<<< HEAD
   const showUsage = isAuthenticated && !!usage;
+=======
+  const isEnhanceDisabled = isEnhancing || isPending || isUploading;
+  const showUsage = !!usage;
+>>>>>>> origin/master
 
   return (
     <Form {...form}>
@@ -219,7 +288,22 @@ export const MessageForm = ({ projectId }: Props) => {
           </div>
         )}
         <div className="flex gap-x-2 items-end justify-between pt-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              type="button"
+              onClick={handleEnhancePrompt}
+              disabled={isEnhanceDisabled}
+              title="Enhance prompt with AI"
+            >
+              {isEnhancing ? (
+                <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+              ) : (
+                <SparklesIcon className="size-4 text-muted-foreground" />
+              )}
+            </Button>
             <UploadButton<OurFileRouter, "imageUploader">
               endpoint="imageUploader"
               onClientUploadComplete={(res) => {

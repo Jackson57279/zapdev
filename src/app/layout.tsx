@@ -98,8 +98,6 @@ export const metadata: Metadata = {
   }
 };
 
-
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -130,12 +128,12 @@ export default function RootLayout({
               contactPoint: {
                 "@type": "ContactPoint",
                 contactType: "sales",
-                availableLanguage: "English"
+                availableLanguage: "English",
               },
               sameAs: [
                 "https://twitter.com/zapdev",
                 "https://linkedin.com/company/zapdev"
-              ]
+              ],
             }),
           }}
         />

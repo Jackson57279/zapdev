@@ -23,8 +23,8 @@ Before deploying to Vercel, verify all required environment variables are set:
 - [ ] `NEXT_PUBLIC_POLAR_PRO_PRODUCT_ID` - Pro product ID
 
 #### AI & Code Execution
-- [ ] `AI_GATEWAY_API_KEY` - Vercel AI Gateway API key
-- [ ] `AI_GATEWAY_BASE_URL` - Set to `https://ai-gateway.vercel.sh/v1/`
+- [ ] `OPENROUTER_API_KEY` - OpenRouter API key
+- [ ] `OPENROUTER_BASE_URL` - Set to `https://openrouter.ai/api/v1`
 - [ ] `E2B_API_KEY` - E2B Code Interpreter API key
 
 #### Database & Backend
@@ -289,8 +289,8 @@ POLAR_WEBHOOK_SECRET="whsec_..."
 NEXT_PUBLIC_POLAR_PRO_PRODUCT_ID="prod_..."
 
 # Vercel AI Gateway
-AI_GATEWAY_API_KEY="your_gateway_key"
-AI_GATEWAY_BASE_URL="https://ai-gateway.vercel.sh/v1/"
+OPENROUTER_API_KEY="your_openrouter_key"
+OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
 
 # E2B Code Execution
 E2B_API_KEY="your_e2b_key"

@@ -38,8 +38,8 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const stackUser = await getUser();
-    if (!stackUser) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }

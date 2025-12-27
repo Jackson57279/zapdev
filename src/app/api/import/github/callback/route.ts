@@ -11,12 +11,12 @@ const GITHUB_REDIRECT_URI = process.env.NODE_ENV === "production"
   : "http://localhost:3000/api/import/github/callback";
 
 export async function GET(request: Request) {
-  const stackUser = await getUser();
-  if (!stackUser) {
+  const user = await getUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = stackUser.id;
+  const userId = user.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

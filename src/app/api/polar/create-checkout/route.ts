@@ -24,28 +24,30 @@ export async function POST(request: NextRequest) {
 
     // Check if Polar is configured
     if (!isPolarConfigured()) {
-      console.error('❌ Polar is not properly configured');
       return NextResponse.json(
         {
           error: "Payment system is not configured",
           details: "Please contact support. Configuration issue detected.",
           isConfigError: true
         },
-        { status: 503 } // Service Unavailable
+        { status: 503 }
       );
     }
 
-    // Authenticate user via Stack Auth
     const user = await getUser();
     if (!user) {
       return NextResponse.json(
-        { error: "Unauthorized - please sign in" },
+        { error: "Unauthorized" },
         { status: 401 }
       );
     }
 
-    // Parse request body
-    const { productId, successUrl, cancelUrl } = await request.json();
+    const body = await request.json();
+    const { 
+      productId,
+      successUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?subscription=success`,
+      cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`
+    } = body;
 
     if (!productId) {
       return NextResponse.json(
@@ -59,8 +61,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`creating checkout for product: ${productId} (server: ${targetServer})`);
 
-    const organizationId = getPolarOrganizationId();
-
     // Create checkout session with Polar
     const polar = createPolarClient(targetServer);
 
@@ -73,22 +73,18 @@ export async function POST(request: NextRequest) {
     });
 
     const checkout = await polar.checkouts.create({
-      // Products array (can include multiple product IDs)
       products: [productId],
       // Link to Polar customer with external_id for proper customer linking
       customerId,
       // Pass user ID in metadata as backup for webhook processing
       metadata: {
         userId: user.id,
-        userEmail: user.primaryEmail || "",
       },
       customerEmail: user.primaryEmail || undefined,
       successUrl: successUrl || `${process.env.NEXT_PUBLIC_APP_URL}/?subscription=success`,
-      // Allow customer to return to pricing page if they cancel
-      // Polar will handle the redirect automatically
+      cancelUrl: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
     });
 
-    // Return checkout URL for redirect
     return NextResponse.json({
       checkoutId: checkout.id,
       url: checkout.url,
@@ -164,9 +160,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const message = error instanceof Error ? error.message : "Failed to create checkout";
     return NextResponse.json(
-      { error: "Failed to create checkout session" },
+      { error: message },
       { status: 500 }
     );
   }
 }
+

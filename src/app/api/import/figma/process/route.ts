@@ -4,12 +4,12 @@ import { getUser } from "@/lib/auth-server";
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: Request) {
-  const stackUser = await getUser();
-  if (!stackUser) {
+  const user = await getUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!stackUser.id) {
+  if (!user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

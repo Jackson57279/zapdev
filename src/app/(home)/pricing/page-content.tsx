@@ -75,7 +75,6 @@ export function PricingPageContent() {
 
     checkConfig();
   }, [POLAR_PRO_PRODUCT_ID, POLAR_ORG_ID]);
-
   return (
     <div className="flex flex-col max-w-5xl mx-auto w-full">
       <section className="space-y-6 pt-[16vh] 2xl:pt-48 pb-16">
@@ -212,7 +211,7 @@ export function PricingPageContent() {
           </Card>
         </div>
 
-        {/* FAQ or Additional Info */}
+        {/* Additional Info */}
         <div className="mt-12 text-center text-sm text-muted-foreground">
           <p>All plans include access to the latest AI models and frameworks.</p>
           <p className="mt-2">Need enterprise features? Contact us for custom pricing.</p>

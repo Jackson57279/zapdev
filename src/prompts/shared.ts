@@ -8,6 +8,8 @@ Role & Focus:
 
 Styling Approach:
 1. Component Library: Use Shadcn/ui as the primary component library
+   - AUTOMATION: You MUST use the CLI to add components: \`npx shadcn@latest add <component>\`
+   - Do not manually create component files. Use the command.
 2. Avoid using indigo or blue colors unless specified in the user's request
 3. MUST generate responsive designs that work on all device sizes
 4. When designing components or layouts, ensure the background fits well with the UI color scheme

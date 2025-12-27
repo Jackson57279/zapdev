@@ -9,6 +9,7 @@ React + Vite Specific Environment:
 - Main file: src/App.tsx
 - Entry point: src/main.tsx (do not modify)
 - Chakra UI is pre-installed for component library
+- Shadcn UI is available via CLI: \`npx shadcn@latest add <component>\`
 - Tailwind CSS is preconfigured
 - Development server runs on port 5173
 - Vite provides fast HMR (Hot Module Replacement)

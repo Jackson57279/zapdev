@@ -44,10 +44,18 @@ const Button = React.forwardRef<
       asChild?: boolean
     }
 >(({ className, variant, size, asChild = false, ...props }, ref) => {
-  const Comp = asChild ? Slot : "button"
+  if (asChild) {
+    return (
+      <Slot
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...(props as React.ComponentPropsWithoutRef<typeof Slot>)}
+      />
+    )
+  }
 
   return (
-    <Comp
+    <button
       ref={ref}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}

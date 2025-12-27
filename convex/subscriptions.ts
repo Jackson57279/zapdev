@@ -13,7 +13,7 @@ export const getSubscription = query({
     const subscription = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .order("desc")
+      .filter((q) => q.eq(q.field("status"), "active"))
       .first();
 
     return subscription;
@@ -21,17 +21,17 @@ export const getSubscription = query({
 });
 
 /**
- * Get subscription by Polar subscription ID (for internal use)
+ * Get subscription by Clerk subscription ID (for internal use)
  */
-export const getSubscriptionByPolarId = query({
+export const getSubscriptionByClerkId = query({
   args: {
-    polarSubscriptionId: v.string(),
+    clerkSubscriptionId: v.string(),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
+      .withIndex("by_clerkSubscriptionId", (q) =>
+        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
       )
       .first();
 
@@ -40,25 +40,26 @@ export const getSubscriptionByPolarId = query({
 });
 
 /**
- * Create or update a subscription (called from webhook handler)
+ * Create or update a subscription (called from Clerk webhook handler)
  */
 export const createOrUpdateSubscription = mutation({
   args: {
     userId: v.string(),
-    polarCustomerId: v.string(),
-    polarSubscriptionId: v.string(),
-    productId: v.string(),
-    productName: v.string(),
+    clerkSubscriptionId: v.string(),
+    planId: v.string(),
+    planName: v.string(),
     status: v.union(
       v.literal("incomplete"),
       v.literal("active"),
       v.literal("canceled"),
       v.literal("past_due"),
-      v.literal("unpaid")
+      v.literal("unpaid"),
+      v.literal("trialing")
     ),
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
+    features: v.optional(v.array(v.string())),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -67,8 +68,8 @@ export const createOrUpdateSubscription = mutation({
     // Check if subscription already exists
     const existing = await ctx.db
       .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
+      .withIndex("by_clerkSubscriptionId", (q) =>
+        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
       )
       .first();
 
@@ -76,11 +77,12 @@ export const createOrUpdateSubscription = mutation({
       // Update existing subscription
       await ctx.db.patch(existing._id, {
         status: args.status,
-        productId: args.productId,
-        productName: args.productName,
+        planId: args.planId,
+        planName: args.planName,
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        features: args.features,
         metadata: args.metadata,
         updatedAt: now,
       });
@@ -90,14 +92,14 @@ export const createOrUpdateSubscription = mutation({
       // Create new subscription
       const subscriptionId = await ctx.db.insert("subscriptions", {
         userId: args.userId,
-        polarCustomerId: args.polarCustomerId,
-        polarSubscriptionId: args.polarSubscriptionId,
-        productId: args.productId,
-        productName: args.productName,
+        clerkSubscriptionId: args.clerkSubscriptionId,
+        planId: args.planId,
+        planName: args.planName,
         status: args.status,
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        features: args.features,
         metadata: args.metadata,
         createdAt: now,
         updatedAt: now,
@@ -110,17 +112,17 @@ export const createOrUpdateSubscription = mutation({
 
 /**
  * Cancel a subscription (sets cancel_at_period_end flag)
- * The actual cancellation happens via Polar API, this just updates local state
+ * The actual cancellation happens via Clerk Billing API, this just updates local state
  */
 export const markSubscriptionForCancellation = mutation({
   args: {
-    polarSubscriptionId: v.string(),
+    clerkSubscriptionId: v.string(),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
+      .withIndex("by_clerkSubscriptionId", (q) =>
+        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
       )
       .first();
 
@@ -142,13 +144,13 @@ export const markSubscriptionForCancellation = mutation({
  */
 export const reactivateSubscription = mutation({
   args: {
-    polarSubscriptionId: v.string(),
+    clerkSubscriptionId: v.string(),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
+      .withIndex("by_clerkSubscriptionId", (q) =>
+        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
       )
       .first();
 
@@ -170,13 +172,13 @@ export const reactivateSubscription = mutation({
  */
 export const revokeSubscription = mutation({
   args: {
-    polarSubscriptionId: v.string(),
+    clerkSubscriptionId: v.string(),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
+      .withIndex("by_clerkSubscriptionId", (q) =>
+        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
       )
       .first();
 

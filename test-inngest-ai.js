@@ -8,15 +8,15 @@
 require('dotenv').config({ path: '.env' });
 
 async function testInngestAIGateway() {
-  const apiKey = process.env.AI_GATEWAY_API_KEY;
-  const baseURL = process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1';
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const baseURL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
 
   if (!apiKey) {
-    console.error('❌ Error: AI_GATEWAY_API_KEY is not set');
+    console.error('❌ Error: OPENROUTER_API_KEY is not set');
     process.exit(1);
   }
 
-  console.log('🔧 Testing Inngest-style API call to Vercel AI Gateway...');
+  console.log('🔧 Testing Inngest-style API call to OpenRouter...');
   console.log(`📍 Base URL (with baseURL property): ${baseURL}`);
   console.log('');
 
@@ -59,7 +59,7 @@ async function testInngestAIGateway() {
     console.log(`- Model: ${data.model || 'N/A'}`);
     console.log(`- Response: ${data.choices?.[0]?.message?.content || 'No response'}`);
     console.log('');
-    console.log('🎉 Inngest functions should now work with Vercel AI Gateway!');
+    console.log('🎉 Inngest functions should now work with OpenRouter!');
     console.log('');
     console.log('✅ Fix applied:');
     console.log('- Changed "baseUrl" to "baseURL" (capital letters)');

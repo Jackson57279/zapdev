@@ -38,7 +38,7 @@ export const SpecPlanningCard = ({
       setIsApproving(true);
       const result = await approveSpecMutation({ messageId });
 
-      // Trigger code generation via Inngest
+      // Trigger code generation
       await fetch("/api/inngest/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 
 /**
- * Test script for Vercel AI Gateway integration
- * Run this script to verify that the Vercel AI Gateway is configured correctly
+ * Test script for OpenRouter API integration
+ * Run this script to verify that OpenRouter is configured correctly
  * 
- * Usage: node test-vercel-ai-gateway.js
+ * Usage: node test-openrouter.js
  * 
  * Make sure you have set the following environment variables in .env.local:
- * - AI_GATEWAY_API_KEY
- * - AI_GATEWAY_BASE_URL
+ * - OPENROUTER_API_KEY
+ * - OPENROUTER_BASE_URL
  */
 
 require('dotenv').config({ path: '.env.local' });
 
-async function testVercelAIGateway() {
-  const apiKey = process.env.AI_GATEWAY_API_KEY;
-  const baseUrl = process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1/';
+async function testOpenRouter() {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const baseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1/';
 
   if (!apiKey) {
-    console.error('❌ Error: AI_GATEWAY_API_KEY is not set in .env.local');
-    console.log('Please add your Vercel AI Gateway API key to .env.local:');
-    console.log('AI_GATEWAY_API_KEY="your-api-key-here"');
+    console.error('❌ Error: OPENROUTER_API_KEY is not set in .env.local');
+    console.log('Please add your OpenRouter API key to .env.local:');
+    console.log('OPENROUTER_API_KEY="your-api-key-here"');
     process.exit(1);
   }
 
-  console.log('🔧 Testing Vercel AI Gateway connection...');
+  console.log('🔧 Testing OpenRouter connection...');
   console.log(`📍 Base URL: ${baseUrl}`);
   console.log(`🔑 API Key: ${apiKey.substring(0, 7)}...${apiKey.substring(apiKey.length - 4)}`);
   console.log('');
@@ -42,7 +42,7 @@ async function testVercelAIGateway() {
         messages: [
           {
             role: 'user',
-            content: 'Say "Hello from Vercel AI Gateway!" in exactly 5 words.',
+            content: 'Say "Hello from OpenRouter!" in exactly 4 words.',
           },
         ],
         max_tokens: 50,
@@ -56,8 +56,8 @@ async function testVercelAIGateway() {
       console.error('Response:', errorText);
       
       if (response.status === 401) {
-        console.log('\n💡 Tip: Make sure your AI_GATEWAY_API_KEY is valid.');
-        console.log('Get your API key from: https://vercel.com/dashboard/ai-gateway');
+        console.log('\n💡 Tip: Make sure your OPENROUTER_API_KEY is valid.');
+        console.log('Get your API key from: https://openrouter.ai/keys');
       }
       
       process.exit(1);
@@ -72,15 +72,15 @@ async function testVercelAIGateway() {
     console.log(`- Usage: ${data.usage?.total_tokens || 'N/A'} tokens`);
     console.log(`- Response: ${data.choices?.[0]?.message?.content || 'No response'}`);
     console.log('');
-    console.log('🎉 Vercel AI Gateway is configured correctly!');
+    console.log('🎉 OpenRouter is configured correctly!');
     console.log('');
     console.log('📝 Next steps:');
-    console.log('1. Start your development server: npm run dev');
-    console.log('2. The Inngest functions will now use Vercel AI Gateway');
-    console.log('3. Monitor your usage at: https://vercel.com/dashboard/ai-gateway');
+    console.log('1. Start your development server: bun run dev');
+    console.log('2. The Inngest functions will now use OpenRouter');
+    console.log('3. Monitor your usage at: https://openrouter.ai/activity');
 
   } catch (error) {
-    console.error('❌ Error testing Vercel AI Gateway:');
+    console.error('❌ Error testing OpenRouter:');
     console.error(error.message);
     
     if (error.code === 'ENOTFOUND') {
@@ -92,4 +92,5 @@ async function testVercelAIGateway() {
 }
 
 // Run the test
-testVercelAIGateway().catch(console.error);
+testOpenRouter().catch(console.error);
+

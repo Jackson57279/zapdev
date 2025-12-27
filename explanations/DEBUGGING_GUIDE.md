@@ -36,24 +36,24 @@ try {
 }
 ```
 
-### 3. Inngest AI Gateway Configuration (CRITICAL FIX)
+### 3. Inngest OpenRouter Configuration (CRITICAL FIX)
 **Problem**: The `@inngest/ai` openai() function expects `baseUrl` (lowercase 'u'), but the code was using `baseURL` (uppercase 'U').
 
-**Root Cause**: Property name mismatch caused the AI Gateway URL to be ignored, defaulting to OpenAI's API endpoint instead.
+**Root Cause**: Property name mismatch caused the OpenRouter URL to be ignored, defaulting to OpenAI's API endpoint instead.
 
 **Solution**: Changed `baseURL` → `baseUrl` in all three agent configurations:
 - code-agent (line 103)
 - fragment-title-generator (line 241)
 - response-generator (line 252)
 
-**Additional Fix**: Removed trailing slash from AI_GATEWAY_BASE_URL in .env for consistency.
+**Additional Fix**: Removed trailing slash from OPENROUTER_BASE_URL in .env for consistency.
 
 ## Debug Logging Added
 
 The following debug logs have been added to help identify issues:
 
 1. **Function start**: Logs when the code-agent function begins
-2. **Environment variables**: Confirms E2B and AI Gateway credentials are present
+2. **Environment variables**: Confirms E2B and OpenRouter credentials are present
 3. **Sandbox creation**: Logs sandbox ID when created successfully
 4. **Database queries**: Logs message fetching and count
 5. **Network execution**: Logs input and output summary
@@ -85,7 +85,7 @@ Make sure these are set in your `.env` file:
 
 # Vercel AI Gateway
 # AI Gateway configuration
-# Base URL: https://ai-gateway.vercel.sh/v1/
+# Base URL: https://openrouter.ai/api/v1
 
 # Inngest
 # Inngest event and signing configuration
