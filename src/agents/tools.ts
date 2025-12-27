@@ -91,7 +91,8 @@ export function createTools(sandbox: Sandbox, onFileWrite?: (path: string) => vo
         path: z.string().describe('Directory path'),
       }),
       execute: async ({ path }) => {
-        const escapedPath = path.replace(/"/g, '\\"');
+        // Escape backslashes first, then double quotes for shell safety
+        const escapedPath = path.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const result = await sandbox.commands.run(
           `find -- "${escapedPath}" \\( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.css" \\) -type f -print0`
         );
