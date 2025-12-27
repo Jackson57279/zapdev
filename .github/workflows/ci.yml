@@ -76,7 +76,7 @@ jobs:
         env:
           # Dummy values for build-time static generation
           # These are not real keys and are only used to satisfy Clerk during build
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_build_placeholder
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZmFrZS1pbnN0YW5jZS1pZA
           NEXT_PUBLIC_CONVEX_URL: https://build-placeholder.convex.cloud
 
   audit:
