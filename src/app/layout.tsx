@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import Script from "next/script";
-import { ClerkProvider } from "@clerk/nextjs";
 
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals-reporter";
 import { ConvexClientProvider } from "@/components/convex-provider";
+import { ClerkProviderWrapper } from "@/components/clerk-provider-wrapper";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
@@ -64,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProviderWrapper>
       <html lang="en" suppressHydrationWarning>
         <head>
           <Script
@@ -108,6 +108,6 @@ export default function RootLayout({
         </body>
         <SpeedInsights />
       </html>
-    </ClerkProvider>
+    </ClerkProviderWrapper>
   );
-};
+}
