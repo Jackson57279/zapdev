@@ -56,6 +56,24 @@ export const sandboxStateEnum = v.union(
   v.literal("KILLED")
 );
 
+export const taskStatusEnum = v.union(
+  v.literal("pending"),
+  v.literal("running"),
+  v.literal("complete"),
+  v.literal("failed")
+);
+
+export const taskStageEnum = v.union(
+  v.literal("init"),
+  v.literal("framework"),
+  v.literal("ai"),
+  v.literal("start"),
+  v.literal("lint"),
+  v.literal("build"),
+  v.literal("validate"),
+  v.literal("complete")
+);
+
 export default defineSchema({
   // Projects table
   projects: defineTable({
@@ -224,12 +242,12 @@ export default defineSchema({
     .index("by_sandboxId", ["sandboxId"]),
 
   taskProgress: defineTable({
-    taskId: v.string(),
-    status: v.string(),
-    stage: v.string(),
+    taskId: v.string(), // Unique task identifier (not a foreign key reference)
+    status: taskStatusEnum,
+    stage: taskStageEnum,
     message: v.string(),
     streamedContent: v.optional(v.string()),
-    files: v.optional(v.any()),
+    files: v.optional(v.any()), // Record<string, string> - maps file paths to file contents: { [filePath: string]: string }
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),

@@ -91,10 +91,18 @@ export function createTools(sandbox: Sandbox, onFileWrite?: (path: string) => vo
         path: z.string().describe('Directory path'),
       }),
       execute: async ({ path }) => {
+        const escapedPath = path.replace(/"/g, '\\"');
         const result = await sandbox.commands.run(
-          `find ${path} -type f -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.css" | head -50`
+          `find -- "${escapedPath}" \\( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.css" \\) -type f -print0`
         );
-        return { files: result.stdout?.split('\n').filter(Boolean) || [] };
+        
+        const output = result.stdout || '';
+        const files = output
+          .split('\0')
+          .filter(Boolean)
+          .slice(0, 50);
+        
+        return { files };
       },
     }),
   };

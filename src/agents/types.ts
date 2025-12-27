@@ -9,10 +9,13 @@ export interface AgentState {
   summaryRetryCount: number;
 }
 
+export type TaskStatus = 'pending' | 'running' | 'complete' | 'failed';
+export type TaskStage = 'init' | 'framework' | 'ai' | 'start' | 'lint' | 'build' | 'validate' | 'complete';
+
 export interface TaskProgress {
   taskId: string;
-  status: 'pending' | 'running' | 'complete' | 'failed';
-  stage: string;
+  status: TaskStatus;
+  stage: TaskStage;
   message: string;
   streamedContent?: string;
   files?: Record<string, string>;

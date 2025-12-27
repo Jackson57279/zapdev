@@ -23,10 +23,15 @@ function getConvex(): ConvexHttpClient {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
 
   if (!userId) {
     return new Response('Unauthorized', { status: 401 });
+  }
+
+  const plan = sessionClaims?.plan as string | undefined;
+  if (plan !== 'pro') {
+    return new Response('Pro plan required', { status: 402 });
   }
 
   const body = await request.json();
@@ -34,6 +39,15 @@ export async function POST(request: NextRequest) {
 
   if (!projectId || !prompt) {
     return new Response('Missing required fields', { status: 400 });
+  }
+
+  if (!sandboxId || typeof sandboxId !== 'string' || sandboxId.trim() === '') {
+    return new Response('Invalid sandboxId: must be a non-empty string', { status: 400 });
+  }
+
+  const sandboxIdPattern = /^[a-zA-Z0-9_-]+$/;
+  if (!sandboxIdPattern.test(sandboxId)) {
+    return new Response('Invalid sandboxId: must contain only alphanumeric characters, hyphens, and underscores', { status: 400 });
   }
 
   Sentry.setUser({ id: userId });

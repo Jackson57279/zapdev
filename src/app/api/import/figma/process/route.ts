@@ -69,11 +69,15 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      importId: importRecord,
-      message: "Figma import processing not yet implemented in new architecture",
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        importId: importRecord,
+        error: "Figma import processing temporarily unavailable during migration",
+        message: "Figma import processing temporarily unavailable during migration",
+      },
+      { status: 503 }
+    );
   } catch (error) {
     console.error("Error processing Figma import:", error);
     return NextResponse.json(

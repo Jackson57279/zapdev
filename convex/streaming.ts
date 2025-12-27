@@ -1,16 +1,18 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { taskStatusEnum, taskStageEnum } from "./schema";
 
 export const updateProgress = mutation({
   args: {
     taskId: v.string(),
-    status: v.string(),
-    stage: v.string(),
+    status: taskStatusEnum,
+    stage: taskStageEnum,
     message: v.string(),
     streamedContent: v.optional(v.string()),
-    files: v.optional(v.any()),
+    files: v.optional(v.any()), // Record<string, string> - maps file paths to file contents
     error: v.optional(v.string()),
   },
+  returns: v.id("taskProgress"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("taskProgress")
@@ -48,6 +50,20 @@ export const updateProgress = mutation({
 
 export const getProgress = query({
   args: { taskId: v.string() },
+  returns: v.optional(
+    v.object({
+      _id: v.id("taskProgress"),
+      taskId: v.string(),
+      status: taskStatusEnum,
+      stage: taskStageEnum,
+      message: v.string(),
+      streamedContent: v.optional(v.string()),
+      files: v.optional(v.any()),
+      error: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+  ),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("taskProgress")
@@ -58,6 +74,7 @@ export const getProgress = query({
 
 export const deleteProgress = mutation({
   args: { taskId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("taskProgress")
@@ -67,5 +84,6 @@ export const deleteProgress = mutation({
     if (existing) {
       await ctx.db.delete(existing._id);
     }
+    return null;
   },
 });

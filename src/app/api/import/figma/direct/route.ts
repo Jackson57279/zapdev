@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchMutation } from "convex/nextjs";
@@ -39,7 +38,6 @@ export async function POST(request: Request) {
       if (!fileName.toLowerCase().endsWith(".fig")) {
         return NextResponse.json({ error: "Only .fig files are supported" }, { status: 400 });
       }
-      Buffer.from(await file.arrayBuffer());
     }
 
     const sourceId = figmaUrl || fileName || "figma-direct";

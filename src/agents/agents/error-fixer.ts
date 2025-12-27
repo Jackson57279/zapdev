@@ -54,6 +54,7 @@ export async function fixErrors(
   }
 
   await result.text;
+  await result.toolCalls;
 
   logger.progress('validate', 'Re-running validation');
   const validationResult = await runValidation(sandboxId);

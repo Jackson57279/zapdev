@@ -83,7 +83,18 @@ export class SandboxManager {
   }
 
   private scheduleCacheCleanup(sandboxId: string): void {
-    setTimeout(() => {
+    setTimeout(async () => {
+      const sandbox = SANDBOX_CACHE.get(sandboxId);
+      if (sandbox) {
+        try {
+          await sandbox.kill();
+        } catch (error) {
+          Sentry.captureException(error, {
+            extra: { sandboxId },
+            tags: { component: 'sandbox', action: 'cleanup' },
+          });
+        }
+      }
       SANDBOX_CACHE.delete(sandboxId);
     }, CACHE_EXPIRY_MS);
   }

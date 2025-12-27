@@ -15,8 +15,11 @@ export class AgentLogger {
   }
 
   info(message: string, data?: Record<string, unknown>): void {
-    const logMessage = `[${this.taskId}] ${message}`;
-    console.log(logMessage, data || '');
+    console.log({
+      taskId: this.taskId,
+      message,
+      ...(data && { data }),
+    });
 
     Sentry.addBreadcrumb({
       category: 'agent',
@@ -28,7 +31,10 @@ export class AgentLogger {
 
   warn(message: string, data?: Record<string, unknown>): void {
     const logMessage = `[${this.taskId}] WARN: ${message}`;
-    console.warn(logMessage, data || '');
+    const fullMessage = data
+      ? `${logMessage} ${JSON.stringify(data)}`
+      : logMessage;
+    console.warn(fullMessage);
 
     Sentry.addBreadcrumb({
       category: 'agent',
@@ -40,7 +46,12 @@ export class AgentLogger {
 
   error(error: Error | string, context?: Record<string, unknown>): void {
     const err = typeof error === 'string' ? new Error(error) : error;
-    console.error(`[${this.taskId}] ERROR:`, err, context || '');
+    console.error({
+      taskId: this.taskId,
+      error: err.message || err.toString(),
+      errorStack: err instanceof Error ? err.stack : undefined,
+      ...(context && { context }),
+    });
 
     Sentry.captureException(err, {
       extra: { ...context, taskId: this.taskId },

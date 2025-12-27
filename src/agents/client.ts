@@ -1,8 +1,17 @@
 import { createOpenAI } from '@ai-sdk/openai';
 
+const apiKey = process.env.OPENROUTER_API_KEY;
+if (!apiKey) {
+  throw new Error(
+    'Missing required environment variable: OPENROUTER_API_KEY\n' +
+    'Please set OPENROUTER_API_KEY in your .env file or environment variables.\n' +
+    'You can obtain an API key from https://openrouter.ai/keys'
+  );
+}
+
 export const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY!,
+  apiKey,
   headers: {
     'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://zapdev.app',
     'X-Title': 'Zapdev',
