@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser, RedirectToSignIn } from "@clerk/nextjs";

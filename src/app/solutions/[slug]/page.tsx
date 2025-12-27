@@ -12,7 +12,12 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+// Only generate static params in production with valid Clerk key
 export async function generateStaticParams() {
+  // Skip static generation during CI builds without valid Clerk credentials
+  if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_test_build_placeholder')) {
+    return [];
+  }
   const solutions = getAllSolutions();
   return solutions.map((solution) => ({
     slug: solution.slug,
