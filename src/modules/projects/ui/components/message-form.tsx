@@ -11,7 +11,7 @@ import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { useUser } from "@stackframe/stack";
 import { api } from "@/lib/convex-api";
-import type { ModelId } from "@/inngest/functions";
+import type { ModelId } from "@/app/api/agent/generate/route";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

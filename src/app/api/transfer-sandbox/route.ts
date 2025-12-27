@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { checkBotId } from "botid/server";
-import { inngest } from "@/inngest/client";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
+export async function POST(_request: Request) {
   try {
-    // Verify request is from a legitimate user, not a bot
     const botVerification = await checkBotId();
     if (botVerification.isBot) {
       console.warn("⚠️ BotID blocked a sandbox transfer attempt");
@@ -16,31 +14,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
-    const { fragmentId } = body;
-
-    if (!fragmentId) {
-      return NextResponse.json(
-        { error: "Fragment ID is required" },
-        { status: 400 }
-      );
-    }
-
-    await inngest.send({
-      name: "sandbox-transfer/run",
-      data: {
-        fragmentId,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "Sandbox resume initiated",
-    });
-  } catch (error) {
-    console.error("[ERROR] Failed to resume sandbox:", error);
+    // TODO: Re-implement sandbox transfer with new AI SDK agent
+    console.warn("[transfer-sandbox] Feature temporarily unavailable during migration");
+    
     return NextResponse.json(
-      { error: "Failed to resume sandbox" },
+      { 
+        error: "Sandbox transfer feature is temporarily unavailable. Please try again later.",
+        code: "FEATURE_UNAVAILABLE"
+      },
+      { status: 503 }
+    );
+  } catch (error) {
+    console.error("[ERROR] Failed in transfer-sandbox route:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
