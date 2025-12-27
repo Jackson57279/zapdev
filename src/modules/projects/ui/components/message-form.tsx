@@ -10,7 +10,7 @@ import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon
 import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
-import type { ModelId } from "@/inngest/functions";
+import type { ModelId } from "@/agents/client";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -82,13 +82,12 @@ export const MessageForm = ({ projectId }: Props) => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      // Trigger Inngest event for AI processing
-      await fetch("/api/inngest/trigger", {
+      await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: result.projectId,
-          value: result.value,
+          prompt: result.value,
           model: selectedModel,
         }),
       });

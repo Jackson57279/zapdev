@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchQuery, fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import { inngest } from "@/inngest/client";
+import type { Id } from "@/convex/_generated/dataModel";
 
 export async function POST(request: Request) {
   const user = await getUser();
@@ -11,10 +11,6 @@ export async function POST(request: Request) {
   }
 
   if (!user.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (false) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -29,8 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get OAuth connection
-    const connection = await fetchQuery((api as any).oauth.getConnection, {
+    const connection = await fetchQuery(api.oauth.getConnection, {
       provider: "figma",
     });
 
@@ -41,12 +36,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch file details from Figma
+    const typedConnection = connection as { accessToken: string };
+
     const fileResponse = await fetch(
       `https://api.figma.com/v1/files/${fileKey}`,
       {
         headers: {
-          Authorization: `Bearer ${connection.accessToken}`,
+          Authorization: `Bearer ${typedConnection.accessToken}`,
         },
       }
     );
@@ -55,11 +51,10 @@ export async function POST(request: Request) {
       throw new Error("Failed to fetch Figma file details");
     }
 
-    const fileData = await fileResponse.json();
+    const fileData = await fileResponse.json() as { name: string; lastModified: string; version: string; pages?: unknown[] };
 
-    // Create import record in Convex
-    const importRecord = await fetchMutation((api as any).imports.createImport, {
-      projectId,
+    const importRecord = await fetchMutation(api.imports.createImport, {
+      projectId: projectId as Id<"projects">,
       source: "FIGMA",
       sourceId: fileKey,
       sourceName: fileName,
@@ -74,20 +69,10 @@ export async function POST(request: Request) {
       },
     });
 
-    await inngest.send({
-      name: "code-agent/process-figma-import",
-      data: {
-        importId: importRecord,
-        projectId,
-        fileKey,
-        accessToken: connection.accessToken,
-      },
-    });
-
     return NextResponse.json({
       success: true,
       importId: importRecord,
-      message: "Figma file import started",
+      message: "Figma import processing not yet implemented in new architecture",
     });
   } catch (error) {
     console.error("Error processing Figma import:", error);

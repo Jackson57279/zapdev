@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { inngest } from "@/inngest/client";
 
 type FixErrorsRequestBody = {
   fragmentId: string;
@@ -49,17 +48,13 @@ export async function POST(request: Request) {
     const { fragmentId } = body;
 
     try {
-      // Check if fragment exists and user has access to it
       await convexClient.query(api.messages.getFragmentByIdAuth, {
         fragmentId: fragmentId as Id<"fragments">
       });
 
-      // If query succeeds, user is authorized - trigger error fix
-      await inngest.send({
-        name: "error-fix/run",
-        data: {
-          fragmentId,
-        },
+      return NextResponse.json({
+        success: true,
+        message: "Error fix not yet implemented in new architecture",
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes("Unauthorized")) {
@@ -70,11 +65,6 @@ export async function POST(request: Request) {
       }
       throw error;
     }
-
-    return NextResponse.json({
-      success: true,
-      message: "Error fix initiated",
-    });
   } catch (error) {
     console.error("[ERROR] Failed to trigger error fix:", error);
     return NextResponse.json(

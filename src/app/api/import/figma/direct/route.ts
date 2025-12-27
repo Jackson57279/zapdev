@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import { inngest } from "@/inngest/client";
+import type { Id } from "@/convex/_generated/dataModel";
 
 export async function POST(request: Request) {
   const user = await getUser();
@@ -30,7 +30,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Provide figmaUrl or figmaFile" }, { status: 400 });
     }
 
-    let fileBase64: string | undefined;
     let fileName: string | undefined;
     let fileSize: number | undefined;
 
@@ -40,43 +39,31 @@ export async function POST(request: Request) {
       if (!fileName.toLowerCase().endsWith(".fig")) {
         return NextResponse.json({ error: "Only .fig files are supported" }, { status: 400 });
       }
-      const fileBuffer = Buffer.from(await file.arrayBuffer());
-      fileBase64 = fileBuffer.toString("base64");
+      Buffer.from(await file.arrayBuffer());
     }
 
     const sourceId = figmaUrl || fileName || "figma-direct";
     const sourceUrl = figmaUrl || "figma-file-upload";
     const sourceName = fileName || (figmaUrl ? "Figma link" : "Figma upload");
 
-    const importId = await fetchMutation((api as any).imports.createImport, {
-      projectId,
+    const importId = await fetchMutation(api.imports.createImport, {
+      projectId: projectId as Id<"projects">,
       source: "FIGMA",
       sourceId,
       sourceName,
       sourceUrl,
       metadata: {
-        inputType: fileBase64 ? "file" : "link",
+        inputType: file ? "file" : "link",
         fileName,
         fileSize,
         figmaUrl: figmaUrl || undefined,
       },
     });
 
-    await inngest.send({
-      name: "code-agent/process-figma-direct",
-      data: {
-        importId,
-        projectId,
-        figmaUrl: figmaUrl || undefined,
-        fileBase64,
-        fileName,
-      },
-    });
-
     return NextResponse.json({
       success: true,
       importId,
-      message: "Figma import started",
+      message: "Figma import processing not yet implemented in new architecture",
     });
   } catch (error) {
     console.error("Error processing direct Figma import:", error);
@@ -86,4 +73,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

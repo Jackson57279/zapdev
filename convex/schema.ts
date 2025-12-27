@@ -222,4 +222,18 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_state", ["state"])
     .index("by_sandboxId", ["sandboxId"]),
+
+  taskProgress: defineTable({
+    taskId: v.string(),
+    status: v.string(),
+    stage: v.string(),
+    message: v.string(),
+    streamedContent: v.optional(v.string()),
+    files: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_taskId", ["taskId"])
+    .index("by_status", ["status"]),
 });

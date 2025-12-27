@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { inngest } from "@/inngest/client";
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -14,16 +12,9 @@ export async function POST(request: Request) {
       );
     }
 
-    await inngest.send({
-      name: "sandbox-transfer/run",
-      data: {
-        fragmentId,
-      },
-    });
-
     return NextResponse.json({
       success: true,
-      message: "Sandbox resume initiated",
+      message: "Sandbox transfer not yet implemented in new architecture",
     });
   } catch (error) {
     console.error("[ERROR] Failed to resume sandbox:", error);
