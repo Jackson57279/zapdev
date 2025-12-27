@@ -1,22 +1,29 @@
-import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAI, type OpenAIProvider } from '@ai-sdk/openai';
 
-const apiKey = process.env.OPENROUTER_API_KEY;
-if (!apiKey) {
-  throw new Error(
-    'Missing required environment variable: OPENROUTER_API_KEY\n' +
-    'Please set OPENROUTER_API_KEY in your .env file or environment variables.\n' +
-    'You can obtain an API key from https://openrouter.ai/keys'
-  );
+// Lazy initialization to avoid build-time errors when env var is not set
+let _openrouter: OpenAIProvider | null = null;
+
+function getOpenRouter(): OpenAIProvider {
+  if (!_openrouter) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'Missing required environment variable: OPENROUTER_API_KEY\n' +
+        'Please set OPENROUTER_API_KEY in your .env file or environment variables.\n' +
+        'You can obtain an API key from https://openrouter.ai/keys'
+      );
+    }
+    _openrouter = createOpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey,
+      headers: {
+        'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://zapdev.app',
+        'X-Title': 'Zapdev',
+      },
+    });
+  }
+  return _openrouter;
 }
-
-export const openrouter = createOpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey,
-  headers: {
-    'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://zapdev.app',
-    'X-Title': 'Zapdev',
-  },
-});
 
 export const MODEL_CONFIGS = {
   'auto': {
@@ -45,5 +52,5 @@ export type ModelId = keyof typeof MODEL_CONFIGS;
 
 export function getModel(modelId: ModelId) {
   const config = MODEL_CONFIGS[modelId] || MODEL_CONFIGS['auto'];
-  return openrouter(config.id);
+  return getOpenRouter()(config.id);
 }

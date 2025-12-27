@@ -1,4 +1,4 @@
-export { openrouter, getModel, MODEL_CONFIGS } from './client';
+export { getModel, MODEL_CONFIGS } from './client';
 export type { ModelId } from './client';
 
 export * from './types';
