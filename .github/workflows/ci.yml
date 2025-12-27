@@ -73,6 +73,11 @@ jobs:
 
       - name: Build project
         run: bun run build
+        env:
+          # Dummy values for build-time static generation
+          # These are not real keys and are only used to satisfy Clerk during build
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_build_placeholder
+          NEXT_PUBLIC_CONVEX_URL: https://build-placeholder.convex.cloud
 
   audit:
     name: Security Audit
