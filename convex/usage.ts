@@ -152,7 +152,7 @@ export const getUsageInternal = async (
   creditsRemaining: number;
   msBeforeNext: number;
 }> => {
-  const isPro = await hasProAccess(ctx).catch(() => false);
+  const isPro = await hasProAccess(ctx, userId).catch(() => false);
   const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
 
   const usage = await ctx.db
@@ -218,7 +218,7 @@ export const checkAndConsumeCreditInternal = async (
   ctx: any,
   userId: string
 ): Promise<{ success: boolean; remaining: number; message?: string }> => {
-  const isPro = await hasProAccess(ctx).catch(() => false);
+  const isPro = await hasProAccess(ctx, userId).catch(() => false);
   const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
 
   const usage = await ctx.db

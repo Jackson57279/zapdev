@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
-import { requireAuth } from "./helpers";
+import { requireAuth, getCurrentUserId } from "./helpers";
 import {
   messageRoleEnum,
   messageTypeEnum,
@@ -21,6 +21,7 @@ export const create = mutation({
     role: messageRoleEnum,
     type: messageTypeEnum,
     status: v.optional(messageStatusEnum),
+    selectedModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
@@ -39,6 +40,7 @@ export const create = mutation({
       role: args.role,
       type: args.type,
       status: args.status || "COMPLETE",
+      selectedModel: args.selectedModel,
       createdAt: now,
       updatedAt: now,
     });
@@ -55,6 +57,7 @@ export const createWithAttachments = action({
   args: {
     value: v.string(),
     projectId: v.string(),
+    selectedModel: v.optional(v.string()),
     attachments: v.optional(
       v.array(
         v.object({
@@ -70,6 +73,13 @@ export const createWithAttachments = action({
     ),
   },
   handler: async (ctx, args) => {
+    // Get the authenticated user
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || !identity.subject) {
+      throw new Error("Unauthorized");
+    }
+    const userId = identity.subject;
+
     // Validate project ID format (Convex ID)
     const projectId = args.projectId as Id<"projects">;
 
@@ -89,12 +99,14 @@ export const createWithAttachments = action({
       role: "USER",
       type: "RESULT",
       status: "COMPLETE",
+      selectedModel: args.selectedModel,
     });
 
     // Add attachments if provided
     if (args.attachments && args.attachments.length > 0) {
       for (const attachment of args.attachments) {
-        await ctx.runMutation(api.messages.addAttachment, {
+        await ctx.runMutation(api.messages.addAttachmentForUser, {
+          userId,
           messageId,
           type: attachment.type ?? "IMAGE",
           url: attachment.url,
@@ -123,12 +135,12 @@ export const list = query({
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const userId = await requireAuth(ctx);
+    const userId = await getCurrentUserId(ctx);
 
     // Verify project ownership
     const project = await ctx.db.get(args.projectId);
     if (!project || project.userId !== userId) {
-      throw new Error("Unauthorized");
+      return [];
     }
 
     const messages = await ctx.db
@@ -394,6 +406,79 @@ export const addAttachment = mutation({
 });
 
 /**
+ * Internal: Add attachment for a specific user (for use from actions/background jobs)
+ */
+export const addAttachmentInternal = async (
+  ctx: any,
+  userId: string,
+  messageId: string,
+  attachmentData: {
+    type: string;
+    url: string;
+    size: number;
+    width?: number;
+    height?: number;
+    importId?: any;
+    sourceMetadata?: any;
+  }
+): Promise<string> => {
+  // Verify message ownership
+  const message = await ctx.db.get(messageId as any);
+  if (!message) {
+    throw new Error("Message not found");
+  }
+
+  const project = await ctx.db.get(message.projectId);
+  if (!project || project.userId !== userId) {
+    throw new Error("Unauthorized");
+  }
+
+  const now = Date.now();
+  const attachmentId = await ctx.db.insert("attachments", {
+    messageId: messageId as any,
+    type: attachmentData.type,
+    url: attachmentData.url,
+    width: attachmentData.width,
+    height: attachmentData.height,
+    size: attachmentData.size,
+    importId: attachmentData.importId,
+    sourceMetadata: attachmentData.sourceMetadata,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return attachmentId;
+};
+
+/**
+ * Wrapper mutation for adding attachment with explicit user ID (for use from actions)
+ */
+export const addAttachmentForUser = mutation({
+  args: {
+    userId: v.string(),
+    messageId: v.id("messages"),
+    type: attachmentTypeEnum,
+    url: v.string(),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    size: v.number(),
+    importId: v.optional(v.id("imports")),
+    sourceMetadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    return addAttachmentInternal(ctx, args.userId, args.messageId, {
+      type: args.type,
+      url: args.url,
+      size: args.size,
+      width: args.width,
+      height: args.height,
+      importId: args.importId,
+      sourceMetadata: args.sourceMetadata,
+    });
+  },
+});
+
+/**
  * Get attachments for a message
  */
 export const getAttachments = query({
@@ -546,6 +631,17 @@ export const createFragmentInternal = async (
 
   const now = Date.now();
 
+  // Log what we're about to save
+  const filesCount = files && typeof files === 'object' ? Object.keys(files).length : 0;
+  console.log(`[createFragmentInternal] Saving fragment with ${filesCount} files for message ${messageId}`);
+  
+  if (filesCount === 0) {
+    console.error('[createFragmentInternal] WARNING: files object is empty or invalid!', {
+      filesType: typeof files,
+      filesKeys: files ? Object.keys(files).slice(0, 5) : [],
+    });
+  }
+
   // Check if fragment already exists
   const existingFragment = await ctx.db
     .query("fragments")
@@ -554,6 +650,7 @@ export const createFragmentInternal = async (
 
   if (existingFragment) {
     // Update existing fragment
+    console.log(`[createFragmentInternal] Updating existing fragment ${existingFragment._id}`);
     await ctx.db.patch(existingFragment._id, {
       sandboxId,
       sandboxUrl,
@@ -562,10 +659,12 @@ export const createFragmentInternal = async (
       metadata,
       updatedAt: now,
     });
+    console.log(`[createFragmentInternal] Successfully updated fragment ${existingFragment._id}`);
     return existingFragment._id;
   }
 
   // Create new fragment
+  console.log(`[createFragmentInternal] Creating new fragment for message ${messageId}`);
   const fragmentId = await ctx.db.insert("fragments", {
     messageId: messageId as any,
     sandboxId,
@@ -577,6 +676,7 @@ export const createFragmentInternal = async (
     createdAt: now,
     updatedAt: now,
   });
+  console.log(`[createFragmentInternal] Successfully created fragment ${fragmentId} with ${filesCount} files`);
   return fragmentId;
 };
 
@@ -615,8 +715,8 @@ export const listForUser = query({
 
         return {
           ...message,
-          fragment,
-          attachments,
+          Fragment: fragment,
+          Attachment: attachments,
         };
       })
     );
@@ -640,6 +740,21 @@ export const createFragmentForUser = mutation({
     framework: frameworkEnum,
   },
   handler: async (ctx, args) => {
+    // Log fragment creation for debugging
+    const filesCount = args.files && typeof args.files === 'object' 
+      ? Object.keys(args.files).length 
+      : 0;
+    
+    console.log(`[Convex] Creating fragment for message ${args.messageId} with ${filesCount} files`);
+    
+    if (filesCount === 0) {
+      console.error('[Convex] WARNING: Attempting to create fragment with 0 files!', {
+        messageId: args.messageId,
+        filesType: typeof args.files,
+        files: args.files,
+      });
+    }
+
     return createFragmentInternal(
       ctx,
       args.userId,

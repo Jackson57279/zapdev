@@ -1,17 +1,32 @@
 import { NextResponse } from "next/server";
+import { checkBotId } from "botid/server";
 import { getUser } from "@/lib/auth-server";
 
+export const dynamic = "force-dynamic";
+
 const FIGMA_CLIENT_ID = process.env.FIGMA_CLIENT_ID;
-const FIGMA_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/import/figma/callback`;
+const FIGMA_REDIRECT_URI = process.env.NODE_ENV === "production"
+  ? "https://zapdev.link/api/import/figma/callback"
+  : "http://localhost:3000/api/import/figma/callback";
 
 export async function GET() {
-  const user = await getUser();
-  
-  if (!user) {
+  // Verify request is from a legitimate user, not a bot
+  const botVerification = await checkBotId();
+  if (botVerification.isBot) {
+    console.warn("⚠️ BotID blocked a Figma import auth attempt");
+    return NextResponse.json(
+      { error: "Access denied - suspicious activity detected" },
+      { status: 403 }
+    );
+  }
+
+  const stackUser = await getUser();
+
+  if (!stackUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = user.id;
+  const userId = stackUser.id;
 
   if (!FIGMA_CLIENT_ID) {
     return NextResponse.json(

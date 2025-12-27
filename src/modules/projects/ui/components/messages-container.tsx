@@ -67,6 +67,7 @@ export const MessagesContainer = ({
           {messages.map((message) => (
             <MessageCard
               key={message._id}
+              messageId={message._id}
               content={message.content}
               role={message.role}
               fragment={message.Fragment}
@@ -75,6 +76,8 @@ export const MessagesContainer = ({
               onFragmentClick={setActiveFragment}
               type={message.type}
               attachments={message.Attachment}
+              specMode={message.specMode}
+              specContent={message.specContent}
             />
           ))}
           {isLastMessageUser && <MessageLoading />}

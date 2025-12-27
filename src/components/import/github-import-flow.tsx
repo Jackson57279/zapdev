@@ -71,9 +71,8 @@ export function GitHubImportFlow() {
       }
 
       if (importMode === "dashboard") {
-        // Redirect to home with selected repo context
-        const repoParam = encodeURIComponent(selectedRepo.fullName);
-        window.location.href = `/?repo=${repoParam}`;
+        // Redirect to 10x SWE dashboard with selected repo
+        window.location.href = `/dashboard/10x-swe?repo=${selectedRepo.fullName}`;
         return;
       }
 
@@ -149,7 +148,7 @@ export function GitHubImportFlow() {
             <div className="flex items-center justify-center w-12 h-12 bg-blue-500/10 rounded-lg mb-4">
               <BotIcon className="w-6 h-6 text-blue-500" />
             </div>
-            <h3 className="font-semibold mb-2">10x SWE</h3>
+            <h3 className="font-semibold mb-2">10x SWE Dashboard</h3>
             <p className="text-sm text-muted-foreground">
               Advanced AI-powered analysis, code review, and PR assistance for your repos
             </p>

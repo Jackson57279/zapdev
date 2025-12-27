@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery, fetchMutation } from "convex/nextjs";
+import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
-  const user = await getUser();
-  if (!user) {
+  const stackUser = await getUser();
+  if (!stackUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!user.id) {
+  if (!stackUser.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,8 +29,10 @@ export async function POST(request: Request) {
       );
     }
 
+    const convex = await getConvexClientWithAuth();
+
     // Get OAuth connection
-    const connection = await fetchQuery((api as any).oauth.getConnection, {
+    const connection = await convex.query((api as any).oauth.getConnection, {
       provider: "github",
     });
 
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
     const repoData = await repoResponse.json();
 
     // Create import record in Convex
-    const importRecord = await fetchMutation((api as any).imports.createImport, {
+    const importRecord = await convex.mutation((api as any).imports.createImport, {
       projectId,
       source: "GITHUB",
       sourceId: repoId.toString(),

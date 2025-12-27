@@ -27,6 +27,13 @@ export const messageStatusEnum = v.union(
   v.literal("COMPLETE")
 );
 
+export const specModeEnum = v.union(
+  v.literal("PLANNING"),
+  v.literal("AWAITING_APPROVAL"),
+  v.literal("APPROVED"),
+  v.literal("REJECTED")
+);
+
 export const attachmentTypeEnum = v.union(
   v.literal("IMAGE"),
   v.literal("FIGMA_FILE"),
@@ -76,6 +83,9 @@ export default defineSchema({
     type: messageTypeEnum,
     status: messageStatusEnum,
     projectId: v.id("projects"),
+    specMode: v.optional(specModeEnum), // Spec/planning mode status
+    specContent: v.optional(v.string()), // Markdown spec from AI
+    selectedModel: v.optional(v.string()), // Model used for this message
     createdAt: v.optional(v.number()), // timestamp
     updatedAt: v.optional(v.number()), // timestamp
   })
@@ -178,31 +188,30 @@ export default defineSchema({
     .index("by_key", ["key"])
     .index("by_windowStart", ["windowStart"]),
 
-  // Subscriptions table - Clerk Billing subscription tracking
+  // Subscriptions table - Polar.sh subscription tracking
   subscriptions: defineTable({
-    userId: v.string(), // Clerk user ID
-    clerkSubscriptionId: v.string(), // Clerk subscription ID
-    planId: v.string(), // Clerk plan ID (e.g., "plan_xxxxx")
-    planName: v.string(), // Plan name (e.g., "Free", "Pro")
+    userId: v.string(), // Stack Auth user ID
+    polarCustomerId: v.string(), // Polar.sh customer ID
+    polarSubscriptionId: v.string(), // Polar.sh subscription ID
+    productId: v.string(), // Polar product ID
+    productName: v.string(), // "Free" | "Pro" | "Enterprise"
     status: v.union(
       v.literal("incomplete"),
       v.literal("active"),
       v.literal("canceled"),
       v.literal("past_due"),
-      v.literal("unpaid"),
-      v.literal("trialing")
+      v.literal("unpaid")
     ),
     currentPeriodStart: v.number(), // Timestamp
     currentPeriodEnd: v.number(), // Timestamp
     cancelAtPeriodEnd: v.boolean(), // Scheduled cancellation flag
-    features: v.optional(v.array(v.string())), // Array of feature IDs granted by this plan
-    metadata: v.optional(v.any()), // Additional metadata from Clerk
+    metadata: v.optional(v.any()), // Additional Polar metadata
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_clerkSubscriptionId", ["clerkSubscriptionId"])
-    .index("by_planId", ["planId"])
+    .index("by_polarCustomerId", ["polarCustomerId"])
+    .index("by_polarSubscriptionId", ["polarSubscriptionId"])
     .index("by_status", ["status"]),
 
   // Sandbox Sessions table - E2B sandbox persistence tracking
@@ -222,4 +231,39 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_state", ["state"])
     .index("by_sandboxId", ["sandboxId"]),
+
+  // E2B Rate Limits table - track E2B API usage to prevent hitting limits
+  e2bRateLimits: defineTable({
+    operation: v.string(), // Operation type: "sandbox_create", "sandbox_connect", etc.
+    timestamp: v.number(), // When the request was made
+  })
+    .index("by_operation", ["operation"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_operation_timestamp", ["operation", "timestamp"]),
+
+  // Job Queue table - queue requests when E2B is unavailable
+  jobQueue: defineTable({
+    type: v.string(), // Job type: "code_generation", "error_fix", etc.
+    projectId: v.id("projects"),
+    userId: v.string(), // Clerk user ID
+    payload: v.any(), // Job-specific data (event.data from Inngest)
+    priority: v.union(v.literal("high"), v.literal("normal"), v.literal("low")),
+    status: v.union(
+      v.literal("PENDING"),
+      v.literal("PROCESSING"),
+      v.literal("COMPLETED"),
+      v.literal("FAILED")
+    ),
+    attempts: v.number(), // Number of processing attempts
+    maxAttempts: v.optional(v.number()), // Max retry attempts (default 3)
+    error: v.optional(v.string()), // Last error message
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    processedAt: v.optional(v.number()), // When job was completed/failed
+  })
+    .index("by_status", ["status"])
+    .index("by_projectId", ["projectId"])
+    .index("by_userId", ["userId"])
+    .index("by_status_priority", ["status", "priority"])
+    .index("by_createdAt", ["createdAt"]),
 });

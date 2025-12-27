@@ -1,6 +1,6 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
+import { useUser } from "@stackframe/stack";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, Home } from "lucide-react";
+import { LogOut, User, Settings } from "lucide-react";
 
 interface Props {
   showName?: boolean;
@@ -19,29 +19,22 @@ interface Props {
 
 export const UserControl = ({ showName }: Props) => {
   const router = useRouter();
-  const { user, isLoaded, isSignedIn } = useUser();
-  const { signOut } = useClerk();
+  const user = useUser();
 
-  if (!isLoaded || !isSignedIn || !user) return null;
+  if (!user) return null;
 
   const handleSignOut = async () => {
-    await signOut();
+    await user.signOut();
     router.push("/");
   };
 
-  const displayName =
-    user.fullName || user.username || user.primaryEmailAddress?.emailAddress || "";
-
-  const initials = displayName
+  const initials = user.displayName
     ?.split(" ")
     .map((n) => n[0])
     .join("")
-    .toUpperCase() ||
-    user.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() ||
-    "U";
+    .toUpperCase() || user.primaryEmail?.[0]?.toUpperCase() || "U";
 
-  const avatarSrc = user.imageUrl ?? undefined;
-  const email = user.primaryEmailAddress?.emailAddress ?? "";
+  const avatarSrc = user.profileImageUrl ?? undefined;
 
   return (
     <DropdownMenu>
@@ -52,21 +45,23 @@ export const UserControl = ({ showName }: Props) => {
         </Avatar>
         {showName && (
           <span className="text-sm font-medium hidden md:inline-block">
-            {displayName || email}
+            {user.displayName || user.primaryEmail}
           </span>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{displayName}</p>
-            <p className="text-xs leading-none text-muted-foreground">{email}</p>
+            <p className="text-sm font-medium leading-none">{user.displayName}</p>
+            <p className="text-xs leading-none text-muted-foreground">
+              {user.primaryEmail}
+            </p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/")}>
-          <Home className="mr-2 h-4 w-4" />
-          <span>Home</span>
+        <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+          <User className="mr-2 h-4 w-4" />
+          <span>Dashboard</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => router.push("/settings")}>
           <Settings className="mr-2 h-4 w-4" />

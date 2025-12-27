@@ -1,19 +1,22 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery, fetchMutation } from "convex/nextjs";
+
+export const dynamic = 'force-dynamic';
+import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
 const FIGMA_CLIENT_ID = process.env.FIGMA_CLIENT_ID;
 const FIGMA_CLIENT_SECRET = process.env.FIGMA_CLIENT_SECRET;
-const FIGMA_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/import/figma/callback`;
+const FIGMA_REDIRECT_URI = process.env.NODE_ENV === "production"
+  ? "https://zapdev.link/api/import/figma/callback"
+  : "http://localhost:3000/api/import/figma/callback";
 
 export async function GET(request: Request) {
-  const user = await getUser();
-  if (!user) {
+  const stackUser = await getUser();
+  if (!stackUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = user.id;
+  const userId = stackUser.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -81,8 +84,10 @@ export async function GET(request: Request) {
 
     const meData = meResponse.ok ? await meResponse.json() : {};
 
+    const convex = await getConvexClientWithAuth();
+
     // Store OAuth connection in Convex
-    await fetchMutation((api as any).oauth.storeConnection, {
+    await convex.mutation((api as any).oauth.storeConnection, {
       provider: "figma",
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,

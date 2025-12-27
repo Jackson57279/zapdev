@@ -54,8 +54,8 @@ In your Vercel project settings, add the following environment variables:
 - `NEXT_PUBLIC_APP_URL`: Your production URL (e.g., `https://your-app.vercel.app`)
 
 ### Vercel AI Gateway
-- `OPENROUTER_API_KEY`: Your OpenRouter API key
-- `OPENROUTER_BASE_URL`: `https://openrouter.ai/api/v1`
+- `AI_GATEWAY_API_KEY`: Your Vercel AI Gateway API key
+- `AI_GATEWAY_BASE_URL`: `https://ai-gateway.vercel.sh/v1/`
 
 ### E2B
 - `E2B_API_KEY`: Your E2B API key

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { checkBotId } from "botid/server";
 import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { sanitizeTextForDatabase } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
 
 type UpdateMessageRequestBody = {
   messageId: string;
@@ -25,8 +28,18 @@ function isUpdateMessageRequestBody(value: unknown): value is UpdateMessageReque
 
 export async function PATCH(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
+    // Verify request is from a legitimate user, not a bot
+    const botVerification = await checkBotId();
+    if (botVerification.isBot) {
+      console.warn("⚠️ BotID blocked a message update attempt");
+      return NextResponse.json(
+        { error: "Access denied - suspicious activity detected" },
+        { status: 403 }
+      );
+    }
+
+    const stackUser = await getUser();
+    if (!stackUser) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }

@@ -1,9 +1,22 @@
 import { getUser } from "@/lib/auth-server";
+import { checkBotId } from "botid/server";
+
+export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
+    // Verify request is from a legitimate user, not a bot
+    const botVerification = await checkBotId();
+    if (botVerification.isBot) {
+      console.warn("⚠️ BotID blocked a token generation attempt");
+      return Response.json(
+        { error: "Access denied - suspicious activity detected" },
+        { status: 403 }
+      );
+    }
+
     const user = await getUser();
-    
+
     if (!user) {
       return Response.json(
         { error: "Unauthorized" },

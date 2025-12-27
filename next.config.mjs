@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { withBotId } from "botid/next/config";
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +23,22 @@ const hasCritters = (() => {
 
 const nextConfig = {
   /* config options here */
+  // Disable trailing slash enforcement for the entire app
+  trailingSlash: false,
+  // Prevent trailing slash redirects on API routes (Polar webhooks don't follow redirects)
+  skipTrailingSlashRedirect: true,
+  // Handle webhook requests with or without trailing slash
+  rewrites: async () => {
+    return {
+      beforeFiles: [
+        // Rewrite webhook requests without trailing slash to the handler
+        {
+          source: '/api/webhooks/polar',
+          destination: '/api/webhooks/polar/',
+        },
+      ],
+    };
+  },
   headers: async () => {
     return [
       {
@@ -98,23 +115,16 @@ const nextConfig = {
       }
     ];
   },
-  redirects: async () => [
-    {
-      source: "/dashboard",
-      destination: "/",
-      permanent: true,
-    },
-    {
-      source: "/dashboard/:path*",
-      destination: "/",
-      permanent: true,
-    },
-  ],
   images: {
     remotePatterns: [
       {
         protocol: "https",
         hostname: "utfs.io",
+      },
+      {
+        protocol: "https",
+        hostname: "*.ufs.sh",
+        pathname: "/f/**",
       },
       {
         protocol: "https",
@@ -215,4 +225,4 @@ const nextConfig = {
 };
 
 // Sentry disabled temporarily - uncomment to re-enable
-export default nextConfig;
+export default withBotId(nextConfig);

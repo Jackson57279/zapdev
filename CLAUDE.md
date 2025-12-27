@@ -181,8 +181,8 @@ Subscriptions enable real-time UI updates when data changes.
 
 ```bash
 # AI Gateway
-OPENROUTER_API_KEY
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+AI_GATEWAY_API_KEY
+AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1/
 
 # Convex Database
 NEXT_PUBLIC_CONVEX_URL
@@ -287,3 +287,7 @@ Root-level:
 - Sanitize file paths to prevent directory traversal
 - Keep OAuth tokens encrypted in Convex
 - Never expose API keys in client-side code (use NEXT_PUBLIC_ prefix only for public values)
+
+
+**Extra Things**
+- Never use 'as' or 'as any'

@@ -1,180 +1,160 @@
 /**
  * Filters out E2B sandbox system files and configuration boilerplate,
  * returning only AI-generated source code files.
+ * 
+ * Strategy: DUAL-MODE (whitelist + blacklist)
+ * 1. Whitelist common source code extensions
+ * 2. Blacklist known system/build files
+ * 3. Include everything else by default (trust the sandbox)
  */
 export function filterAIGeneratedFiles(
   files: Record<string, string>
 ): Record<string, string> {
-  const filtered: Record<string, string> = {};
-
-  // Patterns for files to EXCLUDE (E2B sandbox system files)
-  const excludePatterns = [
-    // Configuration files
-    /^package\.json$/,
-    /^package-lock\.json$/,
-    /^bun\.lockb$/,
-    /^yarn\.lock$/,
-    /^pnpm-lock\.yaml$/,
-    /^tsconfig.*\.json$/,
-    /^jsconfig.*\.json$/,
-    /\.config\.(js|ts|mjs|cjs)$/,
-    /^next-env\.d\.ts$/,
-
-    // Build and tooling configs
-    /^\.eslintrc/,
-    /^\.prettierrc/,
-    /^\.gitignore$/,
-    /^\.dockerignore$/,
-    /^Dockerfile$/,
-    /^docker-compose/,
-
-    // Documentation and meta files
-    /^README\.md$/,
-    /^LICENSE$/,
-    /^CHANGELOG\.md$/,
-
-    // Environment files (typically not AI-generated)
-    /^\.env/,
-
-    // Lock and cache files
-    /\.lock$/,
-    /\.cache$/,
-
-    // Test config files (unless in test directories)
-    /^jest\.config/,
-    /^vitest\.config/,
-    /^playwright\.config/,
-  ];
-
-  // Patterns for files to INCLUDE (AI-generated source code)
-  const includePatterns = [
-    /^app\//,           // Next.js app directory
-    /^pages\//,         // Next.js pages directory
-    /^src\//,           // Source code directory
-    /^components\//,    // Components directory
-    /^lib\//,           // Library/utility code
-    /^utils\//,         // Utilities
-    /^hooks\//,         // React hooks
-    /^styles\//,        // Styles
-    /^public\//,        // Public assets (if AI-generated)
-    /^api\//,           // API routes
-    /^server\//,        // Server code
-    /^client\//,        // Client code
-    /^views\//,         // Views (Angular/Vue)
-    /^controllers\//,   // Controllers
-    /^models\//,        // Models
-    /^services\//,      // Services
-    /^store\//,         // State management
-    /^routes\//,        // Routes
-    /^middleware\//,    // Middleware
-    /^assets\//,        // Assets folder
-    /^static\//,        // Static files
-    /^scss\//,          // SCSS styles
-    /^css\//,           // CSS styles
-    /^theme\//,         // Theme files
-    /^layouts\//,       // Layout components
-    /^types\//,         // TypeScript types
-    /^interfaces\//,    // TypeScript interfaces
-    /^constants\//,     // Constants
-    /^config\//,        // Configuration (if AI-generated)
-    /^helpers\//,       // Helper functions
-    /^contexts\//,      // React contexts
-    /^providers\//,     // Providers
-    /^tests?\//,        // Test files
-    /^__tests__\//,     // Jest test directories
-  ];
-
-  for (const [path, content] of Object.entries(files)) {
-    // Skip if matches any exclude pattern
-    const shouldExclude = excludePatterns.some(pattern => pattern.test(path));
-    if (shouldExclude) {
-      continue;
-    }
-
-    // Include if matches any include pattern
-    const shouldInclude = includePatterns.some(pattern => pattern.test(path));
-    if (shouldInclude) {
-      filtered[path] = content;
-      continue;
-    }
-
-    // For files not matching include patterns, apply additional logic:
-    // Include if it's a source code file in the root (e.g., page.tsx, layout.tsx)
-    if (
-      /\.(tsx?|jsx?|vue|svelte|css|scss|sass|less|html|htm|md|markdown|json)$/.test(path) &&
-      !path.includes('/') // Root level source files only
-    ) {
-      filtered[path] = content;
-    }
+  // Handle invalid input
+  if (!files || typeof files !== 'object') {
+    console.warn('[filterAIGeneratedFiles] Invalid input, returning empty object');
+    return {};
   }
 
-  if (process.env.NODE_ENV !== "production") {
-    const totalFiles = Object.keys(files).length;
-    const filteredFiles = Object.keys(filtered).length;
-    const removedFiles = totalFiles - filteredFiles;
-    
-    if (removedFiles > 0) {
-      console.debug(`[filterAIGeneratedFiles] Filtered ${removedFiles} files (${totalFiles} → ${filteredFiles})`);
-      
-      // Log first few filtered out files for debugging
-      const filteredOutPaths = Object.keys(files).filter((path) => !(path in filtered));
-      if (filteredOutPaths.length > 0) {
-        console.debug(`[filterAIGeneratedFiles] Sample filtered files:`, filteredOutPaths.slice(0, 5));
-      }
-    }
-  }
-
-  return filtered;
-}
-
-/**
- * Filters files for download, including essential project configuration files
- * but excluding lock files, cache, and secrets.
- */
-export function filterFilesForDownload(
-  files: Record<string, string>
-): Record<string, string> {
   const filtered: Record<string, string> = {};
 
-  // Patterns for files to EXCLUDE (Lock files, cache, secrets)
+  // Whitelist: Common source code file extensions that should ALWAYS be included
+  const sourceCodeExtensions = [
+    /\.(tsx|ts|jsx|js)$/i,           // TypeScript/JavaScript
+    /\.(css|scss|sass|less)$/i,      // Stylesheets
+    /\.(html|htm)$/i,                // HTML
+    /\.(json)$/i,                    // JSON (but will exclude lock files below)
+    /\.(md|mdx)$/i,                  // Markdown
+    /\.(svg|png|jpg|jpeg|gif|webp|ico)$/i, // Images
+    /\.(vue|svelte)$/i,              // Framework-specific
+    /\.(xml|yaml|yml)$/i,            // Config files
+    /\.(woff|woff2|ttf|eot)$/i,      // Fonts
+  ];
+
+  // Priority directories: These should ALWAYS be included if they contain source files
+  const priorityDirectories = [
+    /^components\//i,
+    /^lib\//i,
+    /^utils\//i,
+    /^hooks\//i,
+    /^app\//i,           // Next.js 13+ App Router
+    /^pages\//i,         // Next.js Pages Router
+    /^src\//i,           // React/Vue/Angular source
+    /^public\//i,        // Static assets
+    /^styles\//i,        // CSS/SCSS
+    /^assets\//i,        // Assets
+    /^context\//i,       // React Context
+    /^providers\//i,     // React Providers
+    /^layouts\//i,       // Layout components
+    /^features\//i,      // Feature modules
+    /^modules\//i,       // Modules
+    /^api\//i,           // API routes
+  ];
+
+  // Blacklist: Files to EXCLUDE (E2B sandbox system files and build artifacts)
   const excludePatterns = [
     // Lock files
     /^package-lock\.json$/,
     /^bun\.lockb$/,
     /^yarn\.lock$/,
     /^pnpm-lock\.yaml$/,
-    /\.lock$/,
     
-    // Environment files (Security)
-    /^\.env/,
-    
-    // Cache and build directories
-    /^node_modules\//,
+    // Build artifacts and cache
     /^\.next\//,
-    /^\.cache\//,
     /^dist\//,
     /^build\//,
-    /^\.git\//,
-    /^\.idea\//,
-    /^\.vscode\//,
+    /^out\//,
+    /^\.cache\//,
+    /^node_modules\//,
+    /\.cache$/,
     
     // System files
+    /^\.git\//,
     /^\.DS_Store$/,
     /^Thumbs\.db$/,
+    
+    // Environment files with secrets
+    /^\.env\.local$/,
+    /^\.env\.production$/,
+    
+    // Editor/IDE files
+    /^\.vscode\//,
+    /^\.idea\//,
+    /\.swp$/,
+    /\.swo$/,
+    
+    // Angular-specific build artifacts
+    /^\.angular\//,
+    
+    // Svelte-specific build artifacts
+    /^\.svelte-kit\//,
   ];
 
-  // We implicitly include everything else to ensure the project is runnable
-  // This includes package.json, tsconfig.json, next.config.js, etc.
+  const excludedFiles: string[] = [];
+  const includedByWhitelist: string[] = [];
+  const includedByDefault: string[] = [];
 
   for (const [path, content] of Object.entries(files)) {
-    // Skip if matches any exclude pattern
-    const shouldExclude = excludePatterns.some(pattern => pattern.test(path));
-    if (shouldExclude) {
+    // Skip null/undefined content
+    if (content === null || content === undefined) {
+      console.warn(`[filterAIGeneratedFiles] Skipping file with null/undefined content: ${path}`);
+      excludedFiles.push(path);
       continue;
     }
 
-    // Include everything else
+    // Skip if matches any exclude pattern (highest priority)
+    const shouldExclude = excludePatterns.some(pattern => pattern.test(path));
+    if (shouldExclude) {
+      excludedFiles.push(path);
+      continue;
+    }
+
+    // PRIORITY: Include if in priority directories (components, lib, etc.)
+    const isInPriorityDir = priorityDirectories.some(pattern => pattern.test(path));
+    if (isInPriorityDir) {
+      filtered[path] = content;
+      includedByWhitelist.push(path);
+      continue;
+    }
+
+    // Include if matches source code extension whitelist
+    const isSourceCode = sourceCodeExtensions.some(pattern => pattern.test(path));
+    if (isSourceCode) {
+      filtered[path] = content;
+      includedByWhitelist.push(path);
+      continue;
+    }
+
+    // INCLUDE BY DEFAULT - trust the sandbox for unknown file types
+    // This catches config files like package.json, tsconfig.json, etc.
     filtered[path] = content;
+    includedByDefault.push(path);
+  }
+
+  // Enhanced logging for debugging
+  const totalFiles = Object.keys(files).length;
+  const filteredFiles = Object.keys(filtered).length;
+  const removedFiles = totalFiles - filteredFiles;
+  
+  console.log(`[filterAIGeneratedFiles] Processed ${totalFiles} files → kept ${filteredFiles} files (excluded ${removedFiles})`);
+  console.debug(`[filterAIGeneratedFiles] Breakdown: ${includedByWhitelist.length} by whitelist, ${includedByDefault.length} by default, ${excludedFiles.length} excluded`);
+  
+  if (removedFiles > 0) {
+    console.debug(`[filterAIGeneratedFiles] Excluded files:`, excludedFiles.slice(0, 10));
+  }
+
+  // Log included files for transparency
+  if (filteredFiles > 0 && filteredFiles <= 20) {
+    console.debug(`[filterAIGeneratedFiles] Included files:`, Object.keys(filtered));
+  }
+
+  if (filteredFiles === 0 && totalFiles > 0) {
+    console.error('[filterAIGeneratedFiles] CRITICAL: All files were filtered out! This is a bug.');
+    console.error('[filterAIGeneratedFiles] All file paths:', Object.keys(files));
+    console.error('[filterAIGeneratedFiles] Excluded breakdown:', excludedFiles);
+    // Return all files as fallback to prevent data loss
+    console.warn('[filterAIGeneratedFiles] FALLBACK: Returning all files to prevent data loss');
+    return files;
   }
 
   return filtered;

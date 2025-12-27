@@ -117,7 +117,7 @@ npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
 
 If you're upgrading from a previous version that used OpenAI directly:
 1. Remove `OPENAI_API_KEY` from your `.env.local`
-2. Add `OPENROUTER_API_KEY` and `OPENROUTER_BASE_URL` as shown below
+2. Add `AI_GATEWAY_API_KEY` and `AI_GATEWAY_BASE_URL` as shown below
 3. The application now routes all AI requests through Vercel AI Gateway for better monitoring and reliability
 
 ### Testing the Connection
@@ -136,8 +136,8 @@ DATABASE_URL=""
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 # Vercel AI Gateway (replaces OpenAI)
-OPENROUTER_API_KEY=""
-OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+AI_GATEWAY_API_KEY=""
+AI_GATEWAY_BASE_URL="https://ai-gateway.vercel.sh/v1/"
 
 # E2B
 E2B_API_KEY=""

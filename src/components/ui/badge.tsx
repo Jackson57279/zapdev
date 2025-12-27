@@ -30,18 +30,10 @@ const Badge = React.forwardRef<
   React.ComponentPropsWithoutRef<"span"> &
     VariantProps<typeof badgeVariants> & { asChild?: boolean }
 >(({ className, variant, asChild = false, ...props }, ref) => {
-  if (asChild) {
-    return (
-      <Slot
-        data-slot="badge"
-        className={cn(badgeVariants({ variant }), className)}
-        {...(props as React.ComponentPropsWithoutRef<typeof Slot>)}
-      />
-    )
-  }
+  const Comp = asChild ? Slot : "span"
 
   return (
-    <span
+    <Comp
       ref={ref}
       data-slot="badge"
       className={cn(badgeVariants({ variant }), className)}

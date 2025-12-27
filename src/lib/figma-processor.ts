@@ -180,16 +180,3 @@ export function extractPageStructure(figmaFile: any): string {
 
   return `Design has ${pages.length} pages: ${pages.join(", ")}`;
 }
-
-export async function parseFigmaFigFile(arrayBuffer: ArrayBuffer): Promise<any> {
-  const { default: JSZip } = await import("jszip");
-  const zip = await JSZip.loadAsync(arrayBuffer);
-  const candidateFiles = Object.keys(zip.files).filter((name) => name.endsWith(".json"));
-  if (candidateFiles.length === 0) {
-    throw new Error("No JSON content found in .fig archive");
-  }
-
-  const primary = candidateFiles.find((name) => name.includes("document")) || candidateFiles[0];
-  const jsonText = await zip.files[primary].async("text");
-  return JSON.parse(jsonText);
-}

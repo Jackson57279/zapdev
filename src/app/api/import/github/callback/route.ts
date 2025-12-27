@@ -1,19 +1,22 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery, fetchMutation } from "convex/nextjs";
+
+export const dynamic = 'force-dynamic';
+import { getUser, getConvexClientWithAuth } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
-const GITHUB_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/import/github/callback`;
+const GITHUB_REDIRECT_URI = process.env.NODE_ENV === "production"
+  ? "https://zapdev.link/api/import/github/callback"
+  : "http://localhost:3000/api/import/github/callback";
 
 export async function GET(request: Request) {
-  const user = await getUser();
-  if (!user) {
+  const stackUser = await getUser();
+  if (!stackUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = user.id;
+  const userId = stackUser.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -86,8 +89,10 @@ export async function GET(request: Request) {
 
     const userData = userResponse.ok ? await userResponse.json() : {};
 
+    const convex = await getConvexClientWithAuth();
+
     // Store OAuth connection in Convex
-    await fetchMutation((api as any).oauth.storeConnection, {
+    await convex.mutation((api as any).oauth.storeConnection, {
       provider: "github",
       accessToken: tokenData.access_token,
       scope: tokenData.scope || "repo,read:user,user:email",

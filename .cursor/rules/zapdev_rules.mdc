@@ -1,0 +1,324 @@
+---
+description: ZapDev project-wide coding guidelines and patterns
+globs: src/**/*.ts,src/**/*.tsx,convex/**/*.ts
+alwaysApply: true
+---
+
+# ZapDev Project Rules
+
+## Overview
+ZapDev is an AI-powered development platform that enables users to create web applications through conversational AI interactions. Claude AI generates production-ready code across multiple frameworks in isolated E2B sandboxes with real-time previews.
+
+## Technology Stack
+- **Frontend**: Next.js 15 (Turbopack), React 19, TypeScript 5.9, Tailwind CSS v4, Shadcn/ui, React Query
+- **Backend**: Convex (real-time database), tRPC (type-safe APIs), Stack Auth (authentication)
+- **AI & Execution**: Vercel AI Gateway, Inngest 3.44 (job orchestration), E2B Code Interpreter (sandboxes)
+- **Monitoring**: Sentry, OpenTelemetry
+
+## Package Management
+**ALWAYS use `bun`** for all package management. Never use npm, yarn, or pnpm.
+
+```bash
+bun install              # Install dependencies
+bun add <package>        # Add new package
+bun remove <package>     # Remove package
+bun run dev              # Start dev server
+bun run build            # Build for production
+bun run lint             # Run ESLint
+bun run test             # Run tests
+```
+
+## Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── api/                # API routes (tRPC, Inngest webhooks, Convex)
+│   ├── (home)/             # Home page
+│   ├── dashboard/          # User projects dashboard
+│   ├── projects/           # Project workspace + editor
+│   └── layout.tsx          # Root layout with providers
+├── inngest/                # Background job orchestration
+│   ├── functions.ts        # Main agent functions & orchestration
+│   └── functions/          # Individual function modules
+├── prompts/                # AI system prompts per framework
+├── trpc/                   # Type-safe API client & server
+├── components/             # React components (ui/, file-explorer, editor)
+├── modules/                # Feature-specific business logic
+├── lib/                    # Utilities (frameworks-config, firecrawl)
+└── hooks/                  # Custom React hooks
+convex/
+├── schema.ts               # Database tables
+├── projects.ts, messages.ts, usage.ts
+└── helpers.ts, auth.config.ts
+```
+
+## TypeScript Guidelines
+
+### Strict Mode
+- Avoid `any` type - use proper typing
+- Use `unknown` instead of `any` when type is uncertain
+- Define interfaces/types for all data structures
+
+```typescript
+// ❌ Bad
+const data: any = await fetchData();
+
+// ✅ Good
+interface ProjectData {
+  id: string;
+  name: string;
+  framework: Framework;
+}
+const data: ProjectData = await fetchData();
+```
+
+### Type Safety with tRPC
+```typescript
+// Use tRPC hooks for type-safe API calls
+import { trpc } from "@/trpc/client";
+
+// Query
+const { data, isLoading } = trpc.projects.getById.useQuery({ id: projectId });
+
+// Mutation
+const createProject = trpc.projects.create.useMutation({
+  onSuccess: (data) => {
+    // data is fully typed
+  },
+});
+```
+
+## React Patterns
+
+### Component Structure
+```typescript
+// Use functional components with TypeScript
+interface ButtonProps {
+  variant?: "primary" | "secondary";
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+export function Button({ variant = "primary", onClick, children }: ButtonProps) {
+  return (
+    <button className={cn("btn", variant)} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+```
+
+### Hooks Best Practices
+```typescript
+// Custom hooks should start with "use"
+export function useProject(projectId: string) {
+  const { data, isLoading } = trpc.projects.getById.useQuery({ id: projectId });
+  return { project: data, isLoading };
+}
+
+// Use React Query for server state
+// Use useState/useReducer for local state only
+```
+
+### Server Components vs Client Components
+```typescript
+// Default to Server Components (no "use client" directive)
+// Only add "use client" when needed:
+// - Event handlers (onClick, onChange, etc.)
+// - Browser APIs (localStorage, window)
+// - React hooks (useState, useEffect, etc.)
+// - Third-party client libraries
+
+// ❌ Unnecessary "use client"
+"use client";
+export function StaticContent() {
+  return <div>Hello</div>;
+}
+
+// ✅ Correct usage
+"use client";
+export function InteractiveButton() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+```
+
+## Convex Database Patterns
+
+### Always Use Authentication
+```typescript
+import { requireAuth } from "./helpers";
+
+export const getProject = query({
+  args: { id: v.id("projects") },
+  handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
+    const project = await ctx.db.get(args.id);
+    
+    // Always verify ownership
+    if (!project || project.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+    
+    return project;
+  },
+});
+```
+
+### Use Indexes for Queries
+```typescript
+// ❌ Full table scan
+const projects = await ctx.db.query("projects").collect();
+
+// ✅ Use index
+const projects = await ctx.db
+  .query("projects")
+  .withIndex("by_userId", (q) => q.eq("userId", userId))
+  .collect();
+```
+
+### Mutations Pattern
+```typescript
+export const createProject = mutation({
+  args: {
+    name: v.string(),
+    framework: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
+    
+    return await ctx.db.insert("projects", {
+      userId,
+      name: args.name,
+      framework: args.framework as Framework,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+```
+
+## Error Handling
+
+### Use Sentry for Production Errors
+```typescript
+import * as Sentry from "@sentry/nextjs";
+
+try {
+  await riskyOperation();
+} catch (error) {
+  Sentry.captureException(error);
+  throw error; // Re-throw for proper handling
+}
+```
+
+### API Error Responses
+```typescript
+// Use consistent error format
+throw new TRPCError({
+  code: "NOT_FOUND",
+  message: "Project not found",
+});
+
+throw new TRPCError({
+  code: "UNAUTHORIZED",
+  message: "You must be logged in",
+});
+
+throw new TRPCError({
+  code: "FORBIDDEN",
+  message: "You don't have access to this resource",
+});
+```
+
+## Security Guidelines
+
+### Input Validation
+```typescript
+// Always validate user inputs with Zod
+import { z } from "zod";
+
+const ProjectSchema = z.object({
+  name: z.string().min(1).max(100),
+  framework: z.enum(["nextjs", "react", "vue", "angular", "svelte"]),
+});
+```
+
+### Sanitize File Paths
+```typescript
+// Prevent directory traversal
+function sanitizePath(path: string): string {
+  return path.replace(/\.\./g, "").replace(/^\/+/, "");
+}
+```
+
+### Environment Variables
+```typescript
+// ❌ Never expose secrets client-side
+const apiKey = process.env.API_SECRET_KEY;
+
+// ✅ Use NEXT_PUBLIC_ prefix only for public values
+const publicUrl = process.env.NEXT_PUBLIC_APP_URL;
+```
+
+## Supported Frameworks
+
+When working with AI code generation, these frameworks are supported:
+- **Next.js 15** (default) — Full-stack React, SSR, Shadcn/ui, Tailwind
+- **Angular 19** — Enterprise apps, Material Design, Tailwind
+- **React 18** — SPA with Vite, Chakra UI, Tailwind
+- **Vue 3** — Progressive apps, Vuetify, Tailwind
+- **SvelteKit** — High-performance, DaisyUI, Tailwind
+
+## Documentation
+
+**Put all .md documentation files in `/explanations/` folder**, not in the root directory.
+
+Exceptions: CLAUDE.md, AGENTS.md, README.md stay in root.
+
+## Testing
+
+```typescript
+// Test files go in /tests/ directory
+// Use patterns: **/__tests__/**/*.ts, **/?(*.)+(spec|test).ts
+
+describe("Project CRUD", () => {
+  it("should create a project", async () => {
+    const result = await createProject({ name: "Test", framework: "nextjs" });
+    expect(result).toBeDefined();
+    expect(result.name).toBe("Test");
+  });
+});
+```
+
+## Git Workflow
+
+```bash
+# Check status before any git operations
+git status
+
+# Never use interactive mode
+# ❌ git rebase -i
+# ❌ git add -p
+
+# Don't push without explicit request
+# Check diff before committing
+git diff
+```
+
+## Common Commands Reference
+
+```bash
+# Development (run in separate terminals)
+bun run dev              # Next.js dev server
+bun run convex:dev       # Convex backend
+
+# Building
+bun run build            # Production build
+bun run lint             # ESLint check
+bun run test             # Jest tests
+
+# Convex
+bun run convex:deploy    # Deploy to production
+```

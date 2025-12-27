@@ -2,4 +2,16 @@
 alwaysApply: true
 ---
 
-Stop making so many .md files if so do it in the @explaninations folder please. 
+# General Rules
+
+## Documentation
+- Stop making so many .md files - if needed, put them in the `/explanations/` folder, not root.
+- Exceptions: CLAUDE.md, AGENTS.md, README.md stay in root.
+
+## Package Management
+- **Always use `bun`** - never npm, yarn, or pnpm.
+
+## Code Quality
+- Strict TypeScript - avoid `any` types.
+- Use proper error handling with Sentry integration.
+- Follow accessibility and responsive design best practices.

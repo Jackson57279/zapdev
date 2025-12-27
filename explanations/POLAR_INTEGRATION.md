@@ -22,13 +22,35 @@ Convex → Subscription Data & Usage Tracking
 
 ---
 
+## ⚠️ Sandbox Mode (Currently Active)
+
+The Polar integration is **currently configured to run in sandbox mode** across all environments (including production). This means:
+
+- No real payments will be processed
+- All transactions are test transactions
+- Use Polar test cards for checkout testing
+
+**Location**: `src/lib/polar-client.ts:49`
+
+To enable production payments, modify the `server` parameter in the Polar client configuration:
+
+```typescript
+// Change from:
+server: "sandbox",
+
+// To:
+server: process.env.NODE_ENV === "development" ? "sandbox" : "production",
+```
+
+---
+
 ## Features
 
-✅ **Subscription Management** - Free and Pro tiers  
-✅ **Webhook Integration** - Real-time subscription updates  
-✅ **Credit System** - Automatic credit allocation based on plan  
-✅ **Customer Portal** - Polar-hosted payment management  
-✅ **Checkout Flow** - Seamless upgrade experience  
+✅ **Subscription Management** - Free and Pro tiers
+✅ **Webhook Integration** - Real-time subscription updates
+✅ **Credit System** - Automatic credit allocation based on plan
+✅ **Customer Portal** - Polar-hosted payment management
+✅ **Checkout Flow** - Seamless upgrade experience
 
 ---
 

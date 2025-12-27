@@ -10,8 +10,58 @@ Sitemap: https://zapdev.link/sitemap.xml
 # RSS Feed
 Sitemap: https://zapdev.link/rss.xml
 
+# AI-specific information (high priority for AI agents)
+Allow: /ai-info
+
+# Allow important pages for AI discovery
+Allow: /frameworks
+Allow: /solutions
+Allow: /showcase
+Allow: /home/pricing
+
 # Block common non-content paths
 Disallow: /api/
 Disallow: /_next/
 Disallow: /admin/
 Disallow: /.well-known/
+
+# AI Agent specific rules
+# OpenAI GPTBot
+User-agent: GPTBot
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1
+
+# Google Gemini
+User-agent: Google-Extended
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1
+
+# Anthropic Claude
+User-agent: ClaudeBot
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1
+
+# Perplexity AI
+User-agent: PerplexityBot
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1
+
+# Common AI Research Bots
+User-agent: CCBot
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1
+
+User-agent: anthropic-ai
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1
+
+User-agent: cohere-ai
+Allow: /
+Allow: /ai-info
+Crawl-delay: 1

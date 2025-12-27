@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
-import { requireAuth, getCurrentUserClerkId } from "./helpers";
+import { requireAuth, getCurrentUserClerkId, getCurrentUserId } from "./helpers";
 import { frameworkEnum } from "./schema";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -147,7 +147,8 @@ export const createWithMessageAndAttachments = action({
     // Add attachments if provided
     if (args.attachments && args.attachments.length > 0) {
       for (const attachment of args.attachments) {
-        await ctx.runMutation(api.messages.addAttachment, {
+        await ctx.runMutation(api.messages.addAttachmentForUser, {
+          userId,
           messageId,
           type: "IMAGE",
           url: attachment.url,
@@ -284,16 +285,16 @@ export const get = query({
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const userId = await requireAuth(ctx);
+    const userId = await getCurrentUserId(ctx);
 
     const project = await ctx.db.get(args.projectId);
     if (!project) {
-      throw new Error("Project not found");
+      return null;
     }
 
     // Ensure user owns the project
     if (project.userId !== userId) {
-      throw new Error("Unauthorized");
+      return null;
     }
 
     return project;

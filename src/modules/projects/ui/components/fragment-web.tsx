@@ -1,19 +1,110 @@
-import { useState, useEffect } from "react";
-import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { ExternalLinkIcon, RefreshCcwIcon, DownloadIcon, BotIcon, Loader2Icon } from "lucide-react";
 
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import type { Doc } from "@/convex/_generated/dataModel";
+import { downloadFragmentFiles } from "@/lib/download-utils";
+import { cn } from "@/lib/utils";
 
-interface Props {
+interface FragmentWebProps {
   data: Doc<"fragments">;
+}
+
+const normalizeFiles = (value: Doc<"fragments">["files"]): Record<string, string> => {
+  if (typeof value !== "object" || value === null) {
+    console.warn('[FragmentWeb] Files value is not a valid object:', value);
+    return {};
+  }
+
+  const normalized = Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>(
+    (acc, [path, content]) => {
+      if (typeof content === "string") {
+        acc[path] = content;
+      } else if (content !== null && content !== undefined) {
+        // Attempt to recover non-string content so it can be included in the download
+        try {
+          const stringified =
+            typeof content === "object" ? JSON.stringify(content, null, 2) : String(content);
+          acc[path] = stringified;
+          console.warn(`[FragmentWeb] Converted non-string file content to string for: ${path}`, {
+            originalType: typeof content,
+            convertedLength: stringified.length,
+          });
+        } catch (err) {
+          console.error(`[FragmentWeb] Failed to convert file content for: ${path}`, err);
+        }
+      } else {
+        console.warn(`[FragmentWeb] Skipping null/undefined file content for: ${path}`);
+      }
+      return acc;
+    },
+    {}
+  );
+
+  console.log(`[FragmentWeb] Normalized ${Object.keys(normalized).length} files from fragment`);
+  
+  if (Object.keys(normalized).length === 0) {
+    console.error('[FragmentWeb] No valid files found after normalization!');
+  }
+
+  return normalized;
 };
 
-export function FragmentWeb({ data }: Props) {
+export function FragmentWeb({ data }: FragmentWebProps) {
   const [copied, setCopied] = useState(false);
   const [fragmentKey, setFragmentKey] = useState(0);
-  const [isTransferring, setIsTransferring] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState(data.sandboxUrl);
+  const [isResuming, setIsResuming] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState<string>(data.sandboxUrl);
+  const [sandboxId, setSandboxId] = useState<string | null>(data.sandboxId ?? null);
+  const [hasAttemptedResume, setHasAttemptedResume] = useState(false);
+  const resumePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resumeAttemptRef = useRef(0);
+
+  const files = useMemo(() => normalizeFiles(data.files), [data.files]);
+
+  const modelInfo = useMemo(() => {
+    const metadata = data.metadata as Record<string, unknown> | undefined;
+    if (!metadata) return null;
+
+    const modelName = metadata.modelName as string | undefined;
+    const provider = metadata.provider as string | undefined;
+
+    if (!modelName) return null;
+
+    return { modelName, provider };
+  }, [data.metadata]);
+
+  const clearResumePoll = useCallback(() => {
+    if (resumePollRef.current) {
+      clearInterval(resumePollRef.current);
+      resumePollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearResumePoll();
+    };
+  }, [clearResumePoll]);
+
+  useEffect(() => {
+    const nextId = data.sandboxId ?? null;
+    setSandboxId((prev) => {
+      if (prev === nextId) {
+        return prev;
+      }
+      setHasAttemptedResume(false);
+      resumeAttemptRef.current = 0;
+      return nextId;
+    });
+    setCurrentUrl(data.sandboxUrl);
+  }, [data.sandboxId, data.sandboxUrl]);
+
+  useEffect(() => {
+    resumeAttemptRef.current = 0;
+  }, [sandboxId]);
 
   const onRefresh = () => {
     setFragmentKey((prev) => prev + 1);
@@ -25,82 +116,117 @@ export function FragmentWeb({ data }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Check if sandbox is older than 55 minutes and auto-transfer
-  useEffect(() => {
-    const checkAndTransferSandbox = async () => {
-      // Convex createdAt is a number (timestamp) or optional
-      if (!data.createdAt) return;
+  const handleDownload = async () => {
+    if (isDownloading) {
+      return;
+    }
 
-      const sandboxAge = Date.now() - data.createdAt;
-      const FIFTY_FIVE_MINUTES = 55 * 60 * 1000;
+    setIsDownloading(true);
 
-      if (sandboxAge >= FIFTY_FIVE_MINUTES) {
-        setIsTransferring(true);
+    try {
+      await downloadFragmentFiles(files, data._id);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
-        try {
-          const response = await fetch("/api/transfer-sandbox", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              fragmentId: data._id,
-            }),
-          });
+  const resumeSandbox = useCallback(
+    async (force = false) => {
+      if (!sandboxId || isResuming) {
+        return;
+      }
 
-          if (!response.ok) {
-            throw new Error("Transfer failed");
+      if (!force && hasAttemptedResume) {
+        return;
+      }
+
+      const MAX_ATTEMPTS = 3;
+      if (resumeAttemptRef.current >= MAX_ATTEMPTS) {
+        console.error("Sandbox resume attempts exceeded");
+        return;
+      }
+
+      resumeAttemptRef.current += 1;
+      setIsResuming(true);
+      setHasAttemptedResume(true);
+
+      try {
+        const response = await fetch("/api/transfer-sandbox", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fragmentId: data._id,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Resume failed");
+        }
+
+        let attempts = 0;
+        const maxAttempts = 60;
+
+        clearResumePoll();
+        resumePollRef.current = setInterval(async () => {
+          attempts += 1;
+
+          try {
+            const checkResponse = await fetch(`/api/fragment/${data._id}`);
+            if (checkResponse.ok) {
+              const updatedFragment = await checkResponse.json();
+
+              if (updatedFragment.sandboxUrl) {
+                setCurrentUrl(updatedFragment.sandboxUrl);
+                setSandboxId(updatedFragment.sandboxId ?? null);
+                setFragmentKey((prev) => prev + 1);
+                clearResumePoll();
+                resumeAttemptRef.current = 0;
+                setIsResuming(false);
+              }
+            }
+          } catch (pollError) {
+            console.error("Polling error:", pollError);
           }
 
-          // Poll for the updated fragment
-          let attempts = 0;
-          const maxAttempts = 120; // 4 minutes total (120 * 2 seconds)
-
-          const pollInterval = setInterval(async () => {
-            attempts++;
-
-            try {
-              const checkResponse = await fetch(`/api/fragment/${data._id}`);
-              if (checkResponse.ok) {
-                const updatedFragment = await checkResponse.json();
-
-                if (updatedFragment.sandboxUrl !== currentUrl) {
-                  setCurrentUrl(updatedFragment.sandboxUrl);
-                  setFragmentKey((prev) => prev + 1);
-                  clearInterval(pollInterval);
-                  setIsTransferring(false);
-                }
-              }
-            } catch (err) {
-              console.error("Polling error:", err);
-            }
-
-            if (attempts >= maxAttempts) {
-              clearInterval(pollInterval);
-              setIsTransferring(false);
-              console.error("Sandbox transfer polling timeout after 4 minutes");
-            }
-          }, 2000);
-        } catch (error) {
-          console.error("Transfer error:", error);
-          setIsTransferring(false);
-        }
+          if (attempts >= maxAttempts) {
+            clearResumePoll();
+            setIsResuming(false);
+            console.error("Sandbox resume polling timeout");
+          }
+        }, 1000);
+      } catch (error) {
+        console.error("Resume error:", error);
+        setIsResuming(false);
       }
-    };
+    },
+    [sandboxId, isResuming, hasAttemptedResume, clearResumePoll, data._id],
+  );
 
-    checkAndTransferSandbox();
-  }, [data._id, data.createdAt, currentUrl]);
+  useEffect(() => {
+    if (!sandboxId || hasAttemptedResume) {
+      return;
+    }
 
-  if (isTransferring) {
+    if (!data.sandboxUrl) {
+      resumeSandbox();
+    }
+  }, [sandboxId, hasAttemptedResume, data.sandboxUrl, resumeSandbox]);
+
+  const handleIframeError = useCallback(() => {
+    setHasAttemptedResume(false);
+    resumeSandbox(true);
+  }, [resumeSandbox]);
+
+  if (isResuming && !currentUrl) {
     return (
       <div className="flex flex-col items-center justify-center w-full h-full bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <div className="text-center">
-            <h3 className="text-lg font-semibold">Transferring to Fresh Sandbox</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your app is being moved to a new sandbox. This will take a moment...
-            </p>
+            <h3 className="text-lg font-semibold">Resuming Sandbox</h3>
+            <p className="text-sm text-muted-foreground mt-1">Restoring your environment. This usually takes a few seconds.</p>
           </div>
         </div>
       </div>
@@ -108,13 +234,52 @@ export function FragmentWeb({ data }: Props) {
   }
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div className="relative flex flex-col w-full h-full">
+      {isResuming && currentUrl && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/80">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className="text-center">
+            <h3 className="text-base font-semibold">Resuming Sandbox</h3>
+            <p className="text-xs text-muted-foreground mt-1">Trying to restore the environment while keeping the preview available.</p>
+          </div>
+        </div>
+      )}
       <div className="p-2 border-b bg-sidebar flex items-center gap-x-2">
         <Hint text="Refresh" side="bottom" align="start">
-          <Button size="sm" variant="outline" onClick={onRefresh}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              onRefresh();
+              if (!currentUrl) {
+                resumeSandbox(true);
+              }
+            }}
+          >
             <RefreshCcwIcon />
           </Button>
         </Hint>
+        <Hint text="Download Files" side="bottom" align="start">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleDownload}
+            disabled={isDownloading || Object.keys(files).length === 0}
+          >
+            {isDownloading ? <Loader2Icon className="size-4 animate-spin" /> : <DownloadIcon />}
+          </Button>
+        </Hint>
+        {modelInfo && (
+          <Hint text={`Generated by ${modelInfo.modelName}`} side="bottom" align="start">
+            <div className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border bg-muted/50",
+              "text-xs font-medium text-muted-foreground"
+            )}>
+              <BotIcon className="size-3.5" />
+              <span className="max-w-[120px] truncate">{modelInfo.modelName}</span>
+            </div>
+          </Hint>
+        )}
         <Hint text="Click to copy" side="bottom">
           <Button
             size="sm"
@@ -148,7 +313,8 @@ export function FragmentWeb({ data }: Props) {
         sandbox="allow-forms allow-scripts allow-same-origin"
         loading="lazy"
         src={currentUrl}
+        onError={handleIframeError}
       />
     </div>
-  )
+  );
 };

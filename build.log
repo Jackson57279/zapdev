@@ -1,86 +1,32 @@
-$ next build --turbopack
+$ next build
 critters dependency not found; disabling experimental.optimizeCss. Install `critters` to re-enable.
- ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
- We detected multiple lockfiles and selected the directory of /home/dih/package-lock.json as the root directory.
- To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
-   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
- Detected additional lockfiles: 
-   * /home/dih/zapdev/pnpm-lock.yaml
-
-   ▲ Next.js 16.0.7 (Turbopack)
-   - Environments: .env.local
+   ▲ Next.js 16.0.1 (Turbopack)
+   - Environments: .env.local, .env
    - Experiments (use with caution):
      ✓ scrollRestoration
 
  ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
    Creating an optimized production build ...
 critters dependency not found; disabling experimental.optimizeCss. Install `critters` to re-enable.
- ✓ Compiled successfully in 3.4min
+ ✓ Compiled successfully in 48s
    Running TypeScript ...
-   Collecting page data using 3 workers ...
-   Generating static pages using 3 workers (0/41) ...
-   Generating static pages using 3 workers (10/41) 
-   Generating static pages using 3 workers (20/41) 
-   Generating static pages using 3 workers (30/41) 
- ✓ Generating static pages using 3 workers (41/41) in 5.4s
-   Finalizing page optimization ...
 
-Route (app)
-┌ ƒ /
-├ ƒ /_not-found
-├ ƒ /api/agent/token
-├ ƒ /api/fix-errors
-├ ƒ /api/fragment/[fragmentId]
-├ ƒ /api/import/figma/auth
-├ ƒ /api/import/figma/callback
-├ ƒ /api/import/figma/files
-├ ƒ /api/import/figma/process
-├ ƒ /api/import/github/auth
-├ ƒ /api/import/github/callback
-├ ƒ /api/import/github/process
-├ ƒ /api/import/github/repos
-├ ƒ /api/inngest
-├ ƒ /api/inngest/trigger
-├ ƒ /api/messages/update
-├ ƒ /api/polar/create-checkout
-├ ƒ /api/rss
-├ ƒ /api/sentry-example-api
-├ ƒ /api/test-inngest
-├ ƒ /api/transfer-sandbox
-├ ƒ /api/trpc/[trpc]
-├ ƒ /api/uploadthing
-├ ƒ /api/vitals
-├ ƒ /api/webhooks/polar
-├ ƒ /dashboard/10x-swe
-├ ○ /dashboard/subscription
-├ ○ /frameworks
-├ ● /frameworks/[slug]
-│ ├ /frameworks/react
-│ ├ /frameworks/vue
-│ ├ /frameworks/angular
-│ └ [+2 more paths]
-├ ƒ /handler/[...stack]
-├ ○ /import
-├ ƒ /pricing
-├ ƒ /projects/[projectId]
-├ ○ /robots.txt
-├ ƒ /rss.xml
-├ ○ /sentry-example-page
-├ ƒ /showcase
-├ ○ /sitemap.xml
-├ ○ /solutions
-└ ● /solutions/[slug]
-  ├ /solutions/ai-code-generation
-  ├ /solutions/rapid-prototyping
-  ├ /solutions/no-code-development
-  └ /solutions/enterprise-ai-development
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
 
-Route (pages)
-─ ○ /404 (2027 ms)
+   	- include was updated to add '.next/dev/types/**/*.ts'
 
-ƒ Proxy (Middleware)
+   The following mandatory changes were made to your tsconfig.json:
 
-○  (Static)   prerendered as static content
-●  (SSG)      prerendered as static HTML (uses generateStaticParams)
-ƒ  (Dynamic)  server-rendered on demand
+   	- jsx was set to react-jsx (next.js uses the React automatic runtime)
 
+   Collecting page data ...
+   Generating static pages (0/38) ...
+Error occurred prerendering page "/_not-found". Read more: https://nextjs.org/docs/messages/prerender-error
+Error: @clerk/clerk-react: The publishableKey passed to Clerk is invalid. You can get your Publishable key at https://dashboard.clerk.com/last-active?path=api-keys. (key=pk_test_your-clerk-publishable-key-here)
+    at ignore-listed frames {
+  digest: '808127650'
+}
+Export encountered an error on /_not-found/page: /_not-found, exiting the build.
+ ⨯ Next.js build worker exited with code: 1 and signal: null
+error: script "build" exited with code 1

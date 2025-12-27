@@ -1,18 +1,22 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { createRequire } from "module";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+const require = createRequire(import.meta.url);
+const nextConfig = require("eslint-config-next");
+const nextTypescriptConfig = require("eslint-config-next/typescript");
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextConfig,
+  ...nextTypescriptConfig,
   {
-    ignores: ["**/generated/*"]
+    ignores: [
+      "**/generated/*", 
+      "**/node_modules/*", 
+      "**/.next/*", 
+      "**/out/*",
+      "**/.bun_tmp/*",
+      "**/dist/*",
+      "**/build/*"
+    ]
   },
   {
     rules: {

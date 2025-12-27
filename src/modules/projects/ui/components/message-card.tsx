@@ -4,10 +4,12 @@ import { ChevronRightIcon, Code2Icon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { SpecPlanningCard } from "./spec-planning-card";
 
 type MessageRole = "USER" | "ASSISTANT";
 type MessageType = "RESULT" | "ERROR" | "STREAMING";
+type SpecMode = "PLANNING" | "AWAITING_APPROVAL" | "APPROVED" | "REJECTED";
 
 type FragmentDoc = Doc<"fragments">;
 type AttachmentDoc = Doc<"attachments">;
@@ -75,21 +77,27 @@ const FragmentPreviewButton = ({ fragment, isActive, onClick }: FragmentPreviewB
 );
 
 interface AssistantMessageProps {
+  messageId: Id<"messages">;
   content: string;
   fragment: FragmentDoc | null;
   createdAt?: number;
   isActive: boolean;
   onFragmentClick: (fragment: FragmentDoc) => void;
   type: MessageType;
+  specMode?: SpecMode;
+  specContent?: string;
 }
 
 const AssistantMessage = ({
+  messageId,
   content,
   fragment,
   createdAt,
   isActive,
   onFragmentClick,
   type,
+  specMode,
+  specContent,
 }: AssistantMessageProps) => (
   <div
     className={cn(
@@ -112,6 +120,13 @@ const AssistantMessage = ({
     </div>
     <div className="pl-8.5 flex flex-col gap-y-4">
       <span>{content}</span>
+      {specMode && specContent && (
+        <SpecPlanningCard
+          messageId={messageId}
+          specContent={specContent}
+          status={specMode}
+        />
+      )}
       {fragment && type === "RESULT" && (
         <FragmentPreviewButton
           fragment={fragment}
@@ -124,6 +139,7 @@ const AssistantMessage = ({
 );
 
 interface MessageCardProps {
+  messageId: Id<"messages">;
   content: string;
   role: MessageRole;
   fragment: FragmentDoc | null;
@@ -132,9 +148,12 @@ interface MessageCardProps {
   onFragmentClick: (fragment: FragmentDoc) => void;
   type: MessageType;
   attachments?: AttachmentDoc[];
+  specMode?: SpecMode;
+  specContent?: string;
 }
 
 export const MessageCard = ({
+  messageId,
   content,
   role,
   fragment,
@@ -143,16 +162,21 @@ export const MessageCard = ({
   onFragmentClick,
   type,
   attachments,
+  specMode,
+  specContent,
 }: MessageCardProps) => {
   if (role === "ASSISTANT") {
     return (
       <AssistantMessage
+        messageId={messageId}
         content={content}
         fragment={fragment}
         createdAt={createdAt}
         isActive={isActiveFragment}
         onFragmentClick={onFragmentClick}
         type={type}
+        specMode={specMode}
+        specContent={specContent}
       />
     );
   }

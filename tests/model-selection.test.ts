@@ -12,18 +12,24 @@ describe('Model Selection Logic', () => {
     expect(MODEL_CONFIGS[result]).toBeDefined();
   });
 
-  it('prefers Qwen for coding-focused refinements', () => {
+  it('includes prime-intellect/intellect-3 in MODEL_CONFIGS', () => {
+    expect(MODEL_CONFIGS['prime-intellect/intellect-3']).toBeDefined();
+    expect(MODEL_CONFIGS['prime-intellect/intellect-3'].name).toBe('Intellect 3');
+    expect(MODEL_CONFIGS['prime-intellect/intellect-3'].provider).toBe('prime-intellect');
+  });
+
+  it('prefers Gemini for coding-focused refinements', () => {
     const prompt = 'Please refactor this component to improve readability.';
     const result = selectModelForTask(prompt);
 
-    expect(result).toBe('alibaba/qwen3-max');
+    expect(result).toBe('google/gemini-3-pro-preview');
   });
 
-  it('prefers GLM 4.7 for clearly speed-focused prompts without complexity', () => {
+  it('prefers Kimi for clearly speed-focused prompts without complexity', () => {
     const prompt = 'Need a quick prototype landing page mockup.';
     const result = selectModelForTask(prompt);
 
-    expect(result).toBe('z-ai/glm-4.7');
+    expect(result).toBe('moonshotai/kimi-k2-thinking');
   });
 
   it('keeps Claude Haiku when complexity indicators are present even if speed is requested', () => {

@@ -37,18 +37,10 @@ const BreadcrumbLink = React.forwardRef<
     asChild?: boolean
   }
 >(({ asChild, className, ...props }, ref) => {
-  if (asChild) {
-    return (
-      <Slot
-        data-slot="breadcrumb-link"
-        className={cn("hover:text-foreground transition-colors", className)}
-        {...(props as React.ComponentPropsWithoutRef<typeof Slot>)}
-      />
-    )
-  }
+  const Comp = asChild ? Slot : "a"
 
   return (
-    <a
+    <Comp
       ref={ref}
       data-slot="breadcrumb-link"
       className={cn("hover:text-foreground transition-colors", className)}

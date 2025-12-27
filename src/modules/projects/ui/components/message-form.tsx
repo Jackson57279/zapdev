@@ -9,8 +9,9 @@ import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon, FigmaIcon, SparklesIcon } from "lucide-react";
 import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
+import { useUser } from "@stackframe/stack";
 import { api } from "@/lib/convex-api";
-import type { ModelId } from "@/inngest/functions";
+import type { ModelId } from "@/app/api/agent/generate/route";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,8 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 import { Usage } from "./usage";
 import type { OurFileRouter } from "@/lib/uploadthing";
@@ -30,8 +33,9 @@ interface Props {
 
 const formSchema = z.object({
   value: z.string()
-    .min(1, { message: "Value is required" })
-    .max(10000, { message: "Value is too long" }),
+    .trim()
+    .min(1, { message: "Please enter a message" })
+    .max(10000, { message: "Message is too long" }),
 })
 
 interface AttachmentData {
@@ -44,7 +48,9 @@ interface AttachmentData {
 export const MessageForm = ({ projectId }: Props) => {
   const router = useRouter();
 
-  const usage = useQuery(api.usage.getUsage);
+  const user = useUser();
+  const isAuthenticated = !!user;
+  const usage = useQuery(api.usage.getUsage, isAuthenticated ? {} : "skip");
   const createMessageWithAttachments = useAction(api.messages.createWithAttachments);
 
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);
@@ -53,16 +59,17 @@ export const MessageForm = ({ projectId }: Props) => {
   const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
-  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [specModeEnabled, setSpecModeEnabled] = useState(false);
 
   // Model configurations matching backend
   const modelOptions = [
     { id: "auto" as ModelId, name: "Auto", image: "/auto.svg", description: "Auto-selects the best model" },
     { id: "anthropic/claude-haiku-4.5" as ModelId, name: "Claude Haiku 4.5", image: "/haiku.svg", description: "Fast and efficient" },
-    { id: "google/gemini-3-pro" as ModelId, name: "Gemini 3 Pro", image: "/gemini.svg", description: "Google's most intelligent model with state-of-the-art reasoning" },
     { id: "openai/gpt-5.1-codex" as ModelId, name: "GPT-5.1 Codex", image: "/openai.svg", description: "OpenAI's flagship model for complex tasks" },
-    { id: "z-ai/glm-4.7" as ModelId, name: "Z-AI GLM 4.7", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
-    { id: "moonshotai/kimi-k2-0905" as ModelId, name: "Kimi K2", image: "/globe.svg", description: "Specialized for coding tasks" },
+    { id: "moonshotai/kimi-k2-thinking" as ModelId, name: "Kimi K2 Thinking", image: "/kimi.svg", description: "Fast and efficient for speed-critical tasks" },
+    { id: "google/gemini-3-pro-preview" as ModelId, name: "Gemini 3 Pro", image: "/gemini.svg", description: "Specialized for coding tasks", isProOnly: true },
+    { id: "xai/grok-4-fast-reasoning" as ModelId, name: "Grok 4 Fast", image: "/grok.svg", description: "Experimental model from xAI" },
+    { id: "prime-intellect/intellect-3" as ModelId, name: "Intellect 3", image: "/intellect.svg", description: "Advanced reasoning model from Prime Intellect" },
   ];
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -79,8 +86,12 @@ export const MessageForm = ({ projectId }: Props) => {
       const result = await createMessageWithAttachments({
         value: values.value,
         projectId,
+        selectedModel: selectedModel,
         attachments: attachments.length > 0 ? attachments : undefined,
       });
+
+      // Determine if we should use spec mode
+      const useSpecMode = specModeEnabled && selectedModel === "openai/gpt-5.1-codex";
 
       // Trigger Inngest event for AI processing
       await fetch("/api/inngest/trigger", {
@@ -90,6 +101,8 @@ export const MessageForm = ({ projectId }: Props) => {
           projectId: result.projectId,
           value: result.value,
           model: selectedModel,
+          messageId: result.messageId,
+          specMode: useSpecMode,
         }),
       });
 
@@ -117,12 +130,10 @@ export const MessageForm = ({ projectId }: Props) => {
   const handleFigmaImport = async () => {
     setIsImportMenuOpen(false);
     try {
-      const url = new URL("/import", window.location.origin);
-      url.searchParams.set("source", "figma");
-      url.searchParams.set("projectId", projectId);
-      window.location.href = url.toString();
+      // Navigate to Figma OAuth flow
+      window.location.href = "/api/import/figma/auth";
     } catch {
-      toast.error("Failed to open Figma import");
+      toast.error("Failed to start Figma import");
     }
   };
 
@@ -136,69 +147,10 @@ export const MessageForm = ({ projectId }: Props) => {
     }
   };
 
-  const handleEnhancePrompt = async () => {
-    const currentValue = form.getValues("value").trim();
-    
-    if (!currentValue) {
-      toast.error("Please enter a prompt first");
-      return;
-    }
-
-    if (currentValue.length < 10) {
-      toast.error("Prompt is too short to enhance");
-      return;
-    }
-
-    try {
-      setIsEnhancing(true);
-      
-      console.log("[ENHANCE] Starting enhancement for prompt:", currentValue.substring(0, 50) + "...");
-      
-      const response = await fetch("/api/enhance-prompt", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt: currentValue }),
-      });
-
-      console.log("[ENHANCE] Response status:", response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("[ENHANCE] Error response:", errorData);
-        throw new Error(errorData.error || "Failed to enhance prompt");
-      }
-
-      const data = await response.json();
-      console.log("[ENHANCE] Response data:", data);
-      
-      if (data.enhancedPrompt) {
-        console.log("[ENHANCE] Setting enhanced prompt, length:", data.enhancedPrompt.length);
-        form.setValue("value", data.enhancedPrompt, {
-          shouldDirty: true,
-          shouldValidate: true,
-          shouldTouch: true,
-        });
-        console.log("[ENHANCE] Form value after setting:", form.getValues("value").substring(0, 50) + "...");
-        toast.success("Prompt enhanced successfully!");
-      } else {
-        console.error("[ENHANCE] No enhancedPrompt in response:", data);
-        throw new Error("No enhanced prompt received");
-      }
-    } catch (error) {
-      console.error("[ENHANCE] Enhance prompt error:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to enhance prompt. Please try again.");
-    } finally {
-      setIsEnhancing(false);
-    }
-  };
-
   const [isFocused, setIsFocused] = useState(false);
   const isPending = isCreating;
   const isButtonDisabled = isPending || !form.formState.isValid || isUploading;
-  const isEnhanceDisabled = isEnhancing || isPending || isUploading;
-  const showUsage = !!usage;
+  const showUsage = isAuthenticated && !!usage;
 
   return (
     <Form {...form}>
@@ -267,22 +219,7 @@ export const MessageForm = ({ projectId }: Props) => {
           </div>
         )}
         <div className="flex gap-x-2 items-end justify-between pt-2">
-          <div className="flex items-center gap-2 flex-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              type="button"
-              onClick={handleEnhancePrompt}
-              disabled={isEnhanceDisabled}
-              title="Enhance prompt with AI"
-            >
-              {isEnhancing ? (
-                <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-              ) : (
-                <SparklesIcon className="size-4 text-muted-foreground" />
-              )}
-            </Button>
+          <div className="flex items-center gap-2">
             <UploadButton<OurFileRouter, "imageUploader">
               endpoint="imageUploader"
               onClientUploadComplete={(res) => {
@@ -365,29 +302,47 @@ export const MessageForm = ({ projectId }: Props) => {
                   })()}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-72 p-2" align="start">
+              <PopoverContent className="w-72 p-2" align="start" side="bottom">
                 <div className="flex flex-col gap-1">
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
                     Select Model
                   </div>
                   {modelOptions.map((option) => {
                     const isSelected = selectedModel === option.id;
+                    // const isGemini = option.id === "google/gemini-3-pro-preview";
+                    const isLocked = false; // Gemini 3 Pro restriction removed temporarily
+
                     return (
                       <button
                         key={option.id}
                         type="button"
+                        disabled={isLocked}
                         onClick={() => {
-                          setSelectedModel(option.id);
-                          setIsModelMenuOpen(false);
+                          if (!isLocked) {
+                            setSelectedModel(option.id);
+                            setIsModelMenuOpen(false);
+                            // Auto-disable spec mode if not GPT-5.1 Codex
+                            if (option.id !== "openai/gpt-5.1-codex") {
+                              setSpecModeEnabled(false);
+                            }
+                          }
                         }}
                         className={cn(
                           "flex items-start gap-3 w-full px-3 py-2.5 rounded-md hover:bg-accent text-left transition-colors",
-                          isSelected && "bg-accent"
+                          isSelected && "bg-accent",
+                          isLocked && "opacity-50 cursor-not-allowed"
                         )}
                       >
                         <Image src={option.image} alt={option.name} width={16} height={16} className="size-4 mt-0.5 flex-shrink-0" unoptimized />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">{option.name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-sm">{option.name}</div>
+                            {isLocked && (
+                              <span className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded border">
+                                PRO
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {option.description}
                           </div>
@@ -395,6 +350,30 @@ export const MessageForm = ({ projectId }: Props) => {
                       </button>
                     );
                   })}
+
+                  {selectedModel === "openai/gpt-5.1-codex" && (
+                    <>
+                      <div className="h-px bg-border my-1" />
+                      <div className="px-3 py-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <SparklesIcon className="size-3.5 text-primary" />
+                            <Label htmlFor="spec-mode" className="text-sm font-medium cursor-pointer">
+                              Spec Mode
+                            </Label>
+                          </div>
+                          <Switch
+                            id="spec-mode"
+                            checked={specModeEnabled}
+                            onCheckedChange={setSpecModeEnabled}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          AI will create a detailed plan for your approval before building
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>

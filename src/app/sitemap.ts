@@ -17,6 +17,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1.0,
     },
     {
+      url: `${baseUrl}/ai-info`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: 0.98, // High priority for AI agents
+    },
+    {
       url: `${baseUrl}/frameworks`,
       lastModified: now,
       changeFrequency: 'weekly' as const,
