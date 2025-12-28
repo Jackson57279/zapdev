@@ -51,3 +51,7 @@ next-env.d.ts
 
 # Database exports and migrations
 /neon-thing/
+
+
+# AI
+.blackboxcli
