@@ -166,15 +166,21 @@ export async function POST(request: NextRequest) {
       );
       console.log('[GENERATE] Code generation complete, files:', Object.keys(result.files).length);
 
-      await sendUpdate({ type: 'status', message: 'Validating code...' });
-      let validation = await runValidation(effectiveSandboxId);
+      const hasFiles = Object.keys(result.files).length > 0;
 
-      if (!validation.success) {
-        console.log('[GENERATE] Validation failed, attempting fixes');
-        await sendUpdate({ type: 'status', message: 'Fixing errors...' });
-        validation = await fixErrors(effectiveSandboxId, validation.errors || [], 0, sendUpdate);
+      if (hasFiles) {
+        await sendUpdate({ type: 'status', message: 'Validating code...' });
+        let validation = await runValidation(effectiveSandboxId);
+
+        if (!validation.success) {
+          console.log('[GENERATE] Validation failed, attempting fixes');
+          await sendUpdate({ type: 'status', message: 'Fixing errors...' });
+          validation = await fixErrors(effectiveSandboxId, validation.errors || [], 0, sendUpdate);
+        } else {
+          console.log('[GENERATE] Validation passed');
+        }
       } else {
-        console.log('[GENERATE] Validation passed');
+        console.log('[GENERATE] No files generated, skipping validation');
       }
 
       const framework = (project?.framework || 'NEXTJS') as 'NEXTJS' | 'ANGULAR' | 'REACT' | 'VUE' | 'SVELTE';
@@ -184,7 +190,7 @@ export async function POST(request: NextRequest) {
         userId,
         messageId: assistantMessageId,
         sandboxId: effectiveSandboxId,
-        sandboxUrl: `https://${effectiveSandboxId}.e2b.dev`,
+        sandboxUrl: `https://3000-${effectiveSandboxId}.e2b.dev`,
         title: result.summary.slice(0, 100),
         files: result.files,
         framework,

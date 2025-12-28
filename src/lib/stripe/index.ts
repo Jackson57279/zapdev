@@ -1,15 +1,26 @@
 import Stripe from "stripe";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set");
+let _stripe: Stripe | null = null;
+
+export function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+    _stripe = new Stripe(key, {
+      apiVersion: "2025-12-15.clover",
+      typescript: true,
+    });
+  }
+  return _stripe;
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-05-28.basil",
-  typescript: true,
-});
+export const stripe = {
+  get customers() { return getStripe().customers; },
+  get subscriptions() { return getStripe().subscriptions; },
+  get checkout() { return getStripe().checkout; },
+  get billingPortal() { return getStripe().billingPortal; },
+};
 
-// Plan configuration
 export const PLANS = {
   FREE: {
     name: "Free",
@@ -40,49 +51,42 @@ export const PLANS = {
 
 export type PlanType = keyof typeof PLANS;
 
-/**
- * Get or create a Stripe customer for a user
- */
 export async function getOrCreateCustomer(
   userId: string,
   email: string,
   name?: string
 ): Promise<Stripe.Customer> {
-  // Search for existing customer by metadata
-  const existingCustomers = await stripe.customers.list({
+  const stripeClient = getStripe();
+  
+  const existingCustomers = await stripeClient.customers.list({
     limit: 1,
     email,
   });
 
   if (existingCustomers.data.length > 0) {
     const customer = existingCustomers.data[0];
-    // Update metadata if needed
     if (customer.metadata?.userId !== userId) {
-      return await stripe.customers.update(customer.id, {
+      return await stripeClient.customers.update(customer.id, {
         metadata: { userId },
       });
     }
     return customer;
   }
 
-  // Create new customer
-  return await stripe.customers.create({
+  return await stripeClient.customers.create({
     email,
     name,
     metadata: { userId },
   });
 }
 
-/**
- * Create a checkout session for subscription
- */
 export async function createCheckoutSession(
   customerId: string,
   priceId: string,
   successUrl: string,
   cancelUrl: string
 ): Promise<Stripe.Checkout.Session> {
-  return await stripe.checkout.sessions.create({
+  return await getStripe().checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
     payment_method_types: ["card"],
@@ -102,26 +106,20 @@ export async function createCheckoutSession(
   });
 }
 
-/**
- * Create a customer portal session
- */
 export async function createPortalSession(
   customerId: string,
   returnUrl: string
 ): Promise<Stripe.BillingPortal.Session> {
-  return await stripe.billingPortal.sessions.create({
+  return await getStripe().billingPortal.sessions.create({
     customer: customerId,
     return_url: returnUrl,
   });
 }
 
-/**
- * Get active subscription for a customer
- */
 export async function getActiveSubscription(
   customerId: string
 ): Promise<Stripe.Subscription | null> {
-  const subscriptions = await stripe.subscriptions.list({
+  const subscriptions = await getStripe().subscriptions.list({
     customer: customerId,
     status: "active",
     limit: 1,
@@ -130,24 +128,18 @@ export async function getActiveSubscription(
   return subscriptions.data[0] || null;
 }
 
-/**
- * Cancel a subscription at period end
- */
 export async function cancelSubscription(
   subscriptionId: string
 ): Promise<Stripe.Subscription> {
-  return await stripe.subscriptions.update(subscriptionId, {
+  return await getStripe().subscriptions.update(subscriptionId, {
     cancel_at_period_end: true,
   });
 }
 
-/**
- * Reactivate a canceled subscription
- */
 export async function reactivateSubscription(
   subscriptionId: string
 ): Promise<Stripe.Subscription> {
-  return await stripe.subscriptions.update(subscriptionId, {
+  return await getStripe().subscriptions.update(subscriptionId, {
     cancel_at_period_end: false,
   });
 }

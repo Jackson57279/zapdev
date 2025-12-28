@@ -1,4 +1,4 @@
-import { streamText } from 'ai';
+import { Agent } from '@ai-sdk-tools/agents';
 import { getModel, ModelId } from '../client';
 import { sandboxManager } from '../sandbox';
 import { withRetry, retryOnTransient } from '../retry';
@@ -61,12 +61,6 @@ export async function generateCode(
     onProgress({ type: 'file', filePath: path });
   });
 
-  const messages = request.conversationHistory || [];
-  messages.push({
-    role: 'user' as const,
-    content: request.prompt,
-  });
-
   logger.progress('ai', 'Starting AI generation');
   await onProgress({ type: 'status', message: 'Generating code...' });
 
@@ -79,36 +73,74 @@ export async function generateCode(
     throw new Error(errorMessage);
   }
 
+  const codeAgent = new Agent({
+    name: 'Code Generator',
+    model,
+    instructions: getFrameworkPrompt(framework),
+    tools,
+    maxTurns: 15,
+    temperature: 0.7,
+    onEvent: async (event) => {
+      if (event.type === 'agent-step' && event.step.toolCalls) {
+        for (const call of event.step.toolCalls) {
+          console.log('[AI] Tool call:', call.toolName);
+          if (call.toolName === 'createOrUpdateFiles' && 'args' in call && call.args) {
+            const args = call.args as { files: Array<{ path: string; content: string }> };
+            for (const file of args.files) {
+              files[file.path] = file.content;
+            }
+          }
+        }
+      }
+    },
+  });
+
+  const conversationHistory = request.conversationHistory || [];
+  const prompt = request.prompt;
+
   const result = await withRetry(
     async () => {
-      const response = streamText({
-        model,
-        system: getFrameworkPrompt(framework),
-        messages,
-        tools,
-        temperature: 0.7,
-      });
+      const messages = [
+        ...conversationHistory,
+        { role: 'user' as const, content: prompt },
+      ];
 
+      const response = codeAgent.stream({ messages });
+
+      let fullText = '';
       for await (const textPart of response.textStream) {
+        process.stdout.write(textPart);
+        fullText += textPart;
         await onProgress({
           type: 'stream',
           content: textPart,
         });
       }
-
+      
+      console.log('\n[AI] Stream complete');
+      
       const text = await response.text;
-      const toolCalls = await response.toolCalls;
-
-      for (const call of toolCalls) {
-        if (call.toolName === 'createOrUpdateFiles' && 'input' in call) {
-          const input = call.input as { files: Array<{ path: string; content: string }> };
-          for (const file of input.files) {
-            files[file.path] = file.content;
+      const steps = await response.steps;
+      
+      console.log('[AI] Total steps:', steps.length);
+      let totalToolCalls = 0;
+      for (const step of steps) {
+        if (step.toolCalls) {
+          totalToolCalls += step.toolCalls.length;
+          for (const call of step.toolCalls) {
+            if (call.toolName === 'createOrUpdateFiles' && 'args' in call && call.args) {
+              const args = call.args as { files: Array<{ path: string; content: string }> };
+              for (const file of args.files) {
+                files[file.path] = file.content;
+              }
+            }
           }
         }
       }
+      console.log('[AI] Total tool calls:', totalToolCalls);
+      console.log('[AI] Files generated:', Object.keys(files).length);
 
-      return { text, files };
+      return { text: text || fullText, files };
     },
     {
       maxAttempts: 3,

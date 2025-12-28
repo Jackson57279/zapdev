@@ -5,6 +5,8 @@
     "": {
       "name": "vibe",
       "dependencies": {
+        "@ai-sdk-tools/agents": "^1.2.0",
+        "@ai-sdk-tools/memory": "^1.2.0",
         "@ai-sdk/openai": "^3.0.1",
         "@clerk/backend": "^2.29.0",
         "@clerk/nextjs": "^6.36.5",
@@ -118,6 +120,10 @@
     "js-yaml": "^4.1.0",
   },
   "packages": {
+    "@ai-sdk-tools/agents": ["@ai-sdk-tools/agents@1.2.0", "", { "peerDependencies": { "ai": ">=5.0.0", "zod": "^3.25.76 || ^4.1.8" } }, "sha512-x1cTxnWDy/1Y63Ca875LDQXgy6dycTZ5BikMmCwRs5zHn4WOcudFfEgdFZndGA8wZFntk8V5LiUlJ7rSwYCp1g=="],
+
+    "@ai-sdk-tools/memory": ["@ai-sdk-tools/memory@1.2.0", "", { "dependencies": { "zod": "^4.1.12" }, "peerDependencies": { "@upstash/redis": "^1.34.3", "ai": "^5.0.0", "drizzle-orm": "^0.36.0", "ioredis": "^5.0.0", "redis": "^4.0.0" }, "optionalPeers": ["@upstash/redis", "ai", "drizzle-orm", "ioredis", "redis"] }, "sha512-ET8CQMyHsdEMVSYnBjopHWwR6j6W6tmB+djMybFiloPLF9NfsFr9bXt2hb7+/oFyE9zKAGWQXqUY+Z+kUueR2w=="],
+
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.2", "", { "dependencies": { "@ai-sdk/provider": "3.0.0", "@ai-sdk/provider-utils": "4.0.1", "@vercel/oidc": "3.0.5" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-giJEg9ob45htbu3iautK+2kvplY2JnTj7ir4wZzYSQWvqGatWfBBfDuNCU5wSJt9BCGjymM5ZS9ziD42JGCZBw=="],
 
     "@ai-sdk/openai": ["@ai-sdk/openai@3.0.1", "", { "dependencies": { "@ai-sdk/provider": "3.0.0", "@ai-sdk/provider-utils": "4.0.1" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-P+qxz2diOrh8OrpqLRg+E+XIFVIKM3z2kFjABcCJGHjGbXBK88AJqmuKAi87qLTvTe/xn1fhZBjklZg9bTyigw=="],

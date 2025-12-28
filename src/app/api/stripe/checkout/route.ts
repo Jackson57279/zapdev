@@ -4,11 +4,25 @@ import Stripe from "stripe";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-05-28.basil",
-});
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+    _stripe = new Stripe(key, { apiVersion: "2025-12-15.clover" });
+  }
+  return _stripe;
+}
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+let _convex: ConvexHttpClient | null = null;
+function getConvex(): ConvexHttpClient {
+  if (!_convex) {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is not configured");
+    _convex = new ConvexHttpClient(url);
+  }
+  return _convex;
+}
 
 export async function POST(req: Request) {
   try {
@@ -16,43 +30,34 @@ export async function POST(req: Request) {
     const user = await currentUser();
 
     if (!userId || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { priceId } = await req.json();
 
     if (!priceId) {
-      return NextResponse.json(
-        { error: "Price ID is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Price ID is required" }, { status: 400 });
     }
 
     const email = user.emailAddresses[0]?.emailAddress;
     const name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
 
     if (!email) {
-      return NextResponse.json(
-        { error: "User email not found" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "User email not found" }, { status: 400 });
     }
 
-    // Check if customer already exists in our database
-    let customer = await convex.query(api.subscriptions.getCustomerByUserId, {
+    const stripe = getStripe();
+    const convex = getConvex();
+
+    const customer = await convex.query(api.subscriptions.getCustomerByUserId, {
       userId,
     });
 
     let stripeCustomerId: string;
 
     if (customer?.stripeCustomerId) {
-      // Use existing Stripe customer
       stripeCustomerId = customer.stripeCustomerId;
     } else {
-      // Check if customer exists in Stripe by email
       const existingCustomers = await stripe.customers.list({
         email,
         limit: 1,
@@ -60,12 +65,10 @@ export async function POST(req: Request) {
 
       if (existingCustomers.data.length > 0) {
         stripeCustomerId = existingCustomers.data[0].id;
-        // Update customer with userId metadata
         await stripe.customers.update(stripeCustomerId, {
           metadata: { userId },
         });
       } else {
-        // Create new Stripe customer
         const newCustomer = await stripe.customers.create({
           email,
           name: name || undefined,
@@ -74,7 +77,6 @@ export async function POST(req: Request) {
         stripeCustomerId = newCustomer.id;
       }
 
-      // Save customer to Convex
       await convex.mutation(api.subscriptions.createOrUpdateCustomer, {
         userId,
         stripeCustomerId,
@@ -83,7 +85,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // Check if user already has an active subscription
     const existingSubscription = await convex.query(
       api.subscriptions.getUserSubscriptions,
       { userId }
@@ -94,7 +95,6 @@ export async function POST(req: Request) {
     );
 
     if (activeSubscription) {
-      // Redirect to customer portal instead
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: stripeCustomerId,
         return_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
@@ -103,7 +103,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ url: portalSession.url });
     }
 
-    // Create checkout session
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     
     const session = await stripe.checkout.sessions.create({

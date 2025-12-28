@@ -54,9 +54,9 @@ export function PricingPageContent() {
 
   // Handle success/cancel URL params
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
+    if (searchParams?.get("success") === "true") {
       toast.success("Subscription successful! Welcome to Pro.");
-    } else if (searchParams.get("canceled") === "true") {
+    } else if (searchParams?.get("canceled") === "true") {
       toast.info("Checkout was canceled.");
     }
   }, [searchParams]);

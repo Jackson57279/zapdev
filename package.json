@@ -12,6 +12,8 @@
     "convex:deploy": "bunx convex deploy"
   },
   "dependencies": {
+    "@ai-sdk-tools/agents": "^1.2.0",
+    "@ai-sdk-tools/memory": "^1.2.0",
     "@ai-sdk/openai": "^3.0.1",
     "@clerk/backend": "^2.29.0",
     "@clerk/nextjs": "^6.36.5",

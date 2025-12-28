@@ -7,7 +7,7 @@ export async function runValidation(sandboxId: string): Promise<ValidationResult
   const sandbox = await sandboxManager.connect(sandboxId);
 
   logger.progress('lint', 'Running linter');
-  const lintResult = await sandboxManager.runCommand(sandbox, 'npm run lint', 30000);
+  const lintResult = await sandboxManager.runCommand(sandbox, 'npm run lint -- --cache', 30000);
 
   if (lintResult.exitCode !== 0) {
     logger.warn('Lint failed', { stderr: lintResult.stderr });

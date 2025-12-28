@@ -6,7 +6,7 @@ const SANDBOX_CACHE = new Map<string, Sandbox>();
 const CACHE_EXPIRY_MS = 5 * 60 * 1000;
 
 const FRAMEWORK_TEMPLATES: Record<Framework, string> = {
-  nextjs: 'nextjs-developer',
+  nextjs: 'zapdev',
   react: 'react-developer',
   vue: 'vue-developer',
   angular: 'angular-developer',

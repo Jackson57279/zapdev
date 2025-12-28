@@ -26,7 +26,10 @@ import type { OurFileRouter } from "@/lib/uploadthing";
 
 interface Props {
   projectId: string;
-};
+  onStreamUpdate?: (content: string) => void;
+  onStreamStart?: () => void;
+  onStreamEnd?: () => void;
+}
 
 const formSchema = z.object({
   value: z.string()
@@ -41,7 +44,7 @@ interface AttachmentData {
   height?: number;
 }
 
-export const MessageForm = ({ projectId }: Props) => {
+export const MessageForm = ({ projectId, onStreamUpdate, onStreamStart, onStreamEnd }: Props) => {
   const router = useRouter();
 
   const usage = useQuery(api.usage.getUsage);
@@ -104,6 +107,8 @@ export const MessageForm = ({ projectId }: Props) => {
         throw new Error("Failed to read response stream");
       }
 
+      onStreamStart?.();
+
       let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
@@ -120,7 +125,12 @@ export const MessageForm = ({ projectId }: Props) => {
 
               if (data.type === "error") {
                 toast.error(data.error || "Generation failed");
+                onStreamEnd?.();
                 throw new Error(data.error || "Generation failed");
+              }
+
+              if (data.type === "stream" && data.content) {
+                onStreamUpdate?.(data.content);
               }
 
               if (data.type === "status") {
@@ -129,14 +139,19 @@ export const MessageForm = ({ projectId }: Props) => {
 
               if (data.type === "complete") {
                 console.log("Generation complete:", data.message);
+                onStreamEnd?.();
               }
             } catch (parseError) {
+              if (parseError instanceof Error && parseError.message.includes("Generation failed")) {
+                throw parseError;
+              }
               console.error("Failed to parse SSE event:", line, parseError);
             }
           }
         }
       }
 
+      onStreamEnd?.();
       form.reset();
       setAttachments([]);
     } catch (error) {

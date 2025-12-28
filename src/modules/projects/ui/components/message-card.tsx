@@ -81,6 +81,7 @@ interface AssistantMessageProps {
   isActive: boolean;
   onFragmentClick: (fragment: FragmentDoc) => void;
   type: MessageType;
+  streamingContent?: string;
 }
 
 const AssistantMessage = ({
@@ -90,38 +91,55 @@ const AssistantMessage = ({
   isActive,
   onFragmentClick,
   type,
-}: AssistantMessageProps) => (
-  <div
-    className={cn(
-      "flex flex-col group px-2 pb-4",
-      type === "ERROR" && "text-red-700 dark:text-red-500",
-    )}
-  >
-    <div className="flex items-center gap-2 pl-2 mb-2">
-      <Image
-        src="/logo.svg"
-        alt="ZapDev"
-        width={18}
-        height={18}
-        className="shrink-0"
-      />
-      <span className="text-sm font-medium">ZapDev</span>
-      <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-        {formatCreatedAt(createdAt)}
-      </span>
-    </div>
-    <div className="pl-8.5 flex flex-col gap-y-4">
-      <span>{content}</span>
-      {fragment && type === "RESULT" && (
-        <FragmentPreviewButton
-          fragment={fragment}
-          isActive={isActive}
-          onClick={onFragmentClick}
-        />
+  streamingContent,
+}: AssistantMessageProps) => {
+  const displayContent = streamingContent || content;
+  const isStreaming = type === "STREAMING" && !!streamingContent;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col group px-2 pb-4",
+        type === "ERROR" && "text-red-700 dark:text-red-500",
       )}
+    >
+      <div className="flex items-center gap-2 pl-2 mb-2">
+        <Image
+          src="/logo.svg"
+          alt="ZapDev"
+          width={18}
+          height={18}
+          className="shrink-0"
+        />
+        <span className="text-sm font-medium">ZapDev</span>
+        {isStreaming && (
+          <span className="flex items-center gap-1 text-xs text-primary">
+            <span className="inline-block w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+            Thinking...
+          </span>
+        )}
+        <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+          {formatCreatedAt(createdAt)}
+        </span>
+      </div>
+      <div className="pl-8.5 flex flex-col gap-y-4">
+        <span className="whitespace-pre-wrap">
+          {displayContent}
+          {isStreaming && (
+            <span className="inline-block w-2 h-4 ml-0.5 bg-primary/60 animate-pulse" />
+          )}
+        </span>
+        {fragment && type === "RESULT" && (
+          <FragmentPreviewButton
+            fragment={fragment}
+            isActive={isActive}
+            onClick={onFragmentClick}
+          />
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface MessageCardProps {
   content: string;
@@ -132,6 +150,7 @@ interface MessageCardProps {
   onFragmentClick: (fragment: FragmentDoc) => void;
   type: MessageType;
   attachments?: AttachmentDoc[];
+  streamingContent?: string;
 }
 
 export const MessageCard = ({
@@ -143,6 +162,7 @@ export const MessageCard = ({
   onFragmentClick,
   type,
   attachments,
+  streamingContent,
 }: MessageCardProps) => {
   if (role === "ASSISTANT") {
     return (
@@ -153,6 +173,7 @@ export const MessageCard = ({
         isActive={isActiveFragment}
         onFragmentClick={onFragmentClick}
         type={type}
+        streamingContent={streamingContent}
       />
     );
   }

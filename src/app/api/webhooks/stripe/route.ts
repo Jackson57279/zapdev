@@ -4,16 +4,26 @@ import Stripe from "stripe";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-05-28.basil",
-});
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+    _stripe = new Stripe(key, { apiVersion: "2025-12-15.clover" });
+  }
+  return _stripe;
+}
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+let _convex: ConvexHttpClient | null = null;
+function getConvex(): ConvexHttpClient {
+  if (!_convex) {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is not configured");
+    _convex = new ConvexHttpClient(url);
+  }
+  return _convex;
+}
 
-// Convex client for database operations
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
-// Map Stripe price IDs to plan names
 function getPlanNameFromPriceId(priceId: string): string {
   const proPriceId = process.env.STRIPE_PRO_PRICE_ID;
   if (priceId === proPriceId) {
@@ -22,10 +32,30 @@ function getPlanNameFromPriceId(priceId: string): string {
   return "Free";
 }
 
+interface SubscriptionData {
+  id: string;
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer;
+  status: string;
+  currentPeriodStart?: number;
+  currentPeriodEnd?: number;
+  cancelAtPeriodEnd?: boolean;
+  canceledAt?: number | null;
+  endedAt?: number | null;
+  metadata?: Record<string, string>;
+  items: {
+    data: Array<{ price: { id: string } }>;
+  };
+}
+
+interface InvoiceData {
+  subscription?: string | null;
+}
+
 export async function POST(req: Request) {
   const body = await req.text();
   const headerPayload = await headers();
   const signature = headerPayload.get("stripe-signature");
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!signature) {
     return NextResponse.json(
@@ -34,6 +64,14 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!webhookSecret) {
+    return NextResponse.json(
+      { error: "STRIPE_WEBHOOK_SECRET is not configured" },
+      { status: 500 }
+    );
+  }
+
+  const stripe = getStripe();
   let event: Stripe.Event;
 
   try {
@@ -53,9 +91,8 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as unknown as SubscriptionData;
         
-        // Get customer to find userId
         const customer = await stripe.customers.retrieve(
           subscription.customer as string
         );
@@ -73,19 +110,27 @@ export async function POST(req: Request) {
 
         const priceId = subscription.items.data[0]?.price.id || "";
         const planName = getPlanNameFromPriceId(priceId);
+        
+        const now = Date.now();
+        const periodStart = subscription.currentPeriodStart 
+          ? subscription.currentPeriodStart * 1000 
+          : now;
+        const periodEnd = subscription.currentPeriodEnd 
+          ? subscription.currentPeriodEnd * 1000 
+          : now + 30 * 24 * 60 * 60 * 1000;
 
-        await convex.mutation(api.subscriptions.createOrUpdateSubscription, {
+        await getConvex().mutation(api.subscriptions.createOrUpdateSubscription, {
           userId,
           stripeSubscriptionId: subscription.id,
           stripeCustomerId: subscription.customer as string,
           stripePriceId: priceId,
           planName,
           status: subscription.status as "incomplete" | "incomplete_expired" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused",
-          currentPeriodStart: subscription.current_period_start * 1000,
-          currentPeriodEnd: subscription.current_period_end * 1000,
-          cancelAtPeriodEnd: subscription.cancel_at_period_end,
-          canceledAt: subscription.canceled_at ? subscription.canceled_at * 1000 : undefined,
-          endedAt: subscription.ended_at ? subscription.ended_at * 1000 : undefined,
+          currentPeriodStart: periodStart,
+          currentPeriodEnd: periodEnd,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd ?? false,
+          canceledAt: subscription.canceledAt ? subscription.canceledAt * 1000 : undefined,
+          endedAt: subscription.endedAt ? subscription.endedAt * 1000 : undefined,
           metadata: subscription.metadata,
         });
 
@@ -94,13 +139,13 @@ export async function POST(req: Request) {
       }
 
       case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as unknown as SubscriptionData;
 
-        await convex.mutation(api.subscriptions.updateSubscriptionStatus, {
+        await getConvex().mutation(api.subscriptions.updateSubscriptionStatus, {
           stripeSubscriptionId: subscription.id,
           status: "canceled",
-          canceledAt: subscription.canceled_at ? subscription.canceled_at * 1000 : Date.now(),
-          endedAt: subscription.ended_at ? subscription.ended_at * 1000 : Date.now(),
+          canceledAt: subscription.canceledAt ? subscription.canceledAt * 1000 : Date.now(),
+          endedAt: subscription.endedAt ? subscription.endedAt * 1000 : Date.now(),
         });
 
         console.log(`Subscription deleted: ${subscription.id}`);
@@ -108,15 +153,14 @@ export async function POST(req: Request) {
       }
 
       case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as unknown as InvoiceData;
         
         if (invoice.subscription) {
-          // Refresh subscription status after successful payment
           const subscription = await stripe.subscriptions.retrieve(
-            invoice.subscription as string
-          );
+            invoice.subscription
+          ) as unknown as SubscriptionData;
 
-          await convex.mutation(api.subscriptions.updateSubscriptionStatus, {
+          await getConvex().mutation(api.subscriptions.updateSubscriptionStatus, {
             stripeSubscriptionId: subscription.id,
             status: subscription.status as "incomplete" | "incomplete_expired" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused",
           });
@@ -127,11 +171,11 @@ export async function POST(req: Request) {
       }
 
       case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as unknown as InvoiceData;
         
         if (invoice.subscription) {
-          await convex.mutation(api.subscriptions.updateSubscriptionStatus, {
-            stripeSubscriptionId: invoice.subscription as string,
+          await getConvex().mutation(api.subscriptions.updateSubscriptionStatus, {
+            stripeSubscriptionId: invoice.subscription,
             status: "past_due",
           });
 
@@ -146,7 +190,7 @@ export async function POST(req: Request) {
         const userId = customer.metadata?.userId;
 
         if (userId && customer.email) {
-          await convex.mutation(api.subscriptions.createOrUpdateCustomer, {
+          await getConvex().mutation(api.subscriptions.createOrUpdateCustomer, {
             userId,
             stripeCustomerId: customer.id,
             email: customer.email,

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -25,8 +25,23 @@ export const MessagesContainer = ({
 }: Props) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastAssistantMessageIdRef = useRef<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
 
-  // Convex queries are reactive by default - no polling needed!
+  const handleStreamUpdate = useCallback((content: string) => {
+    setStreamingContent((prev) => prev + content);
+  }, []);
+
+  const handleStreamStart = useCallback(() => {
+    setStreamingContent("");
+    setIsStreaming(true);
+  }, []);
+
+  const handleStreamEnd = useCallback(() => {
+    setIsStreaming(false);
+    setStreamingContent("");
+  }, []);
+
   const messages = useQuery(api.messages.list, {
     projectId: projectId as Id<"projects">
   }) as MessageWithRelations[] | undefined;
@@ -40,6 +55,7 @@ export const MessagesContainer = ({
 
     if (
       lastAssistantMessage?.Fragment &&
+      lastAssistantMessage.status === "COMPLETE" &&
       lastAssistantMessage._id !== lastAssistantMessageIdRef.current
     ) {
       setActiveFragment(lastAssistantMessage.Fragment);
@@ -51,7 +67,7 @@ export const MessagesContainer = ({
     if (messages) {
       bottomRef.current?.scrollIntoView();
     }
-  }, [messages?.length]);
+  }, [messages?.length, streamingContent]);
 
   if (!messages) {
     return <div className="flex flex-col flex-1 min-h-0 items-center justify-center">Loading...</div>;
@@ -59,6 +75,9 @@ export const MessagesContainer = ({
 
   const lastMessage = messages[messages.length - 1];
   const isLastMessageUser = lastMessage?.role === "USER";
+  const lastStreamingMessage = messages.find(
+    (m) => m.role === "ASSISTANT" && m.status === "STREAMING"
+  );
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -75,15 +94,25 @@ export const MessagesContainer = ({
               onFragmentClick={setActiveFragment}
               type={message.type}
               attachments={message.Attachment}
+              streamingContent={
+                message.status === "STREAMING" && isStreaming
+                  ? streamingContent
+                  : undefined
+              }
             />
           ))}
-          {isLastMessageUser && <MessageLoading />}
+          {isLastMessageUser && !lastStreamingMessage && <MessageLoading />}
           <div ref={bottomRef} />
         </div>
       </div>
       <div className="relative p-3 pt-1">
         <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-b from-transparent to-background pointer-events-none" />
-        <MessageForm projectId={projectId} />
+        <MessageForm
+          projectId={projectId}
+          onStreamUpdate={handleStreamUpdate}
+          onStreamStart={handleStreamStart}
+          onStreamEnd={handleStreamEnd}
+        />
       </div>
     </div>
   );

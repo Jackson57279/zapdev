@@ -2,7 +2,9 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useUser, RedirectToSignIn } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +14,7 @@ import Link from "next/link";
 
 export default function SubscriptionPage() {
   const { isSignedIn, isLoaded } = useUser();
+  const router = useRouter();
   const subscription = useQuery(api.subscriptions.getSubscription);
   const usage = useQuery(api.usage.getUsage);
 
@@ -24,7 +27,12 @@ export default function SubscriptionPage() {
   }
 
   if (!isSignedIn) {
-    return <RedirectToSignIn />;
+    router.push("/sign-in");
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   const isProUser = subscription?.planName === "Pro" && subscription?.status === "active";
