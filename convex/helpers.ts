@@ -27,13 +27,21 @@ export async function requireAuth(
 
 /**
  * Check if user has pro access
- * Checks for active Clerk Billing subscription with Pro plan
+ * Checks for active Stripe subscription with Pro plan
  */
 export async function hasProAccess(ctx: QueryCtx | MutationCtx): Promise<boolean> {
   const userId = await getCurrentUserId(ctx);
   if (!userId) return false;
   
-  // Check active subscription from Clerk Billing
+  return hasProAccessForUser(ctx, userId);
+}
+
+/**
+ * Check if a specific user has pro access (for use when userId is passed as argument)
+ * Checks for active Stripe subscription with Pro plan
+ */
+export async function hasProAccessForUser(ctx: QueryCtx | MutationCtx, userId: string): Promise<boolean> {
+  // Check active subscription from Stripe
   const subscription = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -41,7 +49,6 @@ export async function hasProAccess(ctx: QueryCtx | MutationCtx): Promise<boolean
     .first();
   
   // Pro access if active subscription exists and planName is "Pro"
-  // Note: Plan names should match what you create in Clerk Dashboard
   if (subscription && subscription.planName === "Pro") {
     return true;
   }
@@ -77,24 +84,20 @@ export async function hasPlan(
 }
 
 /**
- * Check if user has a specific feature
- * @param ctx - Query or Mutation context
- * @param featureId - ID of the feature to check
+ * Get user's Stripe customer ID
  */
-export async function hasFeature(
-  ctx: QueryCtx | MutationCtx,
-  featureId: string
-): Promise<boolean> {
+export async function getStripeCustomerId(
+  ctx: QueryCtx | MutationCtx
+): Promise<string | null> {
   const userId = await getCurrentUserId(ctx);
-  if (!userId) return false;
+  if (!userId) return null;
   
-  const subscription = await ctx.db
-    .query("subscriptions")
+  const customer = await ctx.db
+    .query("customers")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .filter((q) => q.eq(q.field("status"), "active"))
     .first();
   
-  return subscription?.features?.includes(featureId) ?? false;
+  return customer?.stripeCustomerId || null;
 }
 
 /**

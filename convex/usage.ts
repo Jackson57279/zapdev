@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, hasProAccess } from "./helpers";
+import { requireAuth, hasProAccess, hasProAccessForUser } from "./helpers";
 
 // Constants matching the existing system
 const FREE_POINTS = 5;
@@ -152,7 +152,7 @@ export const getUsageInternal = async (
   creditsRemaining: number;
   msBeforeNext: number;
 }> => {
-  const isPro = await hasProAccess(ctx).catch(() => false);
+  const isPro = await hasProAccessForUser(ctx, userId).catch(() => false);
   const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
 
   const usage = await ctx.db
@@ -218,7 +218,7 @@ export const checkAndConsumeCreditInternal = async (
   ctx: any,
   userId: string
 ): Promise<{ success: boolean; remaining: number; message?: string }> => {
-  const isPro = await hasProAccess(ctx).catch(() => false);
+  const isPro = await hasProAccessForUser(ctx, userId).catch(() => false);
   const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
 
   const usage = await ctx.db

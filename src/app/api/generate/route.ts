@@ -4,7 +4,8 @@ import * as Sentry from '@sentry/nextjs';
 import { generateCode } from '@/agents/agents/code-generation';
 import { runValidation } from '@/agents/agents/validation';
 import { fixErrors } from '@/agents/agents/error-fixer';
-import type { StreamUpdate } from '@/agents/types';
+import { sandboxManager } from '@/agents/sandbox';
+import type { StreamUpdate, Framework } from '@/agents/types';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
@@ -23,31 +24,54 @@ function getConvex(): ConvexHttpClient {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const plan = sessionClaims?.plan as string | undefined;
-  if (plan !== 'pro') {
-    return new Response('Pro plan required', { status: 402 });
+  const convex = getConvex();
+  try {
+    const creditResult = await convex.mutation(api.usage.checkAndConsumeCreditForUser, {
+      userId,
+    });
+    
+    if (!creditResult.success) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Insufficient credits', 
+          message: creditResult.message,
+          remaining: creditResult.remaining 
+        }), 
+        { 
+          status: 402,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+  } catch (error) {
+    console.error('Failed to check credits:', error);
+    return new Response('Failed to verify credits', { status: 500 });
   }
 
   const body = await request.json();
-  const { projectId, prompt, model, sandboxId, messageId } = body;
+  const { projectId, prompt, model, sandboxId: providedSandboxId, messageId } = body;
 
   if (!projectId || !prompt) {
     return new Response('Missing required fields', { status: 400 });
   }
 
-  if (!sandboxId || typeof sandboxId !== 'string' || sandboxId.trim() === '') {
-    return new Response('Invalid sandboxId: must be a non-empty string', { status: 400 });
-  }
+  // Validate sandboxId format if provided
+  const sandboxId = providedSandboxId;
+  if (sandboxId) {
+    if (typeof sandboxId !== 'string' || sandboxId.trim() === '') {
+      return new Response('Invalid sandboxId: must be a non-empty string', { status: 400 });
+    }
 
-  const sandboxIdPattern = /^[a-zA-Z0-9_-]+$/;
-  if (!sandboxIdPattern.test(sandboxId)) {
-    return new Response('Invalid sandboxId: must contain only alphanumeric characters, hyphens, and underscores', { status: 400 });
+    const sandboxIdPattern = /^[a-zA-Z0-9_-]+$/;
+    if (!sandboxIdPattern.test(sandboxId)) {
+      return new Response('Invalid sandboxId: must contain only alphanumeric characters, hyphens, and underscores', { status: 400 });
+    }
   }
 
   Sentry.setUser({ id: userId });
@@ -86,10 +110,25 @@ export async function POST(request: NextRequest) {
         projectId: projectId as Id<'projects'>,
       });
 
+      let effectiveSandboxId = sandboxId;
+      if (!effectiveSandboxId) {
+        const frameworkMap: Record<string, Framework> = {
+          'NEXTJS': 'nextjs',
+          'REACT': 'react',
+          'VUE': 'vue',
+          'ANGULAR': 'angular',
+          'SVELTE': 'svelte',
+        };
+        const framework = frameworkMap[project?.framework || 'NEXTJS'] || 'nextjs';
+        await sendUpdate({ type: 'status', message: 'Creating sandbox...' });
+        const sandbox = await sandboxManager.create(framework);
+        effectiveSandboxId = sandbox.sandboxId;
+      }
+
       const result = await generateCode(
         {
           projectId,
-          sandboxId,
+          sandboxId: effectiveSandboxId,
           prompt,
           model: model || 'auto',
         },
@@ -97,11 +136,11 @@ export async function POST(request: NextRequest) {
       );
 
       await sendUpdate({ type: 'status', message: 'Validating code...' });
-      let validation = await runValidation(sandboxId);
+      let validation = await runValidation(effectiveSandboxId);
 
       if (!validation.success) {
         await sendUpdate({ type: 'status', message: 'Fixing errors...' });
-        validation = await fixErrors(sandboxId, validation.errors || [], 0, sendUpdate);
+        validation = await fixErrors(effectiveSandboxId, validation.errors || [], 0, sendUpdate);
       }
 
       const framework = (project?.framework || 'NEXTJS') as 'NEXTJS' | 'ANGULAR' | 'REACT' | 'VUE' | 'SVELTE';
@@ -109,8 +148,8 @@ export async function POST(request: NextRequest) {
       await convex.mutation(api.messages.createFragmentForUser, {
         userId,
         messageId: assistantMessageId,
-        sandboxId,
-        sandboxUrl: `https://${sandboxId}.e2b.dev`,
+        sandboxId: effectiveSandboxId,
+        sandboxUrl: `https://${effectiveSandboxId}.e2b.dev`,
         title: result.summary.slice(0, 100),
         files: result.files,
         framework,

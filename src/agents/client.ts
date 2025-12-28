@@ -32,7 +32,22 @@ export const MODEL_CONFIGS = {
     maxTokens: 8000,
   },
   'anthropic/claude-haiku-4.5': {
-    id: 'anthropic/claude-3-5-haiku',
+    id: 'anthropic/claude-haiku-4.5',
+    temperature: 0.7,
+    maxTokens: 8000,
+  },
+  'openai/gpt-5.1-codex': {
+    id: 'openai/gpt-5.1-codex',
+    temperature: 0.7,
+    maxTokens: 8000,
+  },
+  'google/gemini-3-pro-preview': {
+    id: 'google/gemini-3-pro-preview',
+    temperature: 0.7,
+    maxTokens: 8000,
+  },
+  'z-ai/glm-4.7': {
+    id: 'z-ai/glm-4.7',
     temperature: 0.7,
     maxTokens: 8000,
   },

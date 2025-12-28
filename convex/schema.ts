@@ -196,31 +196,47 @@ export default defineSchema({
     .index("by_key", ["key"])
     .index("by_windowStart", ["windowStart"]),
 
-  // Subscriptions table - Clerk Billing subscription tracking
-  subscriptions: defineTable({
+  // Customers table - Stripe customer tracking
+  customers: defineTable({
     userId: v.string(), // Clerk user ID
-    clerkSubscriptionId: v.string(), // Clerk subscription ID
-    planId: v.string(), // Clerk plan ID (e.g., "plan_xxxxx")
-    planName: v.string(), // Plan name (e.g., "Free", "Pro")
-    status: v.union(
-      v.literal("incomplete"),
-      v.literal("active"),
-      v.literal("canceled"),
-      v.literal("past_due"),
-      v.literal("unpaid"),
-      v.literal("trialing")
-    ),
-    currentPeriodStart: v.number(), // Timestamp
-    currentPeriodEnd: v.number(), // Timestamp
-    cancelAtPeriodEnd: v.boolean(), // Scheduled cancellation flag
-    features: v.optional(v.array(v.string())), // Array of feature IDs granted by this plan
-    metadata: v.optional(v.any()), // Additional metadata from Clerk
+    stripeCustomerId: v.string(), // Stripe customer ID
+    email: v.string(),
+    name: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_clerkSubscriptionId", ["clerkSubscriptionId"])
-    .index("by_planId", ["planId"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"]),
+
+  // Subscriptions table - Stripe subscription tracking
+  subscriptions: defineTable({
+    userId: v.string(), // Clerk user ID
+    stripeSubscriptionId: v.string(), // Stripe subscription ID
+    stripeCustomerId: v.string(), // Stripe customer ID
+    stripePriceId: v.string(), // Stripe price ID
+    planName: v.string(), // Plan name (e.g., "Free", "Pro")
+    status: v.union(
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("trialing"),
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("unpaid"),
+      v.literal("paused")
+    ),
+    currentPeriodStart: v.number(), // Timestamp
+    currentPeriodEnd: v.number(), // Timestamp
+    cancelAtPeriodEnd: v.boolean(), // Scheduled cancellation flag
+    canceledAt: v.optional(v.number()), // When subscription was canceled
+    endedAt: v.optional(v.number()), // When subscription ended
+    metadata: v.optional(v.any()), // Additional metadata from Stripe
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"])
     .index("by_status", ["status"]),
 
   // Sandbox Sessions table - E2B sandbox persistence tracking

@@ -21,17 +21,17 @@ export const getSubscription = query({
 });
 
 /**
- * Get subscription by Clerk subscription ID (for internal use)
+ * Get subscription by Stripe subscription ID (for webhook use)
  */
-export const getSubscriptionByClerkId = query({
+export const getSubscriptionByStripeId = query({
   args: {
-    clerkSubscriptionId: v.string(),
+    stripeSubscriptionId: v.string(),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_clerkSubscriptionId", (q) =>
-        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
+      .withIndex("by_stripeSubscriptionId", (q) =>
+        q.eq("stripeSubscriptionId", args.stripeSubscriptionId)
       )
       .first();
 
@@ -40,26 +40,128 @@ export const getSubscriptionByClerkId = query({
 });
 
 /**
- * Create or update a subscription (called from Clerk webhook handler)
+ * Get customer by Stripe customer ID
+ */
+export const getCustomerByStripeId = query({
+  args: {
+    stripeCustomerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_stripeCustomerId", (q) =>
+        q.eq("stripeCustomerId", args.stripeCustomerId)
+      )
+      .first();
+
+    return customer;
+  },
+});
+
+/**
+ * Get customer by user ID
+ */
+export const getCustomerByUserId = query({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    return customer;
+  },
+});
+
+/**
+ * Get current user's customer record
+ */
+export const getCustomer = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    return customer;
+  },
+});
+
+/**
+ * Create or update a customer (called from checkout or webhook)
+ */
+export const createOrUpdateCustomer = mutation({
+  args: {
+    userId: v.string(),
+    stripeCustomerId: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Check if customer already exists
+    const existing = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (existing) {
+      // Update existing customer
+      await ctx.db.patch(existing._id, {
+        stripeCustomerId: args.stripeCustomerId,
+        email: args.email,
+        name: args.name,
+        updatedAt: now,
+      });
+
+      return existing._id;
+    } else {
+      // Create new customer
+      const customerId = await ctx.db.insert("customers", {
+        userId: args.userId,
+        stripeCustomerId: args.stripeCustomerId,
+        email: args.email,
+        name: args.name,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return customerId;
+    }
+  },
+});
+
+/**
+ * Create or update a subscription (called from Stripe webhook handler)
  */
 export const createOrUpdateSubscription = mutation({
   args: {
     userId: v.string(),
-    clerkSubscriptionId: v.string(),
-    planId: v.string(),
+    stripeSubscriptionId: v.string(),
+    stripeCustomerId: v.string(),
+    stripePriceId: v.string(),
     planName: v.string(),
     status: v.union(
       v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("trialing"),
       v.literal("active"),
-      v.literal("canceled"),
       v.literal("past_due"),
+      v.literal("canceled"),
       v.literal("unpaid"),
-      v.literal("trialing")
+      v.literal("paused")
     ),
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
-    features: v.optional(v.array(v.string())),
+    canceledAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -68,8 +170,8 @@ export const createOrUpdateSubscription = mutation({
     // Check if subscription already exists
     const existing = await ctx.db
       .query("subscriptions")
-      .withIndex("by_clerkSubscriptionId", (q) =>
-        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
+      .withIndex("by_stripeSubscriptionId", (q) =>
+        q.eq("stripeSubscriptionId", args.stripeSubscriptionId)
       )
       .first();
 
@@ -77,12 +179,13 @@ export const createOrUpdateSubscription = mutation({
       // Update existing subscription
       await ctx.db.patch(existing._id, {
         status: args.status,
-        planId: args.planId,
+        stripePriceId: args.stripePriceId,
         planName: args.planName,
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
-        features: args.features,
+        canceledAt: args.canceledAt,
+        endedAt: args.endedAt,
         metadata: args.metadata,
         updatedAt: now,
       });
@@ -92,14 +195,16 @@ export const createOrUpdateSubscription = mutation({
       // Create new subscription
       const subscriptionId = await ctx.db.insert("subscriptions", {
         userId: args.userId,
-        clerkSubscriptionId: args.clerkSubscriptionId,
-        planId: args.planId,
+        stripeSubscriptionId: args.stripeSubscriptionId,
+        stripeCustomerId: args.stripeCustomerId,
+        stripePriceId: args.stripePriceId,
         planName: args.planName,
         status: args.status,
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
-        features: args.features,
+        canceledAt: args.canceledAt,
+        endedAt: args.endedAt,
         metadata: args.metadata,
         createdAt: now,
         updatedAt: now,
@@ -111,18 +216,30 @@ export const createOrUpdateSubscription = mutation({
 });
 
 /**
- * Cancel a subscription (sets cancel_at_period_end flag)
- * The actual cancellation happens via Clerk Billing API, this just updates local state
+ * Update subscription status (for webhook events like payment_failed)
  */
-export const markSubscriptionForCancellation = mutation({
+export const updateSubscriptionStatus = mutation({
   args: {
-    clerkSubscriptionId: v.string(),
+    stripeSubscriptionId: v.string(),
+    status: v.union(
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("trialing"),
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("unpaid"),
+      v.literal("paused")
+    ),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
+    canceledAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_clerkSubscriptionId", (q) =>
-        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
+      .withIndex("by_stripeSubscriptionId", (q) =>
+        q.eq("stripeSubscriptionId", args.stripeSubscriptionId)
       )
       .first();
 
@@ -130,69 +247,45 @@ export const markSubscriptionForCancellation = mutation({
       throw new Error("Subscription not found");
     }
 
-    await ctx.db.patch(subscription._id, {
-      cancelAtPeriodEnd: true,
+    const updateData: Record<string, unknown> = {
+      status: args.status,
       updatedAt: Date.now(),
-    });
+    };
+
+    if (args.cancelAtPeriodEnd !== undefined) {
+      updateData.cancelAtPeriodEnd = args.cancelAtPeriodEnd;
+    }
+    if (args.canceledAt !== undefined) {
+      updateData.canceledAt = args.canceledAt;
+    }
+    if (args.endedAt !== undefined) {
+      updateData.endedAt = args.endedAt;
+    }
+
+    await ctx.db.patch(subscription._id, updateData);
 
     return subscription._id;
   },
 });
 
 /**
- * Reactivate a canceled subscription
+ * Delete a subscription (for cleanup or when subscription is deleted)
  */
-export const reactivateSubscription = mutation({
+export const deleteSubscription = mutation({
   args: {
-    clerkSubscriptionId: v.string(),
+    stripeSubscriptionId: v.string(),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_clerkSubscriptionId", (q) =>
-        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
+      .withIndex("by_stripeSubscriptionId", (q) =>
+        q.eq("stripeSubscriptionId", args.stripeSubscriptionId)
       )
       .first();
 
-    if (!subscription) {
-      throw new Error("Subscription not found");
+    if (subscription) {
+      await ctx.db.delete(subscription._id);
     }
-
-    await ctx.db.patch(subscription._id, {
-      cancelAtPeriodEnd: false,
-      updatedAt: Date.now(),
-    });
-
-    return subscription._id;
-  },
-});
-
-/**
- * Update subscription status to canceled (called when subscription is revoked)
- */
-export const revokeSubscription = mutation({
-  args: {
-    clerkSubscriptionId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const subscription = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_clerkSubscriptionId", (q) =>
-        q.eq("clerkSubscriptionId", args.clerkSubscriptionId)
-      )
-      .first();
-
-    if (!subscription) {
-      throw new Error("Subscription not found");
-    }
-
-    await ctx.db.patch(subscription._id, {
-      status: "canceled",
-      cancelAtPeriodEnd: false,
-      updatedAt: Date.now(),
-    });
-
-    return subscription._id;
   },
 });
 
@@ -210,5 +303,23 @@ export const getUserSubscriptions = query({
       .collect();
 
     return subscriptions;
+  },
+});
+
+/**
+ * Check if user has an active Pro subscription
+ */
+export const hasActiveProSubscription = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+
+    const subscription = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .first();
+
+    return subscription?.planName === "Pro";
   },
 });
