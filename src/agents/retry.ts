@@ -80,6 +80,8 @@ export const retryOnTransient = (error: Error): boolean => {
     retryOnRateLimit(error) ||
     retryOnTimeout(error) ||
     error.message.includes('503') ||
-    error.message.includes('502')
+    error.message.includes('502') ||
+    error.message.includes('did not use any tools') ||
+    error.message.includes('no files were created')
   );
 };
