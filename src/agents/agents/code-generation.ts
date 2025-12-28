@@ -1,14 +1,16 @@
-import { Agent } from '@ai-sdk-tools/agents';
+import { streamText, tool, stepCountIs } from 'ai';
+import { z } from 'zod';
 import { getModel, ModelId } from '../client';
 import { sandboxManager } from '../sandbox';
 import { withRetry, retryOnTransient } from '../retry';
 import { createLogger } from '../logger';
-import { createTools } from '../tools';
 import { getFrameworkPrompt } from '../prompts';
 import type { Framework, GenerationRequest, StreamUpdate } from '../types';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
+import type { Sandbox } from '@e2b/code-interpreter';
+import * as Sentry from '@sentry/nextjs';
 
 let _convex: ConvexHttpClient | null = null;
 function getConvex(): ConvexHttpClient {
@@ -25,6 +27,113 @@ interface GenerationResult {
   files: Record<string, string>;
 }
 
+function createAgentTools(
+  sandbox: Sandbox,
+  files: Record<string, string>,
+  onFileWrite?: (path: string) => void
+) {
+  return {
+    createOrUpdateFiles: tool({
+      description: 'Create or update files in the sandbox. Use this to write code files.',
+      inputSchema: z.object({
+        files: z.array(
+          z.object({
+            path: z.string().describe('File path relative to project root'),
+            content: z.string().describe('File content'),
+          })
+        ),
+      }),
+      execute: async ({ files: filesToWrite }) => {
+        Sentry.addBreadcrumb({
+          category: 'tool',
+          message: `Writing ${filesToWrite.length} files`,
+          data: { paths: filesToWrite.map((f) => f.path) },
+        });
+
+        for (const file of filesToWrite) {
+          await sandbox.files.write(file.path, file.content);
+          files[file.path] = file.content;
+          onFileWrite?.(file.path);
+        }
+
+        return { success: true, filesWritten: filesToWrite.map((f) => f.path) };
+      },
+    }),
+
+    readFiles: tool({
+      description: 'Read files from the sandbox to understand existing code.',
+      inputSchema: z.object({
+        paths: z.array(z.string()).describe('File paths to read'),
+      }),
+      execute: async ({ paths }) => {
+        Sentry.addBreadcrumb({
+          category: 'tool',
+          message: `Reading ${paths.length} files`,
+          data: { paths },
+        });
+
+        const result: Record<string, string> = {};
+        for (const path of paths) {
+          try {
+            result[path] = await sandbox.files.read(path);
+          } catch (error) {
+            result[path] = `[Error reading file: ${error}]`;
+          }
+        }
+
+        return result;
+      },
+    }),
+
+    terminal: tool({
+      description:
+        'Run terminal commands in the sandbox. Use for installing packages, running builds, etc.',
+      inputSchema: z.object({
+        command: z.string().describe('Command to run'),
+        timeoutMs: z.number().optional().describe('Timeout in milliseconds'),
+      }),
+      execute: async ({ command, timeoutMs = 60000 }) => {
+        Sentry.addBreadcrumb({
+          category: 'tool',
+          message: `Running command: ${command}`,
+        });
+
+        if (command.includes('npm run dev') || command.includes('npm start')) {
+          return {
+            error: 'Cannot start dev servers in sandbox. Use npm run build instead.',
+          };
+        }
+
+        const result = await sandbox.commands.run(command, { timeoutMs: timeoutMs ?? 60000 });
+
+        return {
+          stdout: result.stdout || '',
+          stderr: result.stderr || '',
+          exitCode: result.exitCode ?? 0,
+        };
+      },
+    }),
+
+    listFiles: tool({
+      description: 'List files in a directory.',
+      inputSchema: z.object({
+        path: z.string().describe('Directory path'),
+      }),
+      execute: async ({ path }) => {
+        const escapedPath = path.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const result = await sandbox.commands.run(
+          `find -- "${escapedPath}" \\( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.css" \\) -type f -print0`
+        );
+
+        const output = result.stdout || '';
+        const fileList = output.split('\0').filter(Boolean).slice(0, 50);
+
+        return { files: fileList };
+      },
+    }),
+  };
+}
+
 export async function generateCode(
   request: GenerationRequest,
   onProgress: (update: StreamUpdate) => Promise<void>
@@ -37,7 +146,7 @@ export async function generateCode(
   logger.progress('init', 'Starting code generation');
   await onProgress({ type: 'status', message: 'Initializing AI agent...' });
 
-  let sandbox;
+  let sandbox: Sandbox;
   try {
     sandbox = await logger.startSpan('sandbox-connect', () =>
       sandboxManager.connect(request.sandboxId)
@@ -57,7 +166,7 @@ export async function generateCode(
   await onProgress({ type: 'status', message: `Configuring for ${framework}...` });
 
   const files: Record<string, string> = {};
-  const tools = createTools(sandbox, (path) => {
+  const tools = createAgentTools(sandbox, files, (path) => {
     onProgress({ type: 'file', filePath: path });
   });
 
@@ -73,39 +182,35 @@ export async function generateCode(
     throw new Error(errorMessage);
   }
 
-  const codeAgent = new Agent({
-    name: 'Code Generator',
-    model,
-    instructions: getFrameworkPrompt(framework),
-    tools,
-    maxTurns: 15,
-    temperature: 0.7,
-    onEvent: async (event) => {
-      if (event.type === 'agent-step' && event.step.toolCalls) {
-        for (const call of event.step.toolCalls) {
-          console.log('[AI] Tool call:', call.toolName);
-          if (call.toolName === 'createOrUpdateFiles' && 'args' in call && call.args) {
-            const args = call.args as { files: Array<{ path: string; content: string }> };
-            for (const file of args.files) {
-              files[file.path] = file.content;
-            }
-          }
-        }
-      }
-    },
-  });
-
   const conversationHistory = request.conversationHistory || [];
-  const prompt = request.prompt;
+  const messages = [
+    ...conversationHistory.map((msg) => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    })),
+    { role: 'user' as const, content: request.prompt },
+  ];
 
   const result = await withRetry(
     async () => {
-      const messages = [
-        ...conversationHistory,
-        { role: 'user' as const, content: prompt },
-      ];
-
-      const response = codeAgent.stream({ messages });
+      const response = streamText({
+        model,
+        system: getFrameworkPrompt(framework),
+        messages,
+        tools,
+        stopWhen: stepCountIs(15),
+        temperature: 0.7,
+        onStepFinish: async ({ toolCalls, toolResults }) => {
+          if (toolCalls.length > 0) {
+            for (const call of toolCalls) {
+              console.log('[AI] Tool call:', call.toolName);
+            }
+          }
+          if (toolResults.length > 0) {
+            console.log('[AI] Tool results:', toolResults.length);
+          }
+        },
+      });
 
       let fullText = '';
       for await (const textPart of response.textStream) {
@@ -116,25 +221,17 @@ export async function generateCode(
           content: textPart,
         });
       }
-      
+
       console.log('\n[AI] Stream complete');
-      
+
       const text = await response.text;
       const steps = await response.steps;
-      
+
       console.log('[AI] Total steps:', steps.length);
       let totalToolCalls = 0;
       for (const step of steps) {
         if (step.toolCalls) {
           totalToolCalls += step.toolCalls.length;
-          for (const call of step.toolCalls) {
-            if (call.toolName === 'createOrUpdateFiles' && 'args' in call && call.args) {
-              const args = call.args as { files: Array<{ path: string; content: string }> };
-              for (const file of args.files) {
-                files[file.path] = file.content;
-              }
-            }
-          }
         }
       }
       console.log('[AI] Total tool calls:', totalToolCalls);
