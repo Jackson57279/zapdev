@@ -82,7 +82,7 @@ export const MessageForm = ({ projectId }: Props) => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      await fetch("/api/generate", {
+      const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -91,6 +91,51 @@ export const MessageForm = ({ projectId }: Props) => {
           model: selectedModel,
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Generation failed: ${response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("Failed to read response stream");
+      }
+
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === "error") {
+                toast.error(data.error || "Generation failed");
+                throw new Error(data.error || "Generation failed");
+              }
+
+              if (data.type === "status") {
+                console.log("Status:", data.message);
+              }
+
+              if (data.type === "complete") {
+                console.log("Generation complete:", data.message);
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE event:", line, parseError);
+            }
+          }
+        }
+      }
 
       form.reset();
       setAttachments([]);

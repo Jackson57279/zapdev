@@ -61,6 +61,22 @@ export async function POST(request: NextRequest) {
     return new Response('Missing required fields', { status: 400 });
   }
 
+  if (!process.env.E2B_API_KEY) {
+    console.error('[GENERATE] E2B_API_KEY is not configured');
+    return new Response(
+      JSON.stringify({ error: 'E2B_API_KEY is not configured. Please add it to your environment variables.' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.error('[GENERATE] OPENROUTER_API_KEY is not configured');
+    return new Response(
+      JSON.stringify({ error: 'OPENROUTER_API_KEY is not configured. Please add it to your environment variables.' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   // Validate sandboxId format if provided
   const sandboxId = providedSandboxId;
   if (sandboxId) {
@@ -88,12 +104,14 @@ export async function POST(request: NextRequest) {
 
   (async () => {
     try {
+      console.log('[GENERATE] Starting code generation for project:', projectId);
       let assistantMessageId: Id<'messages'>;
 
       const convex = getConvex();
       
       if (messageId) {
         assistantMessageId = messageId as Id<'messages'>;
+        console.log('[GENERATE] Using existing message:', assistantMessageId);
       } else {
         const newMessageId = await convex.mutation(api.messages.createForUser, {
           userId,
@@ -104,11 +122,13 @@ export async function POST(request: NextRequest) {
           status: 'STREAMING',
         });
         assistantMessageId = newMessageId as Id<'messages'>;
+        console.log('[GENERATE] Created new message:', assistantMessageId);
       }
 
       const project = await convex.query(api.projects.getForSystem, {
         projectId: projectId as Id<'projects'>,
       });
+      console.log('[GENERATE] Project framework:', project?.framework);
 
       let effectiveSandboxId = sandboxId;
       if (!effectiveSandboxId) {
@@ -120,11 +140,21 @@ export async function POST(request: NextRequest) {
           'SVELTE': 'svelte',
         };
         const framework = frameworkMap[project?.framework || 'NEXTJS'] || 'nextjs';
+        console.log('[GENERATE] Creating sandbox with framework:', framework);
         await sendUpdate({ type: 'status', message: 'Creating sandbox...' });
-        const sandbox = await sandboxManager.create(framework);
-        effectiveSandboxId = sandbox.sandboxId;
+        try {
+          const sandbox = await sandboxManager.create(framework);
+          effectiveSandboxId = sandbox.sandboxId;
+          console.log('[GENERATE] Sandbox created:', effectiveSandboxId);
+        } catch (sandboxError) {
+          console.error('[GENERATE] Sandbox creation failed:', sandboxError);
+          throw new Error(`Failed to create sandbox: ${sandboxError instanceof Error ? sandboxError.message : 'Unknown error'}`);
+        }
+      } else {
+        console.log('[GENERATE] Using provided sandbox:', effectiveSandboxId);
       }
 
+      console.log('[GENERATE] Starting code generation with model:', model || 'auto');
       const result = await generateCode(
         {
           projectId,
@@ -134,17 +164,22 @@ export async function POST(request: NextRequest) {
         },
         sendUpdate
       );
+      console.log('[GENERATE] Code generation complete, files:', Object.keys(result.files).length);
 
       await sendUpdate({ type: 'status', message: 'Validating code...' });
       let validation = await runValidation(effectiveSandboxId);
 
       if (!validation.success) {
+        console.log('[GENERATE] Validation failed, attempting fixes');
         await sendUpdate({ type: 'status', message: 'Fixing errors...' });
         validation = await fixErrors(effectiveSandboxId, validation.errors || [], 0, sendUpdate);
+      } else {
+        console.log('[GENERATE] Validation passed');
       }
 
       const framework = (project?.framework || 'NEXTJS') as 'NEXTJS' | 'ANGULAR' | 'REACT' | 'VUE' | 'SVELTE';
 
+      console.log('[GENERATE] Saving fragment to database');
       await convex.mutation(api.messages.createFragmentForUser, {
         userId,
         messageId: assistantMessageId,
@@ -160,6 +195,7 @@ export async function POST(request: NextRequest) {
         content: result.summary,
         status: 'COMPLETE',
       });
+      console.log('[GENERATE] Message updated to COMPLETE');
 
       await sendUpdate({
         type: 'complete',
@@ -167,10 +203,12 @@ export async function POST(request: NextRequest) {
         files: result.files,
       });
     } catch (error) {
+      console.error('[GENERATE] Error during code generation:', error);
       Sentry.captureException(error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during code generation';
       await sendUpdate({
         type: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       });
     } finally {
       await writer.close();

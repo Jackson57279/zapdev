@@ -37,9 +37,16 @@ export async function generateCode(
   logger.progress('init', 'Starting code generation');
   await onProgress({ type: 'status', message: 'Initializing AI agent...' });
 
-  const sandbox = await logger.startSpan('sandbox-connect', () =>
-    sandboxManager.connect(request.sandboxId)
-  );
+  let sandbox;
+  try {
+    sandbox = await logger.startSpan('sandbox-connect', () =>
+      sandboxManager.connect(request.sandboxId)
+    );
+  } catch (error) {
+    const errorMessage = `Failed to connect to sandbox: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    logger.error(errorMessage, { error });
+    throw new Error(errorMessage);
+  }
 
   const project = await getConvex().query(api.projects.getForSystem, {
     projectId: request.projectId as Id<'projects'>,
@@ -63,10 +70,19 @@ export async function generateCode(
   logger.progress('ai', 'Starting AI generation');
   await onProgress({ type: 'status', message: 'Generating code...' });
 
+  let model;
+  try {
+    model = getModel(request.model as ModelId);
+  } catch (error) {
+    const errorMessage = `Failed to initialize AI model: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    logger.error(errorMessage, { error });
+    throw new Error(errorMessage);
+  }
+
   const result = await withRetry(
     async () => {
       const response = streamText({
-        model: getModel(request.model as ModelId),
+        model,
         system: getFrameworkPrompt(framework),
         messages,
         tools,

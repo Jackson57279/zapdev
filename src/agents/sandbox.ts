@@ -13,6 +13,14 @@ const FRAMEWORK_TEMPLATES: Record<Framework, string> = {
   svelte: 'svelte-developer',
 };
 
+function getE2BApiKey(): string {
+  const apiKey = process.env.E2B_API_KEY;
+  if (!apiKey) {
+    throw new Error('E2B_API_KEY environment variable is not set');
+  }
+  return apiKey;
+}
+
 export class SandboxManager {
   private static instance: SandboxManager;
 
@@ -26,18 +34,24 @@ export class SandboxManager {
   async connect(sandboxId: string): Promise<Sandbox> {
     const cached = SANDBOX_CACHE.get(sandboxId);
     if (cached) {
+      console.log(`[SANDBOX] Using cached sandbox: ${sandboxId}`);
       return cached;
     }
 
     try {
+      const apiKey = getE2BApiKey();
+      console.log(`[SANDBOX] Connecting to sandbox: ${sandboxId}`);
+      
       const sandbox = await Sandbox.connect(sandboxId, {
-        apiKey: process.env.E2B_API_KEY!,
+        apiKey,
       });
+      
       await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
 
       SANDBOX_CACHE.set(sandboxId, sandbox);
       this.scheduleCacheCleanup(sandboxId);
 
+      console.log(`[SANDBOX] Successfully connected to sandbox: ${sandboxId}`);
       Sentry.addBreadcrumb({
         category: 'sandbox',
         message: `Connected to sandbox ${sandboxId}`,
@@ -46,11 +60,12 @@ export class SandboxManager {
 
       return sandbox;
     } catch (error) {
+      console.error(`[SANDBOX] Failed to connect to sandbox ${sandboxId}:`, error);
       Sentry.captureException(error, {
         extra: { sandboxId },
         tags: { component: 'sandbox' },
       });
-      throw new Error(`Failed to connect to sandbox: ${error}`);
+      throw new Error(`Failed to connect to sandbox ${sandboxId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -58,11 +73,15 @@ export class SandboxManager {
     const template = FRAMEWORK_TEMPLATES[framework];
 
     try {
+      const apiKey = getE2BApiKey();
+      console.log(`[SANDBOX] Creating new sandbox with template: ${template} (framework: ${framework})`);
+      
       const sandbox = await Sandbox.create(template, {
-        apiKey: process.env.E2B_API_KEY!,
+        apiKey,
         timeoutMs: SANDBOX_TIMEOUT_MS,
       });
 
+      console.log(`[SANDBOX] Successfully created sandbox: ${sandbox.sandboxId}`);
       SANDBOX_CACHE.set(sandbox.sandboxId, sandbox);
       this.scheduleCacheCleanup(sandbox.sandboxId);
 
@@ -74,11 +93,14 @@ export class SandboxManager {
 
       return sandbox;
     } catch (error) {
+      console.error(`[SANDBOX] Failed to create sandbox with template ${template}:`, error);
       Sentry.captureException(error, {
         extra: { framework, template },
         tags: { component: 'sandbox' },
       });
-      throw error;
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create E2B sandbox: ${errorMessage}. Make sure E2B_API_KEY is valid and the template '${template}' exists.`);
     }
   }
 
