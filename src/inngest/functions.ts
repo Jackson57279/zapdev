@@ -479,15 +479,15 @@ const getFrameworkPrompt = (framework: Framework): string => {
 const getDevServerCommand = (framework: Framework): string => {
   switch (framework) {
     case "nextjs":
-      return "npx next dev --turbopack";
+      return "npm run dev";
     case "angular":
-      return "ng serve --host 0.0.0.0 --port 4200";
+      return "npm run start -- --host 0.0.0.0 --port 4200";
     case "react":
     case "vue":
     case "svelte":
       return "npm run dev -- --host 0.0.0.0 --port 5173";
     default:
-      return "npx next dev --turbopack";
+      return "npm run dev";
   }
 };
 
@@ -1537,12 +1537,15 @@ IMPORTANT:
             try {
               const checkResult = await sandbox.commands.run(
                 `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}`,
-                { timeoutMs: 2000 }
+                { timeoutMs: 3000 }
               );
               
-              if (checkResult.stdout.trim() === "200") {
+              const statusCode = checkResult.stdout.trim();
+              // Accept any HTTP response (200, 404, 500, etc.) - server is running
+              // Even 404/500 means the server is up and responding
+              if (statusCode && /^\d{3}$/.test(statusCode) && statusCode !== "000") {
                 serverReady = true;
-                console.log(`[DEBUG] Dev server ready after ${(i + 1) * 0.5} seconds`);
+                console.log(`[DEBUG] Dev server ready after ${(i + 1) * 0.5} seconds (status: ${statusCode})`);
                 break;
               }
             } catch (error) {
