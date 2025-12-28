@@ -111,7 +111,7 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     frequency_penalty: 0.5,
   },
-  "google/gemini-3-pro": {
+  "google/gemini-3-pro-preview": {
     name: "Gemini 3 Pro",
     provider: "google",
     description:
