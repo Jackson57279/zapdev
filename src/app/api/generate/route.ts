@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import * as Sentry from '@sentry/nextjs';
-import { generateCode } from '@/agents/agents/code-generation';
+import { generateCodeWithAgent } from '@/agents/agents/code-agent';
 import { runValidation } from '@/agents/agents/validation';
-import { fixErrors } from '@/agents/agents/error-fixer';
+import { fixErrorsWithAgent } from '@/agents/agents/error-fixer-agent';
 import { sandboxManager } from '@/agents/sandbox';
 import type { StreamUpdate, Framework } from '@/agents/types';
 import { ConvexHttpClient } from 'convex/browser';
@@ -154,8 +154,8 @@ export async function POST(request: NextRequest) {
         console.log('[GENERATE] Using provided sandbox:', effectiveSandboxId);
       }
 
-      console.log('[GENERATE] Starting code generation with model:', model || 'auto');
-      const result = await generateCode(
+      console.log('[GENERATE] Starting code generation with ToolLoopAgent, model:', model || 'auto');
+      const result = await generateCodeWithAgent(
         {
           projectId,
           sandboxId: effectiveSandboxId,
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
         },
         sendUpdate
       );
-      console.log('[GENERATE] Code generation complete, files:', Object.keys(result.files).length);
+      console.log('[GENERATE] Code generation complete, files:', Object.keys(result.files).length, 'steps:', result.steps);
 
       const hasFiles = Object.keys(result.files).length > 0;
 
@@ -173,9 +173,9 @@ export async function POST(request: NextRequest) {
         let validation = await runValidation(effectiveSandboxId);
 
         if (!validation.success) {
-          console.log('[GENERATE] Validation failed, attempting fixes');
+          console.log('[GENERATE] Validation failed, attempting fixes with ErrorFixerAgent');
           await sendUpdate({ type: 'status', message: 'Fixing errors...' });
-          validation = await fixErrors(effectiveSandboxId, validation.errors || [], 0, sendUpdate);
+          validation = await fixErrorsWithAgent(effectiveSandboxId, validation.errors || [], 0, sendUpdate);
         } else {
           console.log('[GENERATE] Validation passed');
         }
