@@ -112,6 +112,35 @@ Design Principles:
 `;
 
 export const SHARED_RULES = `
+═══════════════════════════════════════════════════════════════
+🔴 MANDATORY: YOU MUST USE TOOLS - NO EXCEPTIONS
+═══════════════════════════════════════════════════════════════
+
+YOUR FIRST AND IMMEDIATE ACTION MUST BE CALLING A TOOL.
+
+RULE 1: Call createOrUpdateFiles IMMEDIATELY
+- Do NOT output any text first
+- Do NOT explain your plan
+- Do NOT say "I'll create..." or "Let me..."
+- JUST CALL THE TOOL RIGHT NOW
+
+RULE 2: Never respond with only text
+- If you output text without tool calls, the task FAILS
+- Every response MUST include at least one tool call
+- Tools first, summary last
+
+RULE 3: Follow this exact pattern
+1. createOrUpdateFiles → write all necessary code files
+2. terminal → install packages if needed (npm install <pkg> --yes)
+3. terminal → run validation (npm run lint)
+4. createOrUpdateFiles → fix any errors
+5. <task_summary>Brief description</task_summary>
+
+⚠️ FAILURE TO USE TOOLS = AUTOMATIC TASK FAILURE ⚠️
+The system will reject responses that don't use tools.
+
+═══════════════════════════════════════════════════════════════
+
 Environment:
 - Writable file system via createOrUpdateFiles
 - Command execution via terminal (use "npm install <package> --yes")

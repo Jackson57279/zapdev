@@ -6,22 +6,9 @@ import { runValidation } from '@/agents/agents/validation';
 import { fixErrorsWithAgent } from '@/agents/agents/error-fixer-agent';
 import { sandboxManager } from '@/agents/sandbox';
 import type { StreamUpdate, Framework } from '@/agents/types';
-import { ConvexHttpClient } from 'convex/browser';
+import { getConvexClientWithAuth } from '@/lib/auth-server';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
-
-// Lazy initialization to avoid build-time errors when env var is not set
-let _convex: ConvexHttpClient | null = null;
-function getConvex(): ConvexHttpClient {
-  if (!_convex) {
-    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
-    if (!url) {
-      throw new Error('NEXT_PUBLIC_CONVEX_URL is not set');
-    }
-    _convex = new ConvexHttpClient(url);
-  }
-  return _convex;
-}
 
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
@@ -30,7 +17,7 @@ export async function POST(request: NextRequest) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const convex = getConvex();
+  const convex = await getConvexClientWithAuth();
   try {
     const creditResult = await convex.mutation(api.usage.checkAndConsumeCreditForUser, {
       userId,
@@ -107,7 +94,7 @@ export async function POST(request: NextRequest) {
       console.log('[GENERATE] Starting code generation for project:', projectId);
       let assistantMessageId: Id<'messages'>;
 
-      const convex = getConvex();
+      const convex = await getConvexClientWithAuth();
       
       if (messageId) {
         assistantMessageId = messageId as Id<'messages'>;
