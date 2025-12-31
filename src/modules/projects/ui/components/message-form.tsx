@@ -10,7 +10,7 @@ import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon
 import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
-import type { ModelId } from "@/inngest/functions";
+import type { ModelId } from "@/agents/types";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -82,8 +82,8 @@ export const MessageForm = ({ projectId }: Props) => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      // Trigger Inngest event for AI processing
-      await fetch("/api/inngest/trigger", {
+      // Open fetch stream for real-time updates
+      const response = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -92,6 +92,60 @@ export const MessageForm = ({ projectId }: Props) => {
           model: selectedModel,
         }),
       });
+
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to start agent");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      // Process the SSE stream
+      const processStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const event = JSON.parse(line.slice(6));
+                  console.log("[SSE] Received event:", event.type);
+                  
+                  // Handle different event types
+                  switch (event.type) {
+                    case "text":
+                      // Text chunks are streamed - could update a temporary display
+                      break;
+                    case "status":
+                      console.log("[SSE] Status:", event.data);
+                      break;
+                    case "error":
+                      toast.error(event.data as string);
+                      break;
+                    case "complete":
+                      console.log("[SSE] Agent completed");
+                      break;
+                  }
+                } catch (parseError) {
+                  console.warn("[SSE] Failed to parse event:", parseError);
+                }
+              }
+            }
+          }
+        } catch (streamError) {
+          console.error("[SSE] Stream error:", streamError);
+        }
+      };
+
+      // Start processing the stream
+      processStream();
 
       form.reset();
       setAttachments([]);

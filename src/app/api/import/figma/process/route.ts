@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchQuery, fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import { inngest } from "@/inngest/client";
+import { processFigmaImport } from "@/agents/figma-import";
 
 export async function POST(request: Request) {
   const user = await getUser();
@@ -11,10 +11,6 @@ export async function POST(request: Request) {
   }
 
   if (!user.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (false) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -29,7 +25,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get OAuth connection
     const connection = await fetchQuery((api as any).oauth.getConnection, {
       provider: "figma",
     });
@@ -41,7 +36,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch file details from Figma
     const fileResponse = await fetch(
       `https://api.figma.com/v1/files/${fileKey}`,
       {
@@ -57,7 +51,6 @@ export async function POST(request: Request) {
 
     const fileData = await fileResponse.json();
 
-    // Create import record in Convex
     const importRecord = await fetchMutation((api as any).imports.createImport, {
       projectId,
       source: "FIGMA",
@@ -74,14 +67,13 @@ export async function POST(request: Request) {
       },
     });
 
-    await inngest.send({
-      name: "code-agent/process-figma-import",
-      data: {
-        importId: importRecord,
-        projectId,
-        fileKey,
-        accessToken: connection.accessToken,
-      },
+    processFigmaImport({
+      importId: importRecord,
+      projectId,
+      fileKey,
+      accessToken: connection.accessToken,
+    }).catch((error) => {
+      console.error("[ERROR] Background Figma import failed:", error);
     });
 
     return NextResponse.json({

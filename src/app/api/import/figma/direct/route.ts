@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import { inngest } from "@/inngest/client";
+import { processFigmaDirectImport } from "@/agents/figma-import";
 
 export async function POST(request: Request) {
   const user = await getUser();
@@ -62,15 +62,14 @@ export async function POST(request: Request) {
       },
     });
 
-    await inngest.send({
-      name: "code-agent/process-figma-direct",
-      data: {
-        importId,
-        projectId,
-        figmaUrl: figmaUrl || undefined,
-        fileBase64,
-        fileName,
-      },
+    processFigmaDirectImport({
+      importId,
+      projectId,
+      figmaUrl: figmaUrl || undefined,
+      fileBase64,
+      fileName,
+    }).catch((error) => {
+      console.error("[ERROR] Background Figma import failed:", error);
     });
 
     return NextResponse.json({
@@ -86,4 +85,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

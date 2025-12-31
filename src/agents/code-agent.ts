@@ -1,0 +1,787 @@
+import { generateText, streamText, stepCountIs } from "ai";
+import { Sandbox } from "@e2b/code-interpreter";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+
+import { openrouter } from "./client";
+import { createAgentTools } from "./tools";
+import {
+  type Framework,
+  type AgentState,
+  type AgentRunInput,
+  type ModelId,
+  MODEL_CONFIGS,
+  selectModelForTask,
+  frameworkToConvexEnum,
+} from "./types";
+import {
+  createSandbox,
+  getSandbox,
+  runLintCheck,
+  runBuildCheck,
+  shouldTriggerAutoFix,
+  getFindCommand,
+  readFilesInBatches,
+  isValidFilePath,
+  startDevServer,
+  getFrameworkPort,
+  cleanNextDirectory,
+} from "./sandbox-utils";
+import { crawlUrl, type CrawledContent } from "@/lib/firecrawl";
+import {
+  FRAGMENT_TITLE_PROMPT,
+  RESPONSE_PROMPT,
+  FRAMEWORK_SELECTOR_PROMPT,
+  NEXTJS_PROMPT,
+  ANGULAR_PROMPT,
+  REACT_PROMPT,
+  VUE_PROMPT,
+  SVELTE_PROMPT,
+} from "@/prompt";
+import { sanitizeTextForDatabase, sanitizeJsonForDatabase } from "@/lib/utils";
+import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
+
+let convexClient: ConvexHttpClient | null = null;
+function getConvexClient() {
+  if (!convexClient) {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) {
+      throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
+    }
+    convexClient = new ConvexHttpClient(url);
+  }
+  return convexClient;
+}
+
+const convex = new Proxy({} as ConvexHttpClient, {
+  get(_target, prop) {
+    return getConvexClient()[prop as keyof ConvexHttpClient];
+  },
+});
+
+const AUTO_FIX_MAX_ATTEMPTS = 2;
+const MAX_AGENT_ITERATIONS = 8;
+
+type FragmentMetadata = Record<string, unknown>;
+
+const URL_REGEX = /(https?:\/\/[^\s\]\)"'<>]+)/gi;
+
+const extractUrls = (value: string) => {
+  const matches = value.matchAll(URL_REGEX);
+  const urls = new Set<string>();
+
+  for (const match of matches) {
+    try {
+      const parsed = new URL(match[0]);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        urls.add(parsed.toString());
+      }
+    } catch {
+      // skip invalid URLs
+    }
+  }
+
+  return Array.from(urls);
+};
+
+const SUMMARY_TAG_REGEX = /<task_summary>([\s\S]*?)<\/task_summary>/i;
+
+const extractSummaryText = (value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  const match = SUMMARY_TAG_REGEX.exec(trimmed);
+  if (match && typeof match[1] === "string") {
+    return match[1].trim();
+  }
+
+  return trimmed;
+};
+
+const getFrameworkPrompt = (framework: Framework): string => {
+  switch (framework) {
+    case "nextjs":
+      return NEXTJS_PROMPT;
+    case "angular":
+      return ANGULAR_PROMPT;
+    case "react":
+      return REACT_PROMPT;
+    case "vue":
+      return VUE_PROMPT;
+    case "svelte":
+      return SVELTE_PROMPT;
+    default:
+      return NEXTJS_PROMPT;
+  }
+};
+
+const usesShadcnComponents = (files: Record<string, string>) => {
+  return Object.entries(files).some(([path, content]) => {
+    if (!path.endsWith(".tsx")) {
+      return false;
+    }
+    return content.includes("@/components/ui/");
+  });
+};
+
+async function detectFramework(prompt: string): Promise<Framework> {
+  const { text } = await generateText({
+    model: openrouter.chat("google/gemini-2.5-flash-lite"),
+    system: FRAMEWORK_SELECTOR_PROMPT,
+    prompt,
+    temperature: 0.3,
+  });
+
+  const detectedFramework = text.trim().toLowerCase();
+  if (
+    ["nextjs", "angular", "react", "vue", "svelte"].includes(detectedFramework)
+  ) {
+    return detectedFramework as Framework;
+  }
+
+  return "nextjs";
+}
+
+async function generateFragmentMetadata(
+  summary: string
+): Promise<{ title: string; response: string }> {
+  try {
+    const [titleResult, responseResult] = await Promise.all([
+      generateText({
+        model: openrouter.chat("openai/gpt-5-nano"),
+        system: FRAGMENT_TITLE_PROMPT,
+        prompt: summary,
+        temperature: 0.3,
+      }),
+      generateText({
+        model: openrouter.chat("openai/gpt-5-nano"),
+        system: RESPONSE_PROMPT,
+        prompt: summary,
+        temperature: 0.3,
+      }),
+    ]);
+
+    return {
+      title: titleResult.text || "Generated Fragment",
+      response: responseResult.text || summary,
+    };
+  } catch (error) {
+    console.error("[ERROR] Failed to generate fragment metadata:", error);
+    return {
+      title: "Generated Fragment",
+      response: summary,
+    };
+  }
+}
+
+export interface StreamEvent {
+  type:
+    | "status"
+    | "text"              // AI response chunks (streaming)
+    | "tool-call"         // Tool being invoked
+    | "tool-output"       // Command output (stdout/stderr streaming)
+    | "file-created"      // Individual file creation (streaming)
+    | "file-updated"      // File update event (streaming)
+    | "progress"          // Progress update (e.g., "3/10 files created")
+    | "files"             // Batch files (for compatibility)
+    | "error"
+    | "complete";
+  data: unknown;
+  timestamp?: number;
+}
+
+// Type guards for stream events
+export function isTextEvent(event: StreamEvent): event is StreamEvent & { type: "text"; data: string } {
+  return event.type === "text";
+}
+
+export function isFileCreatedEvent(event: StreamEvent): event is StreamEvent & { type: "file-created"; data: { path: string; content: string; size: number } } {
+  return event.type === "file-created";
+}
+
+export function isToolOutputEvent(event: StreamEvent): event is StreamEvent & { type: "tool-output"; data: { source: "stdout" | "stderr"; chunk: string } } {
+  return event.type === "tool-output";
+}
+
+export function isToolCallEvent(event: StreamEvent): event is StreamEvent & { type: "tool-call"; data: { tool: string; args: unknown } } {
+  return event.type === "tool-call";
+}
+
+export async function* runCodeAgent(
+  input: AgentRunInput
+): AsyncGenerator<StreamEvent> {
+  const { projectId, value, model: requestedModel } = input;
+
+  console.log("[DEBUG] Starting code-agent with AI SDK");
+  console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
+  console.log(
+    "[DEBUG] OPENROUTER_API_KEY present:",
+    !!process.env.OPENROUTER_API_KEY
+  );
+
+  yield { type: "status", data: "Initializing project..." };
+
+  const project = await convex.query(api.projects.getForSystem, {
+    projectId: projectId as Id<"projects">,
+  });
+
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  let selectedFramework: Framework =
+    (project?.framework?.toLowerCase() as Framework) || "nextjs";
+
+  if (!project?.framework) {
+    yield { type: "status", data: "Detecting framework..." };
+    selectedFramework = await detectFramework(value);
+    console.log("[DEBUG] Selected framework:", selectedFramework);
+
+    await convex.mutation(api.projects.updateForUser, {
+      userId: project.userId,
+      projectId: projectId as Id<"projects">,
+      framework: frameworkToConvexEnum(selectedFramework),
+    });
+  }
+
+  const modelPref = project?.modelPreference;
+  const isValidModel = (m: string | undefined): m is ModelId => 
+    m === "auto" || (m !== undefined && m in MODEL_CONFIGS);
+  let validatedModel: ModelId = requestedModel || (isValidModel(modelPref) ? modelPref : "auto");
+  if (validatedModel !== "auto" && !(validatedModel in MODEL_CONFIGS)) {
+    console.warn(
+      `[WARN] Invalid model requested: "${validatedModel}". Falling back to "auto".`
+    );
+    validatedModel = "auto";
+  }
+
+  const selectedModel: keyof typeof MODEL_CONFIGS =
+    validatedModel === "auto"
+      ? selectModelForTask(value, selectedFramework)
+      : (validatedModel as keyof typeof MODEL_CONFIGS);
+
+  console.log("[DEBUG] Selected model:", selectedModel);
+
+  yield { type: "status", data: "Creating sandbox environment..." };
+
+  const sandbox = await createSandbox(selectedFramework);
+  const sandboxId = sandbox.sandboxId;
+
+  try {
+    await convex.mutation(api.sandboxSessions.create, {
+      sandboxId,
+      projectId: projectId as Id<"projects">,
+      userId: project.userId,
+      framework: frameworkToConvexEnum(selectedFramework),
+      autoPauseTimeout: 10 * 60 * 1000,
+    });
+  } catch (error) {
+    console.error("[ERROR] Failed to create sandbox session:", error);
+  }
+
+  const previousMessages = await convex.query(api.messages.listForUser, {
+    userId: project.userId,
+    projectId: projectId as Id<"projects">,
+  });
+
+  const contextMessages = previousMessages.slice(-3).map((msg) => ({
+    role: msg.role === "ASSISTANT" ? ("assistant" as const) : ("user" as const),
+    content: msg.content,
+  }));
+
+  yield { type: "status", data: "Analyzing URLs in prompt..." };
+
+  const urls = extractUrls(value).slice(0, 2);
+  const crawledContexts: CrawledContent[] = [];
+
+  if (urls.length > 0) {
+    for (const url of urls) {
+      try {
+        const crawled = await Promise.race([
+          crawlUrl(url),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+        ]);
+        if (crawled) {
+          crawledContexts.push(crawled);
+        }
+      } catch (error) {
+        console.error("[ERROR] Crawl error for URL:", url, error);
+      }
+    }
+  }
+
+  const crawlMessages = crawledContexts.map((ctx) => ({
+    role: "user" as const,
+    content: `Crawled context from ${ctx.url}:\n${ctx.content}`,
+  }));
+
+  const state: AgentState = {
+    summary: "",
+    files: {},
+    selectedFramework,
+    summaryRetryCount: 0,
+  };
+
+  const tools = createAgentTools({
+    sandboxId,
+    state,
+    updateFiles: (files) => {
+      state.files = files;
+    },
+  });
+
+  const frameworkPrompt = getFrameworkPrompt(selectedFramework);
+  const modelConfig = MODEL_CONFIGS[selectedModel];
+
+  yield { type: "status", data: `Running ${modelConfig.name} agent...` };
+
+  const messages = [
+    ...crawlMessages,
+    ...contextMessages,
+    { role: "user" as const, content: value },
+  ];
+
+  const modelOptions: Record<string, unknown> = {
+    temperature: modelConfig.temperature,
+  };
+
+  if ("frequencyPenalty" in modelConfig) {
+    modelOptions.frequencyPenalty = modelConfig.frequencyPenalty;
+  }
+
+  if (selectedModel === "z-ai/glm-4.7") {
+    modelOptions.provider = {
+      order: ["Z.AI"],
+      allow_fallbacks: false,
+    };
+  }
+
+  // Use streamText for real-time AI streaming
+  const result = streamText({
+    model: openrouter.chat(selectedModel),
+    system: frameworkPrompt,
+    messages,
+    tools,
+    stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
+    ...modelOptions,
+    onFinish: async ({ text }) => {
+      const summaryMatch = extractSummaryText(text);
+      if (summaryMatch) {
+        state.summary = summaryMatch;
+      }
+    },
+  });
+
+  // Stream text chunks in real-time
+  let fullText = "";
+  for await (const chunk of result.textStream) {
+    fullText += chunk;
+    yield { type: "text", data: chunk };
+  }
+
+  const resultText = fullText;
+  let summaryText = extractSummaryText(state.summary || resultText || "");
+
+  if (!summaryText && Object.keys(state.files).length > 0) {
+    console.log("[DEBUG] No summary detected, requesting explicitly...");
+    const followUp = await generateText({
+      model: openrouter.chat(selectedModel),
+      system: frameworkPrompt,
+      messages: [
+        ...messages,
+        {
+          role: "assistant" as const,
+          content: resultText,
+        },
+        {
+          role: "user" as const,
+          content:
+            "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
+        },
+      ],
+      tools,
+      stopWhen: stepCountIs(2),
+      ...modelOptions,
+    });
+
+    summaryText = extractSummaryText(followUp.text || "");
+    if (summaryText) {
+      state.summary = summaryText;
+    }
+  }
+
+  yield { type: "status", data: "Cleaning build artifacts..." };
+  
+  // Clean .next directory to avoid permission errors
+  await cleanNextDirectory(sandboxId);
+
+  yield { type: "status", data: "Running validation checks..." };
+
+  const [lintErrors, buildErrors] = await Promise.all([
+    runLintCheck(sandboxId),
+    runBuildCheck(sandboxId),
+  ]);
+
+  let validationErrors = [lintErrors, buildErrors].filter(Boolean).join("\n\n");
+  let autoFixAttempts = 0;
+  let lastErrorMessage = validationErrors || resultText;
+
+  if (selectedFramework === "nextjs") {
+    if (
+      Object.keys(state.files).length > 0 &&
+      !usesShadcnComponents(state.files)
+    ) {
+      const shadcnError =
+        "[ERROR] Missing Shadcn UI usage. Rebuild the UI using components imported from '@/components/ui/*' instead of plain HTML elements.";
+      lastErrorMessage = lastErrorMessage
+        ? `${lastErrorMessage}\n${shadcnError}`
+        : shadcnError;
+    }
+  }
+
+  while (
+    autoFixAttempts < AUTO_FIX_MAX_ATTEMPTS &&
+    (shouldTriggerAutoFix(lastErrorMessage) || validationErrors)
+  ) {
+    autoFixAttempts += 1;
+    yield {
+      type: "status",
+      data: `Auto-fixing errors (attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})...`,
+    };
+
+    const fixPrompt = `CRITICAL BUILD/LINT ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
+
+Your previous code generation resulted in build or lint errors. You MUST fix these errors now.
+
+=== ERROR OUTPUT ===
+${validationErrors || lastErrorMessage || "No error details provided."}
+
+=== DEBUGGING STEPS ===
+1. READ THE ERROR CAREFULLY: Look for specific file names, line numbers, and error types
+2. IDENTIFY THE ROOT CAUSE
+3. FIX THE ERROR using createOrUpdateFiles
+4. VERIFY YOUR FIX by running: npm run lint && npm run build
+5. PROVIDE SUMMARY with <task_summary> once fixed`;
+
+    const fixResult = await generateText({
+      model: openrouter.chat(selectedModel),
+      system: frameworkPrompt,
+      messages: [
+        ...messages,
+        { role: "assistant" as const, content: resultText },
+        { role: "user" as const, content: fixPrompt },
+      ],
+      tools,
+      stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
+      ...modelOptions,
+    });
+
+    const fixSummary = extractSummaryText(fixResult.text || "");
+    if (fixSummary) {
+      state.summary = fixSummary;
+      summaryText = fixSummary;
+    }
+
+    const [newLintErrors, newBuildErrors] = await Promise.all([
+      runLintCheck(sandboxId),
+      runBuildCheck(sandboxId),
+    ]);
+
+    validationErrors = [newLintErrors, newBuildErrors]
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!validationErrors) {
+      console.log("[DEBUG] All validation errors resolved!");
+      break;
+    }
+
+    lastErrorMessage = validationErrors;
+  }
+
+  yield { type: "files", data: state.files };
+
+  const hasFiles = Object.keys(state.files).length > 0;
+
+  if (!summaryText && hasFiles) {
+    const previewFiles = Object.keys(state.files).slice(0, 5);
+    const remainingCount = Object.keys(state.files).length - previewFiles.length;
+    summaryText = `Generated or updated ${Object.keys(state.files).length} file(s): ${previewFiles.join(", ")}${remainingCount > 0 ? ` (and ${remainingCount} more)` : ""}.`;
+  }
+
+  yield { type: "status", data: "Reading sandbox files..." };
+
+  const findCommand = getFindCommand(selectedFramework);
+  const findResult = await sandbox.commands.run(findCommand);
+  const filePaths = findResult.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.includes("Permission denied"))
+    .filter(isValidFilePath);
+
+  const sandboxFiles = await readFilesInBatches(sandbox, filePaths);
+  const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
+  const mergedFiles = { ...filteredSandboxFiles, ...state.files };
+
+  const validatedMergedFiles: Record<string, string> = {};
+  for (const [path, content] of Object.entries(mergedFiles)) {
+    if (isValidFilePath(path)) {
+      validatedMergedFiles[path] = content;
+    }
+  }
+
+  const criticalErrorReasons: string[] = [];
+  const warningReasons: string[] = [];
+
+  if (!hasFiles) {
+    criticalErrorReasons.push("no files generated");
+  }
+  if (!summaryText) {
+    criticalErrorReasons.push("no summary available");
+  }
+  if (validationErrors && hasFiles) {
+    warningReasons.push("validation errors detected");
+  }
+  if (
+    selectedFramework === "nextjs" &&
+    hasFiles &&
+    !usesShadcnComponents(state.files)
+  ) {
+    warningReasons.push("missing Shadcn UI components");
+  }
+
+  const isCriticalError = criticalErrorReasons.length > 0;
+
+  if (isCriticalError) {
+    yield {
+      type: "error",
+      data: `Generation failed: ${criticalErrorReasons.join(", ")}`,
+    };
+
+    await convex.mutation(api.messages.createForUser, {
+      userId: project.userId,
+      projectId: projectId as Id<"projects">,
+      content: "Something went wrong. Please try again.",
+      role: "ASSISTANT",
+      type: "ERROR",
+      status: "COMPLETE",
+    });
+
+    return;
+  }
+
+  yield { type: "status", data: "Starting dev server..." };
+
+  const sandboxUrl = await startDevServer(sandbox, selectedFramework);
+
+  yield { type: "status", data: "Saving results..." };
+
+  const { title: fragmentTitle, response: responseContent } =
+    await generateFragmentMetadata(summaryText);
+
+  const sanitizedResponse = sanitizeTextForDatabase(responseContent);
+  const warningsNote =
+    warningReasons.length > 0
+      ? sanitizeTextForDatabase(
+          `\n\n Warning:\n- ${warningReasons.join("\n- ")}`
+        )
+      : "";
+  const finalResponse = sanitizeTextForDatabase(
+    `${sanitizedResponse}${warningsNote}`
+  );
+
+  const metadata: FragmentMetadata = {
+    model: selectedModel,
+    modelName: MODEL_CONFIGS[selectedModel].name,
+    provider: MODEL_CONFIGS[selectedModel].provider,
+    ...(warningReasons.length > 0 && { warnings: warningReasons }),
+  };
+
+  const messageId = await convex.mutation(api.messages.createForUser, {
+    userId: project.userId,
+    projectId: projectId as Id<"projects">,
+    content: finalResponse || "Generated code is ready.",
+    role: "ASSISTANT",
+    type: "RESULT",
+    status: "COMPLETE",
+  });
+
+  await convex.mutation(api.messages.createFragmentForUser, {
+    userId: project.userId,
+    messageId: messageId as Id<"messages">,
+    sandboxId: sandboxId || undefined,
+    sandboxUrl: sandboxUrl,
+    title: sanitizeTextForDatabase(fragmentTitle) || "Generated Fragment",
+    files: validatedMergedFiles,
+    framework: frameworkToConvexEnum(selectedFramework),
+    metadata: metadata,
+  });
+
+  yield {
+    type: "complete",
+    data: {
+      url: sandboxUrl,
+      title: fragmentTitle,
+      files: validatedMergedFiles,
+      summary: summaryText,
+      sandboxId,
+      framework: selectedFramework,
+    },
+  };
+}
+
+export async function runErrorFix(fragmentId: string): Promise<{
+  success: boolean;
+  message: string;
+  summary?: string;
+  remainingErrors?: string;
+}> {
+  const fragment = await convex.query(api.messages.getFragmentById, {
+    fragmentId: fragmentId as Id<"fragments">,
+  });
+
+  if (!fragment) {
+    throw new Error("Fragment not found");
+  }
+
+  if (!fragment.sandboxId) {
+    throw new Error("Fragment has no active sandbox");
+  }
+
+  const message = await convex.query(api.messages.get, {
+    messageId: fragment.messageId as Id<"messages">,
+  });
+  if (!message) {
+    throw new Error("Message not found");
+  }
+
+  const project = await convex.query(api.projects.getForSystem, {
+    projectId: message.projectId as Id<"projects">,
+  });
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  const fragmentFramework = (fragment.framework?.toLowerCase() ||
+    "nextjs") as Framework;
+  const sandboxId = fragment.sandboxId;
+
+  try {
+    await getSandbox(sandboxId);
+  } catch {
+    throw new Error("Sandbox is no longer active. Please refresh the fragment.");
+  }
+
+  const fragmentMetadata =
+    typeof fragment.metadata === "object" && fragment.metadata !== null
+      ? (fragment.metadata as Record<string, unknown>)
+      : {};
+
+  const fragmentModel =
+    (fragmentMetadata.model as keyof typeof MODEL_CONFIGS) ||
+    "anthropic/claude-haiku-4.5";
+
+  const [lintErrors, buildErrors] = await Promise.all([
+    runLintCheck(sandboxId),
+    runBuildCheck(sandboxId),
+  ]);
+
+  const validationErrors = [lintErrors, buildErrors].filter(Boolean).join("\n\n");
+
+  if (!validationErrors) {
+    return {
+      success: true,
+      message: "No errors detected",
+    };
+  }
+
+  const state: AgentState = {
+    summary: "",
+    files: fragment.files as Record<string, string>,
+    selectedFramework: fragmentFramework,
+    summaryRetryCount: 0,
+  };
+
+  const tools = createAgentTools({
+    sandboxId,
+    state,
+    updateFiles: (files) => {
+      state.files = files;
+    },
+  });
+
+  const frameworkPrompt = getFrameworkPrompt(fragmentFramework);
+  const modelConfig = MODEL_CONFIGS[fragmentModel];
+
+  const fixPrompt = `CRITICAL ERROR FIX REQUEST
+
+The following errors were detected in the application and need to be fixed immediately:
+
+${validationErrors}
+
+REQUIRED ACTIONS:
+1. Carefully analyze the error messages to identify the root cause
+2. Check for common issues: missing imports, type errors, syntax errors, missing packages
+3. Apply the necessary fixes to resolve ALL errors completely
+4. Verify the fixes by ensuring the code is syntactically correct
+5. Provide a <task_summary> explaining what was fixed`;
+
+  const result = await generateText({
+    model: openrouter.chat(fragmentModel),
+    system: frameworkPrompt,
+    messages: [{ role: "user", content: fixPrompt }],
+    tools,
+    stopWhen: stepCountIs(10),
+    temperature: modelConfig.temperature,
+  });
+
+  const summaryText = extractSummaryText(result.text || "");
+  if (summaryText) {
+    state.summary = summaryText;
+  }
+
+  const [newLintErrors, newBuildErrors] = await Promise.all([
+    runLintCheck(sandboxId),
+    runBuildCheck(sandboxId),
+  ]);
+
+  const remainingErrors = [newLintErrors, newBuildErrors]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const sandbox = await getSandbox(sandboxId);
+  for (const [path, content] of Object.entries(state.files)) {
+    try {
+      await sandbox.files.write(path, content);
+    } catch (error) {
+      console.error(`[ERROR] Failed to write file ${path}:`, error);
+    }
+  }
+
+  await convex.mutation(api.messages.createFragmentForUser, {
+    userId: project.userId,
+    messageId: fragment.messageId,
+    sandboxId: fragment.sandboxId || undefined,
+    sandboxUrl: fragment.sandboxUrl,
+    title: fragment.title,
+    files: state.files,
+    framework: frameworkToConvexEnum(fragmentFramework),
+    metadata: {
+      ...fragmentMetadata,
+      previousFiles: fragment.files,
+      fixedAt: new Date().toISOString(),
+    },
+  });
+
+  return {
+    success: !remainingErrors,
+    message: remainingErrors
+      ? "Some errors may remain. Please check the sandbox."
+      : "Errors fixed successfully",
+    summary: state.summary,
+    remainingErrors: remainingErrors || undefined,
+  };
+}
