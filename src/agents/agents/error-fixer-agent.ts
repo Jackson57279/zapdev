@@ -139,6 +139,7 @@ export function createErrorFixerAgent(sandbox: Sandbox) {
     instructions: ERROR_FIX_INSTRUCTIONS,
     tools,
     stopWhen: stepCountIs(10),
+    toolChoice: 'required',
   });
 }
 
@@ -167,8 +168,23 @@ export async function fixErrorsWithAgent(
     message: `Attempting to fix errors (attempt ${attempt + 1})...`,
   });
 
-  // Connect to sandbox
-  const sandbox = await sandboxManager.connect(sandboxId);
+  logger.progress('connect', `Connecting to sandbox ${sandboxId}`);
+
+  let sandbox: Sandbox;
+  try {
+    sandbox = await sandboxManager.connect(sandboxId);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const wrappedError = new Error(
+      `Failed to connect to sandbox ${sandboxId} during error-fixer operation: ${errorMessage}`
+    );
+    logger.error(wrappedError.message, { error, sandboxId, operation: 'connect' });
+    Sentry.captureException(wrappedError);
+    return {
+      success: false,
+      errors: [`Failed to connect to sandbox: ${errorMessage}`],
+    };
+  }
 
   // Create the error fixer agent
   const agent = createErrorFixerAgent(sandbox);

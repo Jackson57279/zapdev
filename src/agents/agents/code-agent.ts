@@ -158,6 +158,7 @@ export function createCodeAgent(
     instructions: getFrameworkPrompt(framework),
     tools,
     stopWhen: stepCountIs(15),
+    toolChoice: 'required',
   });
 }
 
@@ -214,20 +215,23 @@ export async function generateCodeWithAgent(
   logger.progress('ai', 'Starting AI generation');
   await onProgress({ type: 'status', message: 'Generating code...' });
 
-  // Build messages from conversation history
-  const conversationHistory = request.conversationHistory || [];
-  const messages = [
-    ...conversationHistory.map((msg) => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    })),
-    { role: 'user' as const, content: request.prompt },
-  ];
-
   try {
+    // Build combined prompt from conversation history and current request
+    const conversationHistory = request.conversationHistory || [];
+    let combinedPrompt = '';
+    
+    if (conversationHistory.length > 0) {
+      combinedPrompt = conversationHistory
+        .map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n\n');
+      combinedPrompt += `\n\nUSER: ${request.prompt}`;
+    } else {
+      combinedPrompt = request.prompt;
+    }
+
     // Use streaming for real-time updates
     // agent.stream() returns a Promise<StreamTextResult>, so we await it first
-    const result = await agent.stream({ messages });
+    const result = await agent.stream({ prompt: combinedPrompt });
 
     let fullText = '';
     for await (const chunk of result.textStream) {

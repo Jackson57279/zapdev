@@ -1,4 +1,4 @@
-import { streamText, tool } from 'ai';
+import { streamText, tool, stepCountIs } from 'ai';
 import { z } from 'zod';
 import { getModel, ModelId } from '../client';
 import { sandboxManager } from '../sandbox';
@@ -230,7 +230,7 @@ export async function generateCode(
         messages: contextualMessages,
         tools,
         toolChoice: 'required', // Force the model to use at least one tool
-        maxSteps: 15, // Increased to allow more tool iterations
+        stopWhen: stepCountIs(15), // Increased to allow more tool iterations
         temperature: 0.7,
         onStepFinish: async ({ toolCalls, toolResults, text }) => {
           stepCount++;
