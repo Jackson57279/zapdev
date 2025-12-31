@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getPolarClient, getPolarProProductId, isPolarConfigured } from "@/lib/polar-client";
+import {
+  createCheckout,
+  getPolarProPriceIds,
+  isPolarConfigured,
+  getPolarOrganizationId,
+} from "@/lib/polar";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,17 +25,24 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { 
-      productId = getPolarProProductId(),
+    const {
+      priceId,
       successUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?subscription=success`,
-      cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`
+      cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
     } = body;
 
-    const polar = getPolarClient();
+    if (!priceId) {
+      const { monthly, yearly } = getPolarProPriceIds();
+      return NextResponse.json(
+        { error: "priceId is required. Use " + monthly + " or " + yearly },
+        { status: 400 }
+      );
+    }
 
-    const checkout = await polar.checkouts.create({
-      products: [productId],
+    const checkout = await createCheckout({
+      priceId,
       successUrl,
+      cancelUrl,
       metadata: {
         userId,
       },
@@ -42,14 +54,13 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("❌ Polar checkout error:", error);
-    
+
     const message = error instanceof Error ? error.message : "Failed to create checkout";
     const status = message.includes("401") || message.includes("invalid_token") ? 401 : 500;
-    
+
     return NextResponse.json(
       { error: message },
       { status }
     );
   }
 }
-

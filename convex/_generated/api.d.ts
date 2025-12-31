@@ -14,6 +14,7 @@ import type * as importData from "../importData.js";
 import type * as imports from "../imports.js";
 import type * as messages from "../messages.js";
 import type * as oauth from "../oauth.js";
+import type * as polar from "../polar.js";
 import type * as projects from "../projects.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as sandboxSessions from "../sandboxSessions.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   imports: typeof imports;
   messages: typeof messages;
   oauth: typeof oauth;
+  polar: typeof polar;
   projects: typeof projects;
   rateLimit: typeof rateLimit;
   sandboxSessions: typeof sandboxSessions;

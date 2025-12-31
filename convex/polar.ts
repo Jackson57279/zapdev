@@ -1,41 +1,53 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-export const getSubscription = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await ctx.auth.getUserIdentity();
-    if (!userId) {
-      throw new Error("Unauthorized");
-    }
-
-    const subscription = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId", (q) => q.eq("userId", userId.subject))
-      .filter((q) => q.eq(q.field("status"), "active"))
-      .first();
-
-    return subscription;
-  },
-});
-
-export const getSubscriptionByPolarId = query({
+export const syncCustomer = mutation({
   args: {
-    polarSubscriptionId: v.string(),
+    userId: v.string(),
+    polarCustomerId: v.string(),
   },
   handler: async (ctx, args) => {
-    const subscription = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
-      )
+    const { userId, polarCustomerId } = args;
+    const now = Date.now();
+
+    const existing = await ctx.db
+      .query("polarCustomers")
+      .withIndex("by_polarCustomerId", (q) => q.eq("polarCustomerId", polarCustomerId))
       .first();
 
-    return subscription;
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+
+    const id = await ctx.db.insert("polarCustomers", {
+      userId,
+      polarCustomerId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return id;
   },
 });
 
-export const createOrUpdateSubscription = mutation({
+export const getCustomerIdByUserId = query({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const customer = await ctx.db
+      .query("polarCustomers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    return customer?.polarCustomerId ?? null;
+  },
+});
+
+export const syncSubscription = mutation({
   args: {
     polarSubscriptionId: v.string(),
     customerId: v.string(),
@@ -143,92 +155,22 @@ export const createOrUpdateSubscription = mutation({
   },
 });
 
-export const markSubscriptionForCancellation = mutation({
-  args: {
-    polarSubscriptionId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const subscription = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
-      )
-      .first();
-
-    if (!subscription) {
-      throw new Error("Subscription not found");
+export const getUserPolarSubscription = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
     }
 
-    await ctx.db.patch(subscription._id, {
-      cancelAtPeriodEnd: true,
-      updatedAt: Date.now(),
-    });
+    const userId = identity.subject;
 
-    return subscription._id;
-  },
-});
-
-export const reactivateSubscription = mutation({
-  args: {
-    polarSubscriptionId: v.string(),
-  },
-  handler: async (ctx, args) => {
     const subscription = await ctx.db
       .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
-      )
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .filter((q) => q.eq(q.field("status"), "active"))
       .first();
 
-    if (!subscription) {
-      throw new Error("Subscription not found");
-    }
-
-    await ctx.db.patch(subscription._id, {
-      cancelAtPeriodEnd: false,
-      updatedAt: Date.now(),
-    });
-
-    return subscription._id;
-  },
-});
-
-export const revokeSubscription = mutation({
-  args: {
-    polarSubscriptionId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const subscription = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_polarSubscriptionId", (q) =>
-        q.eq("polarSubscriptionId", args.polarSubscriptionId)
-      )
-      .first();
-
-    if (!subscription) {
-      throw new Error("Subscription not found");
-    }
-
-    await ctx.db.patch(subscription._id, {
-      status: "canceled",
-      cancelAtPeriodEnd: false,
-      updatedAt: Date.now(),
-    });
-
-    return subscription._id;
-  },
-});
-
-export const getUserSubscriptions = query({
-  args: {
-    userId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const subscriptions = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect();
-
-    return subscriptions;
+    return subscription;
   },
 });

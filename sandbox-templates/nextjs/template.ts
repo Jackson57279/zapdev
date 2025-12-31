@@ -1,0 +1,18 @@
+import { Template } from 'e2b'
+
+export const template = Template()
+  .fromImage('node:21-slim')
+  .setUser('root')
+  .setWorkdir('/')
+  .runCmd('groupadd -r user && useradd -r -g user user && mkdir -p /home/user && chown -R user:user /home/user')
+  .runCmd('apt-get update && apt-get install -y curl sudo && apt-get clean && rm -rf /var/lib/apt/lists/*')
+  .copy('compile_page.sh', '/compile_page.sh')
+  .runCmd('chmod +x /compile_page.sh')
+  .setWorkdir('/home/user')
+  .runCmd('sudo -u user npx --yes create-next-app@15.3.3 . --yes')
+  .runCmd('sudo -u user npx --yes shadcn@2.6.3 init --yes -b neutral --force')
+  .runCmd('sudo -u user npx --yes shadcn@2.6.3 add --all --yes')
+  .setUser('user')
+  .setUser('user')
+  .setWorkdir('/home/user')
+  .setStartCmd('sudo /compile_page.sh', 'sleep 20')

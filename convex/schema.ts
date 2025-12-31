@@ -1,7 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-// Enum type definitions using unions of literals
 export const frameworkEnum = v.union(
   v.literal("NEXTJS"),
   v.literal("ANGULAR"),
@@ -56,59 +55,75 @@ export const sandboxStateEnum = v.union(
   v.literal("KILLED")
 );
 
+export const subscriptionStatusEnum = v.union(
+  v.literal("active"),
+  v.literal("past_due"),
+  v.literal("canceled"),
+  v.literal("unpaid"),
+  v.literal("trialing")
+);
+
+export const subscriptionIntervalEnum = v.union(
+  v.literal("monthly"),
+  v.literal("yearly")
+);
+
+const polarCustomers = defineTable({
+  userId: v.string(),
+  polarCustomerId: v.string(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+}).index("by_userId", ["userId"])
+  .index("by_polarCustomerId", ["polarCustomerId"]);
+
 export default defineSchema({
-  // Projects table
   projects: defineTable({
     name: v.string(),
-    userId: v.string(), // Clerk user ID (not v.id - we'll store the Clerk ID directly)
+    userId: v.string(),
     framework: frameworkEnum,
-    modelPreference: v.optional(v.string()), // User's preferred AI model (e.g., "auto", "anthropic/claude-haiku-4.5", "openai/gpt-4o")
-    createdAt: v.optional(v.number()), // timestamp
-    updatedAt: v.optional(v.number()), // timestamp
+    modelPreference: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_createdAt", ["userId", "createdAt"]),
 
-  // Messages table
   messages: defineTable({
     content: v.string(),
     role: messageRoleEnum,
     type: messageTypeEnum,
     status: messageStatusEnum,
     projectId: v.id("projects"),
-    createdAt: v.optional(v.number()), // timestamp
-    updatedAt: v.optional(v.number()), // timestamp
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_projectId", ["projectId"])
     .index("by_projectId_createdAt", ["projectId", "createdAt"]),
 
-  // Fragments table - generated code artifacts
   fragments: defineTable({
     messageId: v.id("messages"),
     sandboxId: v.optional(v.string()),
     sandboxUrl: v.string(),
     title: v.string(),
-    files: v.any(), // JSON data for file structure
-    metadata: v.optional(v.any()), // Optional JSON metadata
+    files: v.any(),
+    metadata: v.optional(v.any()),
     framework: frameworkEnum,
-    createdAt: v.optional(v.number()), // timestamp
-    updatedAt: v.optional(v.number()), // timestamp
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_messageId", ["messageId"]),
 
-  // FragmentDrafts table - work-in-progress fragments
   fragmentDrafts: defineTable({
     projectId: v.id("projects"),
     sandboxId: v.optional(v.string()),
     sandboxUrl: v.optional(v.string()),
-    files: v.any(), // JSON data for draft files
+    files: v.any(),
     framework: frameworkEnum,
-    createdAt: v.optional(v.number()), // timestamp
-    updatedAt: v.optional(v.number()), // timestamp
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_projectId", ["projectId"]),
 
-  // Attachments table
   attachments: defineTable({
     type: attachmentTypeEnum,
     url: v.string(),
@@ -116,39 +131,37 @@ export default defineSchema({
     height: v.optional(v.number()),
     size: v.number(),
     messageId: v.id("messages"),
-    importId: v.optional(v.id("imports")), // Link to import record
-    sourceMetadata: v.optional(v.any()), // Figma/GitHub specific data
-    createdAt: v.optional(v.number()), // timestamp
-    updatedAt: v.optional(v.number()), // timestamp
+    importId: v.optional(v.id("imports")),
+    sourceMetadata: v.optional(v.any()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_messageId", ["messageId"]),
 
-  // OAuth Connections table - for storing encrypted OAuth tokens
   oauthConnections: defineTable({
-    userId: v.string(), // Clerk user ID
+    userId: v.string(),
     provider: oauthProviderEnum,
-    accessToken: v.string(), // Encrypted token
+    accessToken: v.string(),
     refreshToken: v.optional(v.string()),
     expiresAt: v.optional(v.number()),
     scope: v.string(),
-    metadata: v.optional(v.any()), // Provider-specific data (user info, etc)
+    metadata: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_provider", ["userId", "provider"]),
 
-  // Imports table - tracking import history and status
   imports: defineTable({
-    userId: v.string(), // Clerk user ID
+    userId: v.string(),
     projectId: v.id("projects"),
     messageId: v.optional(v.id("messages")),
     source: importSourceEnum,
-    sourceId: v.string(), // Figma file key or GitHub repo ID
-    sourceName: v.string(), // Display name
-    sourceUrl: v.string(), // Original URL to Figma/GitHub
+    sourceId: v.string(),
+    sourceName: v.string(),
+    sourceUrl: v.string(),
     status: importStatusEnum,
-    metadata: v.optional(v.any()), // Import-specific data
+    metadata: v.optional(v.any()),
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -157,66 +170,61 @@ export default defineSchema({
     .index("by_projectId", ["projectId"])
     .index("by_status", ["status"]),
 
-  // Usage table - rate limiting and credit tracking
   usage: defineTable({
-    userId: v.string(), // Clerk user ID
-    points: v.number(), // Remaining credits
-    expire: v.optional(v.number()), // Expiration timestamp
-    planType: v.optional(v.union(v.literal("free"), v.literal("pro"))), // Track plan type
+    userId: v.string(),
+    points: v.number(),
+    expire: v.optional(v.number()),
+    planType: v.optional(v.union(v.literal("free"), v.literal("pro"))),
   })
     .index("by_userId", ["userId"])
     .index("by_expire", ["expire"]),
 
-  // Rate Limits table - request-based rate limiting
   rateLimits: defineTable({
-    key: v.string(), // Rate limit key (e.g., "user_123", "ip_192.168.1.1", "endpoint_/api/auth")
-    count: v.number(), // Current request count in this window
-    windowStart: v.number(), // Timestamp when the current window started
-    limit: v.number(), // Maximum requests allowed in the window
-    windowMs: v.number(), // Window duration in milliseconds
+    key: v.string(),
+    count: v.number(),
+    windowStart: v.number(),
+    limit: v.number(),
+    windowMs: v.number(),
   })
     .index("by_key", ["key"])
     .index("by_windowStart", ["windowStart"]),
 
-  // Subscriptions table - Clerk Billing subscription tracking
   subscriptions: defineTable({
-    userId: v.string(), // Clerk user ID
-    clerkSubscriptionId: v.string(), // Clerk subscription ID
-    planId: v.string(), // Clerk plan ID (e.g., "plan_xxxxx")
-    planName: v.string(), // Plan name (e.g., "Free", "Pro")
-    status: v.union(
-      v.literal("incomplete"),
-      v.literal("active"),
-      v.literal("canceled"),
-      v.literal("past_due"),
-      v.literal("unpaid"),
-      v.literal("trialing")
-    ),
-    currentPeriodStart: v.number(), // Timestamp
-    currentPeriodEnd: v.number(), // Timestamp
-    cancelAtPeriodEnd: v.boolean(), // Scheduled cancellation flag
-    features: v.optional(v.array(v.string())), // Array of feature IDs granted by this plan
-    metadata: v.optional(v.any()), // Additional metadata from Clerk
+    userId: v.string(),
+    polarSubscriptionId: v.string(),
+    customerId: v.string(),
+    productId: v.string(),
+    priceId: v.string(),
+    status: subscriptionStatusEnum,
+    interval: subscriptionIntervalEnum,
+    currentPeriodStart: v.number(),
+    currentPeriodEnd: v.number(),
+    cancelAtPeriodEnd: v.boolean(),
+    canceledAt: v.optional(v.number()),
+    trialStart: v.optional(v.number()),
+    trialEnd: v.optional(v.number()),
+    metadata: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_clerkSubscriptionId", ["clerkSubscriptionId"])
-    .index("by_planId", ["planId"])
+    .index("by_polarSubscriptionId", ["polarSubscriptionId"])
+    .index("by_customerId", ["customerId"])
     .index("by_status", ["status"]),
 
-  // Sandbox Sessions table - E2B sandbox persistence tracking
+  polarCustomers,
+
   sandboxSessions: defineTable({
-    sandboxId: v.string(), // E2B sandbox ID
-    projectId: v.id("projects"), // Associated project
-    userId: v.string(), // Clerk user ID
-    framework: frameworkEnum, // Framework for the sandbox
-    state: sandboxStateEnum, // RUNNING, PAUSED, or KILLED
-    lastActivity: v.number(), // Timestamp of last user activity
-    autoPauseTimeout: v.number(), // Inactivity timeout in milliseconds (default: 10 minutes)
-    pausedAt: v.optional(v.number()), // Timestamp when sandbox was paused
-    createdAt: v.number(), // Timestamp when sandbox was created
-    updatedAt: v.number(), // Timestamp of last update
+    sandboxId: v.string(),
+    projectId: v.id("projects"),
+    userId: v.string(),
+    framework: frameworkEnum,
+    state: sandboxStateEnum,
+    lastActivity: v.number(),
+    autoPauseTimeout: v.number(),
+    pausedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   })
     .index("by_projectId", ["projectId"])
     .index("by_userId", ["userId"])

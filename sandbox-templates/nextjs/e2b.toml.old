@@ -1,0 +1,20 @@
+# E2B Sandbox Template Configuration
+
+template_id = "zapdev"
+dockerfile = "e2b.Dockerfile"
+
+# The command that runs when the sandbox starts
+start_cmd = "/compile_page.sh"
+
+# Timeout in milliseconds (30 minutes)
+timeout = 1800000
+
+# Memory limit in MB
+memory = 2048
+
+# CPU limit (number of vCPUs)
+cpu = 2
+
+# Environment variables
+[env]
+NODE_ENV = "development"

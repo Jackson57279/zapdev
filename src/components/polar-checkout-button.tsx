@@ -3,13 +3,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
 interface PolarCheckoutButtonProps {
-  productId?: string;
-  successUrl?: string;
-  cancelUrl?: string;
+  priceId: string;
   children?: React.ReactNode;
   className?: string;
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
@@ -17,25 +14,17 @@ interface PolarCheckoutButtonProps {
 }
 
 export function PolarCheckoutButton({
-  productId,
-  successUrl,
-  cancelUrl,
-  children = "Upgrade to Pro",
+  priceId,
+  children = "Get Started",
   className,
   variant = "default",
   size = "default",
 }: PolarCheckoutButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isSignedIn } = useUser();
   const router = useRouter();
 
   const handleCheckout = async () => {
-    if (!isSignedIn) {
-      router.push("/sign-in");
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
@@ -45,11 +34,7 @@ export function PolarCheckoutButton({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          productId,
-          successUrl,
-          cancelUrl,
-        }),
+        body: JSON.stringify({ priceId }),
       });
 
       const data = await response.json();
@@ -94,4 +79,3 @@ export function PolarCheckoutButton({
     </div>
   );
 }
-

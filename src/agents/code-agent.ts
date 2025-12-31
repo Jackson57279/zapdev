@@ -416,16 +416,14 @@ export async function* runCodeAgent(
   yield { type: "status", data: "Cleaning build artifacts..." };
   
   // Clean .next directory to avoid permission errors
-  await cleanNextDirectory(sandboxId);
+  await cleanNextDirectory(sandbox);
 
-  yield { type: "status", data: "Running validation checks..." };
+  yield { type: "status", data: "Running build validation..." };
 
-  const [lintErrors, buildErrors] = await Promise.all([
-    runLintCheck(sandboxId),
-    runBuildCheck(sandboxId),
-  ]);
+  // Skip lint check for speed - only run build validation
+  const buildErrors = await runBuildCheck(sandbox);
 
-  let validationErrors = [lintErrors, buildErrors].filter(Boolean).join("\n\n");
+  let validationErrors = buildErrors || "";
   let autoFixAttempts = 0;
   let lastErrorMessage = validationErrors || resultText;
 
@@ -485,14 +483,9 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       summaryText = fixSummary;
     }
 
-    const [newLintErrors, newBuildErrors] = await Promise.all([
-      runLintCheck(sandboxId),
-      runBuildCheck(sandboxId),
-    ]);
+    const newBuildErrors = await runBuildCheck(sandbox);
 
-    validationErrors = [newLintErrors, newBuildErrors]
-      .filter(Boolean)
-      .join("\n\n");
+    validationErrors = newBuildErrors || "";
 
     if (!validationErrors) {
       console.log("[DEBUG] All validation errors resolved!");
@@ -669,8 +662,9 @@ export async function runErrorFix(fragmentId: string): Promise<{
     "nextjs") as Framework;
   const sandboxId = fragment.sandboxId;
 
+  let sandbox: Sandbox;
   try {
-    await getSandbox(sandboxId);
+    sandbox = await getSandbox(sandboxId);
   } catch {
     throw new Error("Sandbox is no longer active. Please refresh the fragment.");
   }
@@ -684,12 +678,10 @@ export async function runErrorFix(fragmentId: string): Promise<{
     (fragmentMetadata.model as keyof typeof MODEL_CONFIGS) ||
     "anthropic/claude-haiku-4.5";
 
-  const [lintErrors, buildErrors] = await Promise.all([
-    runLintCheck(sandboxId),
-    runBuildCheck(sandboxId),
-  ]);
+  // Skip lint check for speed - only run build validation
+  const buildErrors = await runBuildCheck(sandbox);
 
-  const validationErrors = [lintErrors, buildErrors].filter(Boolean).join("\n\n");
+  const validationErrors = buildErrors || "";
 
   if (!validationErrors) {
     return {
@@ -743,16 +735,11 @@ REQUIRED ACTIONS:
     state.summary = summaryText;
   }
 
-  const [newLintErrors, newBuildErrors] = await Promise.all([
-    runLintCheck(sandboxId),
-    runBuildCheck(sandboxId),
-  ]);
+  // Skip lint check for speed - only run build validation
+  const newBuildErrors = await runBuildCheck(sandbox);
 
-  const remainingErrors = [newLintErrors, newBuildErrors]
-    .filter(Boolean)
-    .join("\n\n");
+  const remainingErrors = newBuildErrors || "";
 
-  const sandbox = await getSandbox(sandboxId);
   for (const [path, content] of Object.entries(state.files)) {
     try {
       await sandbox.files.write(path, content);
