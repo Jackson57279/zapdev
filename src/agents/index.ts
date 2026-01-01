@@ -12,21 +12,13 @@ export {
 } from "./types";
 export { createAgentTools, type ToolContext } from "./tools";
 export {
-  getSandbox,
-  createSandbox,
-  getE2BTemplate,
+  type SandboxBackend,
+  type SandboxBackendType,
+  createSandboxBackend,
+  isValidFilePath,
+  shouldIncludeFile,
   getFrameworkPort,
   getDevServerCommand,
-  isValidFilePath,
-  readFileWithTimeout,
-  readFilesInBatches,
-  getFindCommand,
-  runLintCheck,
-  runBuildCheck,
-  shouldTriggerAutoFix,
-  AUTO_FIX_ERROR_PATTERNS,
-  MAX_FILE_COUNT,
-  getSandboxUrl,
-  startDevServer,
-} from "./sandbox-utils";
+} from "./sandbox";
+export { createMemoryBackend, MemoryBackend } from "./memory-backend";
 export { runCodeAgent, runErrorFix, type StreamEvent } from "./code-agent";

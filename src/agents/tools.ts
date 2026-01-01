@@ -1,16 +1,16 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { getSandbox } from "./sandbox-utils";
+import type { SandboxBackend } from "./sandbox";
 import type { AgentState } from "./types";
 
 export interface ToolContext {
-  sandboxId: string;
+  backend: SandboxBackend;
   state: AgentState;
   updateFiles: (files: Record<string, string>) => void;
 }
 
 export function createAgentTools(context: ToolContext) {
-  const { sandboxId, state, updateFiles } = context;
+  const { backend, state, updateFiles } = context;
 
   return {
     terminal: tool({
@@ -22,8 +22,7 @@ export function createAgentTools(context: ToolContext) {
         const buffers = { stdout: "", stderr: "" };
 
         try {
-          const sandbox = await getSandbox(sandboxId);
-          const result = await sandbox.commands.run(command, {
+          const result = await backend.runCommand(command, {
             onStdout: (data: string) => {
               buffers.stdout += data;
             },
@@ -53,11 +52,10 @@ export function createAgentTools(context: ToolContext) {
       }),
       execute: async ({ files }) => {
         try {
-          const sandbox = await getSandbox(sandboxId);
           const updatedFiles = { ...state.files };
 
           for (const file of files) {
-            await sandbox.files.write(file.path, file.content);
+            await backend.writeFile(file.path, file.content);
             updatedFiles[file.path] = file.content;
           }
 
@@ -76,12 +74,13 @@ export function createAgentTools(context: ToolContext) {
       }),
       execute: async ({ files }) => {
         try {
-          const sandbox = await getSandbox(sandboxId);
           const contents = [];
 
           for (const file of files) {
-            const content = await sandbox.files.read(file);
-            contents.push({ path: file, content });
+            const content = await backend.readFile(file);
+            if (content !== null) {
+              contents.push({ path: file, content });
+            }
           }
 
           return JSON.stringify(contents);

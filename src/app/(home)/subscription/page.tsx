@@ -27,7 +27,7 @@ export default function SubscriptionPage() {
     return <RedirectToSignIn />;
   }
 
-  const isProUser = subscription?.planName === "Pro" && subscription?.status === "active";
+  const isProUser = subscription?.status === "active";
   const planName = isProUser ? "Pro" : "Free";
   const creditsPerDay = isProUser ? 100 : 5;
   const remainingCredits = usage?.points ?? creditsPerDay;
@@ -90,7 +90,10 @@ export default function SubscriptionPage() {
           </CardContent>
           <CardFooter className="flex gap-4">
             {!isProUser ? (
-              <PolarCheckoutButton className="flex-1">
+              <PolarCheckoutButton 
+                priceId={process.env.NEXT_PUBLIC_POLAR_PRO_PRICE_ID || ""} 
+                className="flex-1"
+              >
                 Upgrade to Pro
               </PolarCheckoutButton>
             ) : (

@@ -12,12 +12,12 @@ function getConvexClient(): ConvexHttpClient {
   return new ConvexHttpClient(url);
 }
 
-type SubscriptionStatus = "incomplete" | "active" | "canceled" | "past_due" | "unpaid" | "trialing";
+type SubscriptionStatus = "active" | "past_due" | "canceled" | "unpaid" | "trialing";
 
 function mapPolarStatus(polarStatus: string): SubscriptionStatus {
   const statusMap: Record<string, SubscriptionStatus> = {
-    incomplete: "incomplete",
-    incomplete_expired: "incomplete",
+    incomplete: "unpaid",
+    incomplete_expired: "unpaid",
     active: "active",
     canceled: "canceled",
     past_due: "past_due",
@@ -25,7 +25,7 @@ function mapPolarStatus(polarStatus: string): SubscriptionStatus {
     trialing: "trialing",
     revoked: "canceled",
   };
-  return statusMap[polarStatus] ?? "incomplete";
+  return statusMap[polarStatus] ?? "unpaid";
 }
 
 function extractPlanName(productName: string | undefined): string {
@@ -102,16 +102,18 @@ export async function POST(request: NextRequest) {
 
         await convex.mutation(api.subscriptions.createOrUpdateSubscription, {
           userId,
-          clerkSubscriptionId: subscription.id,
-          planId: subscription.productId,
-          planName: extractPlanName(subscription.product?.name),
+          polarSubscriptionId: subscription.id,
+          customerId: subscription.customerId,
+          productId: subscription.productId,
+          priceId: subscription.prices?.[0]?.id ?? subscription.productId,
           status: mapPolarStatus(subscription.status),
+          interval: subscription.recurringInterval === "year" ? "yearly" : "monthly",
           currentPeriodStart: periodStart,
           currentPeriodEnd: periodEnd,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd ?? false,
           metadata: {
             ...subscription.metadata,
-            polarCustomerId: subscription.customerId,
+            planName: extractPlanName(subscription.product?.name),
             source: "polar",
           },
         });
@@ -124,7 +126,7 @@ export async function POST(request: NextRequest) {
         const subscription = event.data;
         
         await convex.mutation(api.subscriptions.markSubscriptionForCancellation, {
-          clerkSubscriptionId: subscription.id,
+          polarSubscriptionId: subscription.id,
         });
 
         console.log(`✅ Subscription marked for cancellation: ${subscription.id}`);
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
         const subscription = event.data;
         
         await convex.mutation(api.subscriptions.revokeSubscription, {
-          clerkSubscriptionId: subscription.id,
+          polarSubscriptionId: subscription.id,
         });
 
         console.log(`✅ Subscription revoked: ${subscription.id}`);
@@ -146,7 +148,7 @@ export async function POST(request: NextRequest) {
         const subscription = event.data;
         
         await convex.mutation(api.subscriptions.reactivateSubscription, {
-          clerkSubscriptionId: subscription.id,
+          polarSubscriptionId: subscription.id,
         });
 
         console.log(`✅ Subscription reactivated: ${subscription.id}`);

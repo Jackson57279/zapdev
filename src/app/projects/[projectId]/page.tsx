@@ -8,6 +8,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { generateMetadata as generateSEOMetadata } from "@/lib/seo";
 
 import { ProjectView } from "@/modules/projects/ui/views/project-view";
+import { BrowserCompatibilityBanner } from "@/components/browser-compatibility-banner";
 
 export const dynamic = 'force-dynamic';
 
@@ -74,13 +75,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 const Page = async ({ params }: Props) => {
   const { projectId } = await params;
 
-  // Convex handles data fetching on the client - no prefetching needed
   return (
-    <ErrorBoundary fallback={<p>Error!</p>}>
-      <Suspense fallback={<p>Loading Project...</p>}>
-        <ProjectView projectId={projectId} />
-      </Suspense>
-    </ErrorBoundary>
+    <>
+      <BrowserCompatibilityBanner />
+      <ErrorBoundary fallback={<p>Error!</p>}>
+        <Suspense fallback={<p>Loading Project...</p>}>
+          <ProjectView projectId={projectId} />
+        </Suspense>
+      </ErrorBoundary>
+    </>
   );
 };
 
