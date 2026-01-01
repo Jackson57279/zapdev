@@ -1,5 +1,4 @@
 import { generateText, streamText, stepCountIs } from "ai";
-import { Sandbox } from "@e2b/code-interpreter";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -16,18 +15,10 @@ import {
   frameworkToConvexEnum,
 } from "./types";
 import {
-  createSandbox,
-  getSandbox,
-  runLintCheck,
-  runBuildCheck,
-  shouldTriggerAutoFix,
-  getFindCommand,
-  readFilesInBatches,
+  createSandboxBackend,
   isValidFilePath,
-  startDevServer,
-  getFrameworkPort,
-  cleanNextDirectory,
-} from "./sandbox-utils";
+  shouldIncludeFile,
+} from "./sandbox";
 import { crawlUrl, type CrawledContent } from "@/lib/firecrawl";
 import {
   FRAGMENT_TITLE_PROMPT,
@@ -39,7 +30,7 @@ import {
   VUE_PROMPT,
   SVELTE_PROMPT,
 } from "@/prompt";
-import { sanitizeTextForDatabase, sanitizeJsonForDatabase } from "@/lib/utils";
+import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 
 let convexClient: ConvexHttpClient | null = null;
@@ -180,20 +171,19 @@ async function generateFragmentMetadata(
 export interface StreamEvent {
   type:
     | "status"
-    | "text"              // AI response chunks (streaming)
-    | "tool-call"         // Tool being invoked
-    | "tool-output"       // Command output (stdout/stderr streaming)
-    | "file-created"      // Individual file creation (streaming)
-    | "file-updated"      // File update event (streaming)
-    | "progress"          // Progress update (e.g., "3/10 files created")
-    | "files"             // Batch files (for compatibility)
+    | "text"
+    | "tool-call"
+    | "tool-output"
+    | "file-created"
+    | "file-updated"
+    | "progress"
+    | "files"
     | "error"
     | "complete";
   data: unknown;
   timestamp?: number;
 }
 
-// Type guards for stream events
 export function isTextEvent(event: StreamEvent): event is StreamEvent & { type: "text"; data: string } {
   return event.type === "text";
 }
@@ -265,10 +255,17 @@ export async function* runCodeAgent(
 
   console.log("[DEBUG] Selected model:", selectedModel);
 
-  yield { type: "status", data: "Creating sandbox environment..." };
+  const backendType = "memory";
+  
+  yield { 
+    type: "status", 
+    data: "Generating code (WebContainer will handle execution)..." 
+  };
 
-  const sandbox = await createSandbox(selectedFramework);
-  const sandboxId = sandbox.sandboxId;
+  const backend = await createSandboxBackend(backendType, selectedFramework);
+  const sandboxId = backend.id;
+
+  console.log(`[DEBUG] Memory backend created, ID: ${sandboxId}`);
 
   try {
     await convex.mutation(api.sandboxSessions.create, {
@@ -326,7 +323,7 @@ export async function* runCodeAgent(
   };
 
   const tools = createAgentTools({
-    sandboxId,
+    backend,
     state,
     updateFiles: (files) => {
       state.files = files;
@@ -359,7 +356,6 @@ export async function* runCodeAgent(
     };
   }
 
-  // Use streamText for real-time AI streaming
   const result = streamText({
     model: openrouter.chat(selectedModel),
     system: frameworkPrompt,
@@ -375,7 +371,6 @@ export async function* runCodeAgent(
     },
   });
 
-  // Stream text chunks in real-time
   let fullText = "";
   for await (const chunk of result.textStream) {
     fullText += chunk;
@@ -413,86 +408,15 @@ export async function* runCodeAgent(
     }
   }
 
-  yield { type: "status", data: "Cleaning build artifacts..." };
+  const warningReasons: string[] = [];
   
-  // Clean .next directory to avoid permission errors
-  await cleanNextDirectory(sandbox);
-
-  yield { type: "status", data: "Running build validation..." };
-
-  // Skip lint check for speed - only run build validation
-  const buildErrors = await runBuildCheck(sandbox);
-
-  let validationErrors = buildErrors || "";
-  let autoFixAttempts = 0;
-  let lastErrorMessage = validationErrors || resultText;
-
   if (selectedFramework === "nextjs") {
     if (
       Object.keys(state.files).length > 0 &&
       !usesShadcnComponents(state.files)
     ) {
-      const shadcnError =
-        "[ERROR] Missing Shadcn UI usage. Rebuild the UI using components imported from '@/components/ui/*' instead of plain HTML elements.";
-      lastErrorMessage = lastErrorMessage
-        ? `${lastErrorMessage}\n${shadcnError}`
-        : shadcnError;
+      warningReasons.push("missing Shadcn UI components");
     }
-  }
-
-  while (
-    autoFixAttempts < AUTO_FIX_MAX_ATTEMPTS &&
-    (shouldTriggerAutoFix(lastErrorMessage) || validationErrors)
-  ) {
-    autoFixAttempts += 1;
-    yield {
-      type: "status",
-      data: `Auto-fixing errors (attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})...`,
-    };
-
-    const fixPrompt = `CRITICAL BUILD/LINT ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
-
-Your previous code generation resulted in build or lint errors. You MUST fix these errors now.
-
-=== ERROR OUTPUT ===
-${validationErrors || lastErrorMessage || "No error details provided."}
-
-=== DEBUGGING STEPS ===
-1. READ THE ERROR CAREFULLY: Look for specific file names, line numbers, and error types
-2. IDENTIFY THE ROOT CAUSE
-3. FIX THE ERROR using createOrUpdateFiles
-4. VERIFY YOUR FIX by running: npm run lint && npm run build
-5. PROVIDE SUMMARY with <task_summary> once fixed`;
-
-    const fixResult = await generateText({
-      model: openrouter.chat(selectedModel),
-      system: frameworkPrompt,
-      messages: [
-        ...messages,
-        { role: "assistant" as const, content: resultText },
-        { role: "user" as const, content: fixPrompt },
-      ],
-      tools,
-      stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
-      ...modelOptions,
-    });
-
-    const fixSummary = extractSummaryText(fixResult.text || "");
-    if (fixSummary) {
-      state.summary = fixSummary;
-      summaryText = fixSummary;
-    }
-
-    const newBuildErrors = await runBuildCheck(sandbox);
-
-    validationErrors = newBuildErrors || "";
-
-    if (!validationErrors) {
-      console.log("[DEBUG] All validation errors resolved!");
-      break;
-    }
-
-    lastErrorMessage = validationErrors;
   }
 
   yield { type: "files", data: state.files };
@@ -507,15 +431,12 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
   yield { type: "status", data: "Reading sandbox files..." };
 
-  const findCommand = getFindCommand(selectedFramework);
-  const findResult = await sandbox.commands.run(findCommand);
-  const filePaths = findResult.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.includes("Permission denied"))
+  const filePaths = await backend.listFiles();
+  const validFilePaths = filePaths
+    .filter((path) => shouldIncludeFile(path))
     .filter(isValidFilePath);
 
-  const sandboxFiles = await readFilesInBatches(sandbox, filePaths);
+  const sandboxFiles = await backend.readFiles(validFilePaths);
   const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
   const mergedFiles = { ...filteredSandboxFiles, ...state.files };
 
@@ -527,23 +448,12 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
   }
 
   const criticalErrorReasons: string[] = [];
-  const warningReasons: string[] = [];
 
   if (!hasFiles) {
     criticalErrorReasons.push("no files generated");
   }
   if (!summaryText) {
     criticalErrorReasons.push("no summary available");
-  }
-  if (validationErrors && hasFiles) {
-    warningReasons.push("validation errors detected");
-  }
-  if (
-    selectedFramework === "nextjs" &&
-    hasFiles &&
-    !usesShadcnComponents(state.files)
-  ) {
-    warningReasons.push("missing Shadcn UI components");
   }
 
   const isCriticalError = criticalErrorReasons.length > 0;
@@ -568,7 +478,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
   yield { type: "status", data: "Starting dev server..." };
 
-  const sandboxUrl = await startDevServer(sandbox, selectedFramework);
+  const sandboxUrl = await backend.startDevServer(selectedFramework);
 
   yield { type: "status", data: "Saving results..." };
 
@@ -590,6 +500,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
     model: selectedModel,
     modelName: MODEL_CONFIGS[selectedModel].name,
     provider: MODEL_CONFIGS[selectedModel].provider,
+    backendType,
     ...(warningReasons.length > 0 && { warnings: warningReasons }),
   };
 
@@ -622,153 +533,19 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       summary: summaryText,
       sandboxId,
       framework: selectedFramework,
+      backendType,
     },
   };
 }
 
-export async function runErrorFix(fragmentId: string): Promise<{
+export async function runErrorFix(_fragmentId: string): Promise<{
   success: boolean;
   message: string;
   summary?: string;
   remainingErrors?: string;
 }> {
-  const fragment = await convex.query(api.messages.getFragmentById, {
-    fragmentId: fragmentId as Id<"fragments">,
-  });
-
-  if (!fragment) {
-    throw new Error("Fragment not found");
-  }
-
-  if (!fragment.sandboxId) {
-    throw new Error("Fragment has no active sandbox");
-  }
-
-  const message = await convex.query(api.messages.get, {
-    messageId: fragment.messageId as Id<"messages">,
-  });
-  if (!message) {
-    throw new Error("Message not found");
-  }
-
-  const project = await convex.query(api.projects.getForSystem, {
-    projectId: message.projectId as Id<"projects">,
-  });
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  const fragmentFramework = (fragment.framework?.toLowerCase() ||
-    "nextjs") as Framework;
-  const sandboxId = fragment.sandboxId;
-
-  let sandbox: Sandbox;
-  try {
-    sandbox = await getSandbox(sandboxId);
-  } catch {
-    throw new Error("Sandbox is no longer active. Please refresh the fragment.");
-  }
-
-  const fragmentMetadata =
-    typeof fragment.metadata === "object" && fragment.metadata !== null
-      ? (fragment.metadata as Record<string, unknown>)
-      : {};
-
-  const fragmentModel =
-    (fragmentMetadata.model as keyof typeof MODEL_CONFIGS) ||
-    "anthropic/claude-haiku-4.5";
-
-  // Skip lint check for speed - only run build validation
-  const buildErrors = await runBuildCheck(sandbox);
-
-  const validationErrors = buildErrors || "";
-
-  if (!validationErrors) {
-    return {
-      success: true,
-      message: "No errors detected",
-    };
-  }
-
-  const state: AgentState = {
-    summary: "",
-    files: fragment.files as Record<string, string>,
-    selectedFramework: fragmentFramework,
-    summaryRetryCount: 0,
-  };
-
-  const tools = createAgentTools({
-    sandboxId,
-    state,
-    updateFiles: (files) => {
-      state.files = files;
-    },
-  });
-
-  const frameworkPrompt = getFrameworkPrompt(fragmentFramework);
-  const modelConfig = MODEL_CONFIGS[fragmentModel];
-
-  const fixPrompt = `CRITICAL ERROR FIX REQUEST
-
-The following errors were detected in the application and need to be fixed immediately:
-
-${validationErrors}
-
-REQUIRED ACTIONS:
-1. Carefully analyze the error messages to identify the root cause
-2. Check for common issues: missing imports, type errors, syntax errors, missing packages
-3. Apply the necessary fixes to resolve ALL errors completely
-4. Verify the fixes by ensuring the code is syntactically correct
-5. Provide a <task_summary> explaining what was fixed`;
-
-  const result = await generateText({
-    model: openrouter.chat(fragmentModel),
-    system: frameworkPrompt,
-    messages: [{ role: "user", content: fixPrompt }],
-    tools,
-    stopWhen: stepCountIs(10),
-    temperature: modelConfig.temperature,
-  });
-
-  const summaryText = extractSummaryText(result.text || "");
-  if (summaryText) {
-    state.summary = summaryText;
-  }
-
-  // Skip lint check for speed - only run build validation
-  const newBuildErrors = await runBuildCheck(sandbox);
-
-  const remainingErrors = newBuildErrors || "";
-
-  for (const [path, content] of Object.entries(state.files)) {
-    try {
-      await sandbox.files.write(path, content);
-    } catch (error) {
-      console.error(`[ERROR] Failed to write file ${path}:`, error);
-    }
-  }
-
-  await convex.mutation(api.messages.createFragmentForUser, {
-    userId: project.userId,
-    messageId: fragment.messageId,
-    sandboxId: fragment.sandboxId || undefined,
-    sandboxUrl: fragment.sandboxUrl,
-    title: fragment.title,
-    files: state.files,
-    framework: frameworkToConvexEnum(fragmentFramework),
-    metadata: {
-      ...fragmentMetadata,
-      previousFiles: fragment.files,
-      fixedAt: new Date().toISOString(),
-    },
-  });
-
   return {
-    success: !remainingErrors,
-    message: remainingErrors
-      ? "Some errors may remain. Please check the sandbox."
-      : "Errors fixed successfully",
-    summary: state.summary,
-    remainingErrors: remainingErrors || undefined,
+    success: false,
+    message: "Error fixing now happens client-side in WebContainer. Please use the preview panel to run build/lint.",
   };
 }
