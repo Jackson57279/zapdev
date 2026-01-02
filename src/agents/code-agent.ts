@@ -18,14 +18,12 @@ import {
 import {
   createSandbox,
   getSandbox,
-  runLintCheck,
   runBuildCheck,
   shouldTriggerAutoFix,
   getFindCommand,
   readFilesInBatches,
   isValidFilePath,
   startDevServer,
-  getFrameworkPort,
   cleanNextDirectory,
 } from "./sandbox-utils";
 import { crawlUrl, type CrawledContent } from "@/lib/firecrawl";
@@ -39,8 +37,9 @@ import {
   VUE_PROMPT,
   SVELTE_PROMPT,
 } from "@/prompt";
-import { sanitizeTextForDatabase, sanitizeJsonForDatabase } from "@/lib/utils";
+import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
+import { cache } from "@/lib/cache";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -60,8 +59,9 @@ const convex = new Proxy({} as ConvexHttpClient, {
   },
 });
 
-const AUTO_FIX_MAX_ATTEMPTS = 2;
+const AUTO_FIX_MAX_ATTEMPTS = 1;
 const MAX_AGENT_ITERATIONS = 8;
+const FRAMEWORK_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
 
 type FragmentMetadata = Record<string, unknown>;
 
@@ -128,21 +128,29 @@ const usesShadcnComponents = (files: Record<string, string>) => {
 };
 
 async function detectFramework(prompt: string): Promise<Framework> {
-  const { text } = await generateText({
-    model: openrouter.chat("google/gemini-2.5-flash-lite"),
-    system: FRAMEWORK_SELECTOR_PROMPT,
-    prompt,
-    temperature: 0.3,
-  });
+  const cacheKey = `framework:${prompt.slice(0, 200)}`;
+  
+  return cache.getOrCompute(
+    cacheKey,
+    async () => {
+      const { text } = await generateText({
+        model: openrouter.chat("google/gemini-2.5-flash-lite"),
+        system: FRAMEWORK_SELECTOR_PROMPT,
+        prompt,
+        temperature: 0.3,
+      });
 
-  const detectedFramework = text.trim().toLowerCase();
-  if (
-    ["nextjs", "angular", "react", "vue", "svelte"].includes(detectedFramework)
-  ) {
-    return detectedFramework as Framework;
-  }
+      const detectedFramework = text.trim().toLowerCase();
+      if (
+        ["nextjs", "angular", "react", "vue", "svelte"].includes(detectedFramework)
+      ) {
+        return detectedFramework as Framework;
+      }
 
-  return "nextjs";
+      return "nextjs";
+    },
+    FRAMEWORK_CACHE_TTL_30_MINUTES
+  );
 }
 
 async function generateFragmentMetadata(
@@ -235,17 +243,27 @@ export async function* runCodeAgent(
   let selectedFramework: Framework =
     (project?.framework?.toLowerCase() as Framework) || "nextjs";
 
-  if (!project?.framework) {
-    yield { type: "status", data: "Detecting framework..." };
-    selectedFramework = await detectFramework(value);
-    console.log("[DEBUG] Selected framework:", selectedFramework);
+  const needsFrameworkDetection = !project?.framework;
+  
+  yield { type: "status", data: "Setting up environment..." };
 
-    await convex.mutation(api.projects.updateForUser, {
+  const [detectedFramework, sandbox] = await Promise.all([
+    needsFrameworkDetection ? detectFramework(value) : Promise.resolve(selectedFramework),
+    createSandbox(selectedFramework),
+  ]);
+
+  if (needsFrameworkDetection) {
+    selectedFramework = detectedFramework;
+    console.log("[DEBUG] Selected framework:", selectedFramework);
+    
+    convex.mutation(api.projects.updateForUser, {
       userId: project.userId,
       projectId: projectId as Id<"projects">,
       framework: frameworkToConvexEnum(selectedFramework),
     });
   }
+
+  const sandboxId = sandbox.sandboxId;
 
   const modelPref = project?.modelPreference;
   const isValidModel = (m: string | undefined): m is ModelId => 
@@ -264,11 +282,6 @@ export async function* runCodeAgent(
       : (validatedModel as keyof typeof MODEL_CONFIGS);
 
   console.log("[DEBUG] Selected model:", selectedModel);
-
-  yield { type: "status", data: "Creating sandbox environment..." };
-
-  const sandbox = await createSandbox(selectedFramework);
-  const sandboxId = sandbox.sandboxId;
 
   try {
     await convex.mutation(api.sandboxSessions.create, {
@@ -292,25 +305,26 @@ export async function* runCodeAgent(
     content: msg.content,
   }));
 
-  yield { type: "status", data: "Analyzing URLs in prompt..." };
-
   const urls = extractUrls(value).slice(0, 2);
-  const crawledContexts: CrawledContent[] = [];
+  let crawledContexts: CrawledContent[] = [];
 
   if (urls.length > 0) {
-    for (const url of urls) {
-      try {
-        const crawled = await Promise.race([
+    yield { type: "status", data: "Analyzing URLs in prompt..." };
+    
+    const crawlResults = await Promise.allSettled(
+      urls.map((url) =>
+        Promise.race([
           crawlUrl(url),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
-        ]);
-        if (crawled) {
-          crawledContexts.push(crawled);
-        }
-      } catch (error) {
-        console.error("[ERROR] Crawl error for URL:", url, error);
-      }
-    }
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+        ])
+      )
+    );
+    
+    crawledContexts = crawlResults
+      .filter((r): r is PromiseFulfilledResult<CrawledContent | null> => 
+        r.status === "fulfilled" && r.value !== null
+      )
+      .map((r) => r.value as CrawledContent);
   }
 
   const crawlMessages = crawledContexts.map((ctx) => ({
@@ -413,15 +427,12 @@ export async function* runCodeAgent(
     }
   }
 
-  yield { type: "status", data: "Cleaning build artifacts..." };
+  yield { type: "status", data: "Validating build..." };
   
-  // Clean .next directory to avoid permission errors
-  await cleanNextDirectory(sandbox);
-
-  yield { type: "status", data: "Running build validation..." };
-
-  // Skip lint check for speed - only run build validation
-  const buildErrors = await runBuildCheck(sandbox);
+  const [, buildErrors] = await Promise.all([
+    cleanNextDirectory(sandbox),
+    runBuildCheck(sandbox),
+  ]);
 
   let validationErrors = buildErrors || "";
   let autoFixAttempts = 0;
@@ -566,14 +577,12 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
     return;
   }
 
-  yield { type: "status", data: "Starting dev server..." };
+  yield { type: "status", data: "Finalizing..." };
 
-  const sandboxUrl = await startDevServer(sandbox, selectedFramework);
-
-  yield { type: "status", data: "Saving results..." };
-
-  const { title: fragmentTitle, response: responseContent } =
-    await generateFragmentMetadata(summaryText);
+  const [sandboxUrl, { title: fragmentTitle, response: responseContent }] = await Promise.all([
+    startDevServer(sandbox, selectedFramework),
+    generateFragmentMetadata(summaryText),
+  ]);
 
   const sanitizedResponse = sanitizeTextForDatabase(responseContent);
   const warningsNote =

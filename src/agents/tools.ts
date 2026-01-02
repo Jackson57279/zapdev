@@ -1,16 +1,18 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { getSandbox } from "./sandbox-utils";
+import { getSandbox, writeFilesBatch, readFileFast } from "./sandbox-utils";
 import type { AgentState } from "./types";
 
 export interface ToolContext {
   sandboxId: string;
   state: AgentState;
   updateFiles: (files: Record<string, string>) => void;
+  onFileCreated?: (path: string, content: string) => void;
+  onToolOutput?: (source: "stdout" | "stderr", chunk: string) => void;
 }
 
 export function createAgentTools(context: ToolContext) {
-  const { sandboxId, state, updateFiles } = context;
+  const { sandboxId, state, updateFiles, onFileCreated, onToolOutput } = context;
 
   return {
     terminal: tool({
@@ -26,9 +28,11 @@ export function createAgentTools(context: ToolContext) {
           const result = await sandbox.commands.run(command, {
             onStdout: (data: string) => {
               buffers.stdout += data;
+              onToolOutput?.("stdout", data);
             },
             onStderr: (data: string) => {
               buffers.stderr += data;
+              onToolOutput?.("stderr", data);
             },
           });
           return result.stdout || buffers.stdout;
@@ -56,9 +60,19 @@ export function createAgentTools(context: ToolContext) {
           const sandbox = await getSandbox(sandboxId);
           const updatedFiles = { ...state.files };
 
+          // Convert array to record for batch writing
+          const filesToWrite: Record<string, string> = {};
           for (const file of files) {
-            await sandbox.files.write(file.path, file.content);
+            filesToWrite[file.path] = file.content;
             updatedFiles[file.path] = file.content;
+          }
+
+          // Use batch write for O(1) API calls instead of O(N)
+          await writeFilesBatch(sandbox, filesToWrite);
+
+          // Emit file created events for streaming
+          for (const file of files) {
+            onFileCreated?.(file.path, file.content);
           }
 
           updateFiles(updatedFiles);
@@ -77,14 +91,16 @@ export function createAgentTools(context: ToolContext) {
       execute: async ({ files }) => {
         try {
           const sandbox = await getSandbox(sandboxId);
-          const contents = [];
+          
+          // Parallel file reading for speed
+          const results = await Promise.all(
+            files.map(async (file) => {
+              const content = await readFileFast(sandbox, file);
+              return { path: file, content: content || "" };
+            })
+          );
 
-          for (const file of files) {
-            const content = await sandbox.files.read(file);
-            contents.push({ path: file, content });
-          }
-
-          return JSON.stringify(contents);
+          return JSON.stringify(results);
         } catch (e) {
           return "Error: " + e;
         }

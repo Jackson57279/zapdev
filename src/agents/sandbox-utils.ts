@@ -2,12 +2,13 @@ import { Sandbox } from "@e2b/code-interpreter";
 import { SANDBOX_TIMEOUT, type Framework } from "./types";
 
 const SANDBOX_CACHE = new Map<string, Sandbox>();
-const CACHE_EXPIRY = 10 * 60 * 1000; // 10 minutes
+const PROJECT_SANDBOX_MAP = new Map<string, string>();
+const CACHE_EXPIRY_MS = 10 * 60 * 1000;
 
 const clearCacheEntry = (sandboxId: string) => {
   setTimeout(() => {
     SANDBOX_CACHE.delete(sandboxId);
-  }, CACHE_EXPIRY);
+  }, CACHE_EXPIRY_MS);
 };
 
 export async function getSandbox(sandboxId: string): Promise<Sandbox> {
@@ -34,9 +35,29 @@ export async function getSandbox(sandboxId: string): Promise<Sandbox> {
   }
 }
 
-export async function createSandbox(framework: Framework): Promise<Sandbox> {
+export async function getOrCreateSandboxForProject(
+  projectId: string,
+  framework: Framework
+): Promise<Sandbox> {
+  const existingSandboxId = PROJECT_SANDBOX_MAP.get(projectId);
+  
+  if (existingSandboxId) {
+    try {
+      const sandbox = await getSandbox(existingSandboxId);
+      console.log(`[DEBUG] Reusing existing sandbox ${existingSandboxId} for project ${projectId}`);
+      return sandbox;
+    } catch {
+      PROJECT_SANDBOX_MAP.delete(projectId);
+    }
+  }
+  
+  const sandbox = await createSandbox(framework);
+  PROJECT_SANDBOX_MAP.set(projectId, sandbox.sandboxId);
+  return sandbox;
+}
+
+export async function createSandbox(_framework: Framework): Promise<Sandbox> {
   try {
-    // Fast path: create sandbox directly without template fallback chain
     console.log("[DEBUG] Creating sandbox...");
     const sandbox = await Sandbox.create({
       apiKey: process.env.E2B_API_KEY,

@@ -14,6 +14,7 @@ export { createAgentTools, type ToolContext } from "./tools";
 export {
   getSandbox,
   createSandbox,
+  getOrCreateSandboxForProject,
   getE2BTemplate,
   getFrameworkPort,
   getDevServerCommand,
@@ -28,5 +29,8 @@ export {
   MAX_FILE_COUNT,
   getSandboxUrl,
   startDevServer,
+  writeFilesBatch,
+  readFileFast,
+  listFiles,
 } from "./sandbox-utils";
 export { runCodeAgent, runErrorFix, type StreamEvent } from "./code-agent";
