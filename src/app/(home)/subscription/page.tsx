@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PolarCheckoutButton } from "@/components/polar-checkout-button";
+import { getPolarProPriceIds } from "@/lib/polar";
 import { Loader2, CreditCard, Calendar, Zap, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
@@ -27,10 +28,13 @@ export default function SubscriptionPage() {
     return <RedirectToSignIn />;
   }
 
-  const isProUser = subscription?.planName === "Pro" && subscription?.status === "active";
+  const isProUser = subscription !== null && subscription?.status === "active";
   const planName = isProUser ? "Pro" : "Free";
   const creditsPerDay = isProUser ? 100 : 5;
   const remainingCredits = usage?.points ?? creditsPerDay;
+
+  // Get the monthly price ID for Pro subscription
+  const { monthly: proPriceId } = getPolarProPriceIds();
 
   const periodEnd = subscription?.currentPeriodEnd 
     ? new Date(subscription.currentPeriodEnd).toLocaleDateString("en-US", {
@@ -90,7 +94,7 @@ export default function SubscriptionPage() {
           </CardContent>
           <CardFooter className="flex gap-4">
             {!isProUser ? (
-              <PolarCheckoutButton className="flex-1">
+              <PolarCheckoutButton priceId={proPriceId} className="flex-1">
                 Upgrade to Pro
               </PolarCheckoutButton>
             ) : (

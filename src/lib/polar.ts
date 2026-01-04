@@ -1,5 +1,3 @@
-"use server";
-
 import { Polar } from "@polar-sh/sdk";
 
 let polarClientInstance: Polar | null = null;
