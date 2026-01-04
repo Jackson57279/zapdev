@@ -11,19 +11,27 @@ function PricingCard({
   priceId,
   features,
   isPopular = false,
+  isFree = false,
 }: {
   title: string;
   description: string;
   price: number;
   interval: "monthly" | "yearly";
-  priceId: string;
+  priceId?: string;
   features: string[];
   isPopular?: boolean;
+  isFree?: boolean;
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleCheckout = async () => {
+    if (isFree || !priceId) {
+      // Free tier - just redirect to sign up
+      window.location.href = "/sign-up";
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -93,7 +101,7 @@ function PricingCard({
               : "bg-secondary text-secondary-foreground hover:bg-secondary/90"
         }`}
       >
-        {isLoading ? "Processing..." : "Get Started"}
+        {isLoading ? "Processing..." : isFree ? "Sign Up Free" : "Get Started"}
       </button>
 
       {error && (
@@ -127,7 +135,7 @@ export function PricingPageContent() {
             description="Perfect for trying out ZapDev"
             price={0}
             interval="monthly"
-            priceId={process.env.NEXT_PUBLIC_POLAR_PRO_PRICE_ID || ""}
+            isFree={true}
             features={[
               "5 AI messages per day",
               "Access to basic AI models",
@@ -139,7 +147,7 @@ export function PricingPageContent() {
             description="For power users and teams"
             price={29}
             interval="monthly"
-            priceId={process.env.NEXT_PUBLIC_POLAR_PRO_PRICE_ID || ""}
+            priceId={process.env.NEXT_PUBLIC_POLAR_PRO_PRICE_ID}
             isPopular={true}
             features={[
               "100 AI messages per day",

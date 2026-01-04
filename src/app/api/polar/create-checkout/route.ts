@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
     } = body;
 
-    if (!priceId) {
+    if (!priceId || typeof priceId !== "string" || priceId.trim().length === 0) {
       const { monthly, yearly } = getPolarProPriceIds();
       return NextResponse.json(
         { error: "priceId is required. Use " + monthly + " or " + yearly },
