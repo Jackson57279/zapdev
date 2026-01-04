@@ -38,7 +38,7 @@ const Page = () => {
         '@type': 'AggregateOffer',
         priceCurrency: 'USD',
         lowPrice: '0',
-        highPrice: '99',
+        highPrice: '150',
         offerCount: '3',
         offers: [
           {
@@ -57,10 +57,10 @@ const Page = () => {
           },
           {
             '@type': 'Offer',
-            name: 'Team Plan',
-            price: '99',
+            name: 'Unlimited Plan',
+            price: '150',
             priceCurrency: 'USD',
-            description: 'For teams and organizations'
+            description: 'For serious developers and agencies'
           }
         ]
       }

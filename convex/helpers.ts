@@ -34,6 +34,23 @@ export async function hasProAccess(ctx: QueryCtx | MutationCtx): Promise<boolean
   return subscription.productId === process.env.NEXT_PUBLIC_POLAR_PRO_PRODUCT_ID;
 }
 
+export async function hasUnlimitedAccess(ctx: QueryCtx | MutationCtx): Promise<boolean> {
+  const userId = await getCurrentUserId(ctx);
+  if (!userId) return false;
+
+  const subscription = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .filter((q) => q.eq(q.field("status"), "active"))
+    .first();
+
+  if (!subscription) {
+    return false;
+  }
+
+  return subscription.productId === process.env.NEXT_PUBLIC_POLAR_UNLIMITED_PRODUCT_ID;
+}
+
 export async function hasPlan(
   ctx: QueryCtx | MutationCtx,
   planProductId: string

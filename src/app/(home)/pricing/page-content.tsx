@@ -157,6 +157,21 @@ export function PricingPageContent() {
               "Advanced features",
             ]}
           />
+          <PricingCard
+            title="Unlimited"
+            description="For serious developers and agencies"
+            price={150}
+            interval="monthly"
+            priceId={process.env.NEXT_PUBLIC_POLAR_UNLIMITED_PRICE_ID}
+            features={[
+              "Unlimited AI messages",
+              "Access to all AI models",
+              "Dedicated support",
+              "Fastest response times",
+              "Advanced features",
+              "Priority processing",
+            ]}
+          />
         </div>
 
         <div className="mt-12 text-center text-sm text-muted-foreground">

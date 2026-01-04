@@ -1,10 +1,11 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, hasProAccess } from "./helpers";
+import { requireAuth, hasProAccess, hasUnlimitedAccess } from "./helpers";
 
 // Constants matching the existing system
 const FREE_POINTS = 5;
 const PRO_POINTS = 100;
+const UNLIMITED_POINTS = Number.MAX_SAFE_INTEGER;
 const DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const GENERATION_COST = 1;
 
@@ -19,7 +20,8 @@ export const checkAndConsumeCredit = mutation({
 
     // Check user's plan
     const isPro = await hasProAccess(ctx);
-    const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
+    const isUnlimited = await hasUnlimitedAccess(ctx);
+    const maxPoints = isUnlimited ? UNLIMITED_POINTS : isPro ? PRO_POINTS : FREE_POINTS;
 
     // Get current usage
     const usage = await ctx.db
@@ -37,7 +39,7 @@ export const checkAndConsumeCredit = mutation({
         await ctx.db.patch(usage._id, {
           points: maxPoints - GENERATION_COST,
           expire: expiryTime,
-          planType: isPro ? "pro" : "free",
+          planType: isUnlimited ? "unlimited" : isPro ? "pro" : "free",
         });
       } else {
         // Create new usage record
@@ -45,14 +47,13 @@ export const checkAndConsumeCredit = mutation({
           userId,
           points: maxPoints - GENERATION_COST,
           expire: expiryTime,
-          planType: isPro ? "pro" : "free",
+          planType: isUnlimited ? "unlimited" : isPro ? "pro" : "free",
         });
       }
       return { success: true, remaining: maxPoints - GENERATION_COST };
     }
 
-    // Check if user has enough points
-    if (usage.points < GENERATION_COST) {
+    if (!isUnlimited && usage.points < GENERATION_COST) {
       const timeUntilReset = usage.expire ? Math.ceil((usage.expire - now) / 1000 / 60) : 0;
       return {
         success: false,
@@ -79,7 +80,8 @@ export const getUsage = query({
     const userId = await requireAuth(ctx);
 
     const isPro = await hasProAccess(ctx);
-    const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
+    const isUnlimited = await hasUnlimitedAccess(ctx);
+    const maxPoints = isUnlimited ? UNLIMITED_POINTS : isPro ? PRO_POINTS : FREE_POINTS;
 
     const usage = await ctx.db
       .query("usage")
@@ -95,7 +97,7 @@ export const getUsage = query({
         points: maxPoints,
         maxPoints,
         expire,
-        planType: isPro ? "pro" : "free",
+        planType: isUnlimited ? "unlimited" : isPro ? "pro" : "free",
         // Aliases for compatibility
         remainingPoints: maxPoints,
         creditsRemaining: maxPoints,
@@ -108,7 +110,7 @@ export const getUsage = query({
       points: usage.points,
       maxPoints,
       expire,
-      planType: usage.planType || (isPro ? "pro" : "free"),
+      planType: usage.planType || (isUnlimited ? "unlimited" : isPro ? "pro" : "free"),
       // Aliases for compatibility
       remainingPoints: usage.points,
       creditsRemaining: usage.points,
@@ -153,7 +155,8 @@ export const getUsageInternal = async (
   msBeforeNext: number;
 }> => {
   const isPro = await hasProAccess(ctx).catch(() => false);
-  const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
+  const isUnlimited = await hasUnlimitedAccess(ctx).catch(() => false);
+  const maxPoints = isUnlimited ? UNLIMITED_POINTS : isPro ? PRO_POINTS : FREE_POINTS;
 
   const usage = await ctx.db
     .query("usage")
@@ -168,7 +171,7 @@ export const getUsageInternal = async (
       points: maxPoints,
       maxPoints,
       expire,
-      planType: isPro ? "pro" : "free",
+      planType: isUnlimited ? "unlimited" : isPro ? "pro" : "free",
       remainingPoints: maxPoints,
       creditsRemaining: maxPoints,
       msBeforeNext: DURATION_MS,
@@ -180,7 +183,7 @@ export const getUsageInternal = async (
     points: usage.points,
     maxPoints,
     expire,
-    planType: usage.planType || (isPro ? "pro" : "free"),
+    planType: usage.planType || (isUnlimited ? "unlimited" : isPro ? "pro" : "free"),
     remainingPoints: usage.points,
     creditsRemaining: usage.points,
     msBeforeNext: expire - now,
@@ -219,7 +222,8 @@ export const checkAndConsumeCreditInternal = async (
   userId: string
 ): Promise<{ success: boolean; remaining: number; message?: string }> => {
   const isPro = await hasProAccess(ctx).catch(() => false);
-  const maxPoints = isPro ? PRO_POINTS : FREE_POINTS;
+  const isUnlimited = await hasUnlimitedAccess(ctx).catch(() => false);
+  const maxPoints = isUnlimited ? UNLIMITED_POINTS : isPro ? PRO_POINTS : FREE_POINTS;
 
   const usage = await ctx.db
     .query("usage")
@@ -234,20 +238,20 @@ export const checkAndConsumeCreditInternal = async (
       await ctx.db.patch(usage._id, {
         points: maxPoints - GENERATION_COST,
         expire: expiryTime,
-        planType: isPro ? "pro" : "free",
+        planType: isUnlimited ? "unlimited" : isPro ? "pro" : "free",
       });
     } else {
       await ctx.db.insert("usage", {
         userId,
         points: maxPoints - GENERATION_COST,
         expire: expiryTime,
-        planType: isPro ? "pro" : "free",
+        planType: isUnlimited ? "unlimited" : isPro ? "pro" : "free",
       });
     }
     return { success: true, remaining: maxPoints - GENERATION_COST };
   }
 
-  if (usage.points < GENERATION_COST) {
+  if (!isUnlimited && usage.points < GENERATION_COST) {
     const timeUntilReset = usage.expire ? Math.ceil((usage.expire - now) / 1000 / 60) : 0;
     return {
       success: false,

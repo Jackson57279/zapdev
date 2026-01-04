@@ -174,7 +174,7 @@ export default defineSchema({
     userId: v.string(),
     points: v.number(),
     expire: v.optional(v.number()),
-    planType: v.optional(v.union(v.literal("free"), v.literal("pro"))),
+    planType: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("unlimited"))),
   })
     .index("by_userId", ["userId"])
     .index("by_expire", ["expire"]),

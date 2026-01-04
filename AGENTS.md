@@ -77,7 +77,8 @@ bun run build        # Production build
 - **NEVER** create `.md` files in root — use `explanations/`
 - **NEVER** use absolute paths in AI-generated code (e.g., `/home/user/...`)
 - **DO NOT** load Tailwind as external stylesheet
-
+- **DO NOT** use 'as' or 'any' when you see a Typescript error.
+- **DO NOT** Run bun convex dev or anything equivlent without user premission ask before using.
 ## UNIQUE STYLES
 
 **Feature-Based Modules**: Each module (home, projects, messages, usage) has `ui/` and `server/` subdirectories. Logic lives near its UI.

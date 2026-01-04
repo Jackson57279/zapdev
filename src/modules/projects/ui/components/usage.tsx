@@ -13,6 +13,7 @@ interface Props {
 
 export const Usage = ({ points, msBeforeNext, planType }: Props) => {
   const hasProAccess = planType === "pro";
+  const hasUnlimitedAccess = planType === "unlimited";
 
   const resetTime = useMemo(() => {
     try {
@@ -34,13 +35,15 @@ export const Usage = ({ points, msBeforeNext, planType }: Props) => {
       <div className="flex items-center gap-x-2">
         <div>
           <p className="text-sm">
-            {points} {hasProAccess ? "": "free"} credits remaining
+            {hasUnlimitedAccess ? "Unlimited" : `${points} ${hasProAccess ? "" : "free"} credits remaining`}
           </p>
-          <p className="text-xs text-muted-foreground">
-            Resets in{" "}{resetTime}
-          </p>
+          {!hasUnlimitedAccess && (
+            <p className="text-xs text-muted-foreground">
+              Resets in{" "}{resetTime}
+            </p>
+          )}
         </div>
-        {!hasProAccess && (
+        {!hasProAccess && !hasUnlimitedAccess && (
           <Button
             asChild
             size="sm"
