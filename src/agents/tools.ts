@@ -22,6 +22,7 @@ export function createAgentTools(context: ToolContext) {
       }),
       execute: async ({ command }) => {
         const buffers = { stdout: "", stderr: "" };
+        console.log("[DEBUG] Terminal tool called with command:", command);
 
         try {
           const sandbox = await getSandbox(sandboxId);
@@ -35,12 +36,14 @@ export function createAgentTools(context: ToolContext) {
               onToolOutput?.("stderr", data);
             },
           });
+          console.log("[DEBUG] Terminal command completed");
           return result.stdout || buffers.stdout;
         } catch (e) {
-          console.error(
-            `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`
-          );
-          return `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] Terminal command failed:", errorMessage);
+          console.error("[ERROR] stdout:", buffers.stdout.substring(0, 500));
+          console.error("[ERROR] stderr:", buffers.stderr.substring(0, 500));
+          return `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
         }
       },
     }),
@@ -56,29 +59,31 @@ export function createAgentTools(context: ToolContext) {
         ),
       }),
       execute: async ({ files }) => {
+        console.log("[DEBUG] createOrUpdateFiles tool called with", files.length, "files");
         try {
           const sandbox = await getSandbox(sandboxId);
           const updatedFiles = { ...state.files };
 
-          // Convert array to record for batch writing
           const filesToWrite: Record<string, string> = {};
           for (const file of files) {
             filesToWrite[file.path] = file.content;
             updatedFiles[file.path] = file.content;
+            console.log("[DEBUG] Queuing file for write:", file.path, `(${file.content.length} bytes)`);
           }
 
-          // Use batch write for O(1) API calls instead of O(N)
           await writeFilesBatch(sandbox, filesToWrite);
 
-          // Emit file created events for streaming
           for (const file of files) {
             onFileCreated?.(file.path, file.content);
           }
 
           updateFiles(updatedFiles);
+          console.log("[INFO] Successfully created/updated", files.length, "file(s)");
           return `Successfully created/updated ${files.length} file(s)`;
         } catch (e) {
-          return "Error: " + e;
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] createOrUpdateFiles failed:", errorMessage);
+          return `Error: ${errorMessage}`;
         }
       },
     }),
@@ -89,20 +94,24 @@ export function createAgentTools(context: ToolContext) {
         files: z.array(z.string()).describe("Array of file paths to read"),
       }),
       execute: async ({ files }) => {
+        console.log("[DEBUG] readFiles tool called with", files.length, "files");
         try {
           const sandbox = await getSandbox(sandboxId);
-          
-          // Parallel file reading for speed
+
           const results = await Promise.all(
             files.map(async (file) => {
               const content = await readFileFast(sandbox, file);
+              console.log("[DEBUG] Read file:", file, content ? `(${content.length} bytes)` : "(empty or not found)");
               return { path: file, content: content || "" };
             })
           );
 
+          console.log("[INFO] Successfully read", results.length, "file(s)");
           return JSON.stringify(results);
         } catch (e) {
-          return "Error: " + e;
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] readFiles failed:", errorMessage);
+          return `Error: ${errorMessage}`;
         }
       },
     }),

@@ -26,6 +26,7 @@ import type { OurFileRouter } from "@/lib/uploadthing";
 
 interface Props {
   projectId: string;
+  onStreamingFiles?: (files: Record<string, string>) => void;
 };
 
 const formSchema = z.object({
@@ -41,7 +42,7 @@ interface AttachmentData {
   height?: number;
 }
 
-export const MessageForm = ({ projectId }: Props) => {
+export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
   const router = useRouter();
 
   const usage = useQuery(api.usage.getUsage);
@@ -100,6 +101,7 @@ export const MessageForm = ({ projectId }: Props) => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      const streamingFiles: Record<string, string> = {};
 
       // Process the SSE stream
       const processStream = async () => {
@@ -125,6 +127,11 @@ export const MessageForm = ({ projectId }: Props) => {
                       break;
                     case "status":
                       console.log("[SSE] Status:", event.data);
+                      break;
+                    case "file-created":
+                      console.log("[SSE] File created:", event.data.path);
+                      streamingFiles[event.data.path] = event.data.content;
+                      onStreamingFiles?.(streamingFiles);
                       break;
                     case "error":
                       toast.error(event.data as string);

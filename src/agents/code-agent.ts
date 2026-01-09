@@ -223,6 +223,13 @@ export async function* runCodeAgent(
 ): AsyncGenerator<StreamEvent> {
   const { projectId, value, model: requestedModel } = input;
 
+  console.log("[INFO] [Agent Run] Received request:", {
+    projectId,
+    valueLength: value.length,
+    model: requestedModel,
+    timestamp: new Date().toISOString(),
+  });
+
   console.log("[DEBUG] Starting code-agent with AI SDK");
   console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
   console.log(
@@ -232,236 +239,330 @@ export async function* runCodeAgent(
 
   yield { type: "status", data: "Initializing project..." };
 
-  const project = await convex.query(api.projects.getForSystem, {
-    projectId: projectId as Id<"projects">,
-  });
-
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  let selectedFramework: Framework =
-    (project?.framework?.toLowerCase() as Framework) || "nextjs";
-
-  const needsFrameworkDetection = !project?.framework;
-  
-  yield { type: "status", data: "Setting up environment..." };
-
-  const [detectedFramework, sandbox] = await Promise.all([
-    needsFrameworkDetection ? detectFramework(value) : Promise.resolve(selectedFramework),
-    createSandbox(selectedFramework),
-  ]);
-
-  if (needsFrameworkDetection) {
-    selectedFramework = detectedFramework;
-    console.log("[DEBUG] Selected framework:", selectedFramework);
-    
-    convex.mutation(api.projects.updateForUser, {
-      userId: project.userId,
-      projectId: projectId as Id<"projects">,
-      framework: frameworkToConvexEnum(selectedFramework),
-    });
-  }
-
-  const sandboxId = sandbox.sandboxId;
-
-  const modelPref = project?.modelPreference;
-  const isValidModel = (m: string | undefined): m is ModelId => 
-    m === "auto" || (m !== undefined && m in MODEL_CONFIGS);
-  let validatedModel: ModelId = requestedModel || (isValidModel(modelPref) ? modelPref : "auto");
-  if (validatedModel !== "auto" && !(validatedModel in MODEL_CONFIGS)) {
-    console.warn(
-      `[WARN] Invalid model requested: "${validatedModel}". Falling back to "auto".`
-    );
-    validatedModel = "auto";
-  }
-
-  const selectedModel: keyof typeof MODEL_CONFIGS =
-    validatedModel === "auto"
-      ? selectModelForTask(value, selectedFramework)
-      : (validatedModel as keyof typeof MODEL_CONFIGS);
-
-  console.log("[DEBUG] Selected model:", selectedModel);
-
   try {
-    await convex.mutation(api.sandboxSessions.create, {
-      sandboxId,
+    const project = await convex.query(api.projects.getForSystem, {
       projectId: projectId as Id<"projects">,
-      userId: project.userId,
-      framework: frameworkToConvexEnum(selectedFramework),
-      autoPauseTimeout: 10 * 60 * 1000,
     });
-  } catch (error) {
-    console.error("[ERROR] Failed to create sandbox session:", error);
-  }
 
-  const previousMessages = await convex.query(api.messages.listForUser, {
-    userId: project.userId,
-    projectId: projectId as Id<"projects">,
-  });
+    if (!project) {
+      console.error("[ERROR] Project not found:", projectId);
+      throw new Error("Project not found");
+    }
 
-  const contextMessages = previousMessages.slice(-3).map((msg) => ({
-    role: msg.role === "ASSISTANT" ? ("assistant" as const) : ("user" as const),
-    content: msg.content,
-  }));
+    console.log("[INFO] Project loaded:", {
+      projectId: project._id,
+      framework: project.framework,
+      modelPreference: project.modelPreference,
+    });
 
-  const urls = extractUrls(value).slice(0, 2);
-  let crawledContexts: CrawledContent[] = [];
+    let selectedFramework: Framework =
+      (project?.framework?.toLowerCase() as Framework) || "nextjs";
 
-  if (urls.length > 0) {
-    yield { type: "status", data: "Analyzing URLs in prompt..." };
-    
-    const crawlResults = await Promise.allSettled(
-      urls.map((url) =>
-        Promise.race([
-          crawlUrl(url),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
-        ])
-      )
-    );
-    
-    crawledContexts = crawlResults
-      .filter((r): r is PromiseFulfilledResult<CrawledContent | null> => 
-        r.status === "fulfilled" && r.value !== null
-      )
-      .map((r) => r.value as CrawledContent);
-  }
+    const needsFrameworkDetection = !project?.framework;
 
-  const crawlMessages = crawledContexts.map((ctx) => ({
-    role: "user" as const,
-    content: `Crawled context from ${ctx.url}:\n${ctx.content}`,
-  }));
+    if (needsFrameworkDetection) {
+      console.log("[INFO] Framework detection required");
+    } else {
+      console.log("[INFO] Using existing framework:", selectedFramework);
+    }
 
-  const state: AgentState = {
-    summary: "",
-    files: {},
-    selectedFramework,
-    summaryRetryCount: 0,
-  };
+    yield { type: "status", data: "Setting up environment..." };
 
-  const tools = createAgentTools({
-    sandboxId,
-    state,
-    updateFiles: (files) => {
-      state.files = files;
-    },
-  });
+    console.log("[DEBUG] Creating sandbox...");
+    const [detectedFramework, sandbox] = await Promise.all([
+      needsFrameworkDetection ? detectFramework(value) : Promise.resolve(selectedFramework),
+      createSandbox(selectedFramework),
+    ]);
 
-  const frameworkPrompt = getFrameworkPrompt(selectedFramework);
-  const modelConfig = MODEL_CONFIGS[selectedModel];
+    console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
 
-  yield { type: "status", data: `Running ${modelConfig.name} agent...` };
+    if (needsFrameworkDetection) {
+      selectedFramework = detectedFramework;
+      console.log("[INFO] Detected framework:", selectedFramework);
 
-  const messages = [
-    ...crawlMessages,
-    ...contextMessages,
-    { role: "user" as const, content: value },
-  ];
-
-  const modelOptions: Record<string, unknown> = {
-    temperature: modelConfig.temperature,
-  };
-
-  if ("frequencyPenalty" in modelConfig) {
-    modelOptions.frequencyPenalty = modelConfig.frequencyPenalty;
-  }
-
-  if (selectedModel === "z-ai/glm-4.7") {
-    modelOptions.provider = {
-      order: ["Z.AI"],
-      allow_fallbacks: false,
-    };
-  }
-
-  // Use streamText for real-time AI streaming
-  const result = streamText({
-    model: openrouter.chat(selectedModel),
-    system: frameworkPrompt,
-    messages,
-    tools,
-    stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
-    ...modelOptions,
-    onFinish: async ({ text }) => {
-      const summaryMatch = extractSummaryText(text);
-      if (summaryMatch) {
-        state.summary = summaryMatch;
+      try {
+        await convex.mutation(api.projects.updateForUser, {
+          userId: project.userId,
+          projectId: projectId as Id<"projects">,
+          framework: frameworkToConvexEnum(selectedFramework),
+        });
+        console.log("[INFO] Framework saved to project");
+      } catch (error) {
+        console.warn("[WARN] Failed to save framework to project:", error);
       }
-    },
-  });
+    }
 
-  // Stream text chunks in real-time
-  let fullText = "";
-  for await (const chunk of result.textStream) {
-    fullText += chunk;
-    yield { type: "text", data: chunk };
-  }
+    const sandboxId = sandbox.sandboxId;
 
-  const resultText = fullText;
-  let summaryText = extractSummaryText(state.summary || resultText || "");
+    const modelPref = project?.modelPreference;
+    const isValidModel = (m: string | undefined): m is ModelId =>
+      m === "auto" || (m !== undefined && m in MODEL_CONFIGS);
+    let validatedModel: ModelId =
+      requestedModel || (isValidModel(modelPref) ? modelPref : "auto");
 
-  if (!summaryText && Object.keys(state.files).length > 0) {
-    console.log("[DEBUG] No summary detected, requesting explicitly...");
-    const followUp = await generateText({
+    if (validatedModel !== "auto" && !(validatedModel in MODEL_CONFIGS)) {
+      console.warn(
+        `[WARN] Invalid model requested: "${validatedModel}". Falling back to "auto".`
+      );
+      validatedModel = "auto";
+    }
+
+    const selectedModel: keyof typeof MODEL_CONFIGS =
+      validatedModel === "auto"
+        ? selectModelForTask(value, selectedFramework)
+        : (validatedModel as keyof typeof MODEL_CONFIGS);
+
+    console.log("[INFO] Selected model:", {
+      model: selectedModel,
+      name: MODEL_CONFIGS[selectedModel].name,
+      provider: MODEL_CONFIGS[selectedModel].provider,
+    });
+
+    try {
+      await convex.mutation(api.sandboxSessions.create, {
+        sandboxId,
+        projectId: projectId as Id<"projects">,
+        userId: project.userId,
+        framework: frameworkToConvexEnum(selectedFramework),
+        autoPauseTimeout: 10 * 60 * 1000,
+      });
+      console.log("[INFO] Sandbox session created");
+    } catch (error) {
+      console.error("[ERROR] Failed to create sandbox session:", error);
+    }
+
+    console.log("[DEBUG] Loading previous messages...");
+    const previousMessages = await convex.query(api.messages.listForUser, {
+      userId: project.userId,
+      projectId: projectId as Id<"projects">,
+    });
+
+    console.log("[DEBUG] Loaded", previousMessages.length, "previous messages");
+
+    const contextMessages = previousMessages.slice(-3).map((msg) => ({
+      role: msg.role === "ASSISTANT" ? ("assistant" as const) : ("user" as const),
+      content: msg.content,
+    }));
+
+    const urls = extractUrls(value).slice(0, 2);
+    let crawledContexts: CrawledContent[] = [];
+
+    if (urls.length > 0) {
+      console.log("[INFO] Found", urls.length, "URL(s) to crawl:", urls);
+      yield { type: "status", data: "Analyzing URLs in prompt..." };
+
+      const crawlResults = await Promise.allSettled(
+        urls.map((url) =>
+          Promise.race([
+            crawlUrl(url),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+          ])
+        )
+      );
+
+      crawledContexts = crawlResults
+        .filter(
+          (r): r is PromiseFulfilledResult<CrawledContent | null> =>
+            r.status === "fulfilled" && r.value !== null
+        )
+        .map((r) => r.value as CrawledContent);
+
+      console.log(
+        "[INFO] Successfully crawled",
+        crawledContexts.length,
+        "URL(s)"
+      );
+    }
+
+    const crawlMessages = crawledContexts.map((ctx) => ({
+      role: "user" as const,
+      content: `Crawled context from ${ctx.url}:\n${ctx.content}`,
+    }));
+
+    const state: AgentState = {
+      summary: "",
+      files: {},
+      selectedFramework,
+      summaryRetryCount: 0,
+    };
+
+    console.log("[DEBUG] Creating agent tools...");
+    const tools = createAgentTools({
+      sandboxId,
+      state,
+      updateFiles: (files) => {
+        state.files = files;
+      },
+      onFileCreated: (path, content) => {
+        console.log("[DEBUG] File created:", path, `(${content.length} bytes)`);
+      },
+      onToolOutput: (source, chunk) => {
+        if (chunk.includes("error") || chunk.includes("Error")) {
+          console.log(`[${source.toUpperCase()}]`, chunk.trim());
+        }
+      },
+    });
+
+    const frameworkPrompt = getFrameworkPrompt(selectedFramework);
+    const modelConfig = MODEL_CONFIGS[selectedModel];
+
+    yield { type: "status", data: `Running ${modelConfig.name} agent...` };
+    console.log("[INFO] Starting AI generation...");
+
+    const messages = [
+      ...crawlMessages,
+      ...contextMessages,
+      { role: "user" as const, content: value },
+    ];
+
+    const modelOptions: Record<string, unknown> = {
+      temperature: modelConfig.temperature,
+    };
+
+    if ("frequencyPenalty" in modelConfig) {
+      modelOptions.frequencyPenalty = modelConfig.frequencyPenalty;
+    }
+
+    if (selectedModel === "z-ai/glm-4.7") {
+      modelOptions.provider = {
+        order: ["Z.AI"],
+        allow_fallbacks: false,
+      };
+    }
+
+    console.log("[DEBUG] Beginning AI stream...");
+    const result = streamText({
       model: openrouter.chat(selectedModel),
       system: frameworkPrompt,
-      messages: [
-        ...messages,
-        {
-          role: "assistant" as const,
-          content: resultText,
-        },
-        {
-          role: "user" as const,
-          content:
-            "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
-        },
-      ],
+      messages,
       tools,
-      stopWhen: stepCountIs(2),
+      stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
       ...modelOptions,
+      onFinish: async ({ text }) => {
+        const summaryMatch = extractSummaryText(text);
+        if (summaryMatch) {
+          state.summary = summaryMatch;
+          console.log("[DEBUG] Summary extracted:", summaryMatch.substring(0, 100) + "...");
+        }
+      },
     });
 
-    summaryText = extractSummaryText(followUp.text || "");
-    if (summaryText) {
-      state.summary = summaryText;
+    let fullText = "";
+    let chunkCount = 0;
+    let previousFilesCount = 0;
+
+    for await (const chunk of result.textStream) {
+      fullText += chunk;
+      chunkCount++;
+      if (chunkCount % 50 === 0) {
+        console.log("[DEBUG] Streamed", chunkCount, "chunks");
+      }
+      yield { type: "text", data: chunk };
+
+      const currentFilesCount = Object.keys(state.files).length;
+      if (currentFilesCount > previousFilesCount) {
+        const newFiles = Object.entries(state.files).slice(previousFilesCount);
+        for (const [path, content] of newFiles) {
+          yield {
+            type: "file-created",
+            data: {
+              path,
+              content,
+              size: content.length,
+            },
+          };
+        }
+        previousFilesCount = currentFilesCount;
+      }
     }
-  }
 
-  yield { type: "status", data: "Validating build..." };
-  
-  const [, buildErrors] = await Promise.all([
-    cleanNextDirectory(sandbox),
-    runBuildCheck(sandbox),
-  ]);
+    console.log("[INFO] AI generation complete:", {
+      totalChunks: chunkCount,
+      totalLength: fullText.length,
+    });
 
-  let validationErrors = buildErrors || "";
-  let autoFixAttempts = 0;
-  let lastErrorMessage = validationErrors || resultText;
+    const resultText = fullText;
+    let summaryText = extractSummaryText(state.summary || resultText || "");
 
-  if (selectedFramework === "nextjs") {
-    if (
-      Object.keys(state.files).length > 0 &&
-      !usesShadcnComponents(state.files)
+    const hasGeneratedFiles = Object.keys(state.files).length > 0;
+    console.log("[INFO] Files generated:", Object.keys(state.files).length);
+
+    if (!summaryText && hasGeneratedFiles) {
+      console.log("[DEBUG] No summary detected, requesting explicitly...");
+      yield { type: "status", data: "Generating summary..." };
+
+      const followUp = await generateText({
+        model: openrouter.chat(selectedModel),
+        system: frameworkPrompt,
+        messages: [
+          ...messages,
+          {
+            role: "assistant" as const,
+            content: resultText,
+          },
+          {
+            role: "user" as const,
+            content:
+              "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
+          },
+        ],
+        tools,
+        stopWhen: stepCountIs(2),
+        ...modelOptions,
+      });
+
+      summaryText = extractSummaryText(followUp.text || "");
+      if (summaryText) {
+        state.summary = summaryText;
+        console.log("[DEBUG] Summary generated successfully");
+      }
+    }
+
+    let validationErrors = "";
+    let autoFixAttempts = 0;
+
+    if (hasGeneratedFiles) {
+      yield { type: "status", data: "Validating build..." };
+      console.log("[INFO] Running build validation...");
+
+      await cleanNextDirectory(sandbox);
+      console.log("[DEBUG] Cleaned .next directory");
+
+      const buildErrors = await runBuildCheck(sandbox);
+      validationErrors = buildErrors || "";
+
+      if (validationErrors) {
+        console.log("[ERROR] Build validation failed:", validationErrors.substring(0, 500));
+      } else {
+        console.log("[INFO] Build validation passed");
+      }
+
+      if (selectedFramework === "nextjs" && !usesShadcnComponents(state.files)) {
+        const shadcnError =
+          "[ERROR] Missing Shadcn UI usage. Rebuild the UI using components imported from '@/components/ui/*' instead of plain HTML elements.";
+        validationErrors = validationErrors
+          ? `${validationErrors}\n${shadcnError}`
+          : shadcnError;
+        console.log("[WARN] Shadcn UI components not detected");
+      }
+    } else {
+      console.warn("[WARN] No files generated, skipping validation");
+    }
+
+    let lastErrorMessage = validationErrors || resultText;
+
+    while (
+      autoFixAttempts < AUTO_FIX_MAX_ATTEMPTS &&
+      (shouldTriggerAutoFix(lastErrorMessage) || validationErrors)
     ) {
-      const shadcnError =
-        "[ERROR] Missing Shadcn UI usage. Rebuild the UI using components imported from '@/components/ui/*' instead of plain HTML elements.";
-      lastErrorMessage = lastErrorMessage
-        ? `${lastErrorMessage}\n${shadcnError}`
-        : shadcnError;
-    }
-  }
+      autoFixAttempts += 1;
+      console.log("[INFO] Auto-fix attempt", autoFixAttempts, "of", AUTO_FIX_MAX_ATTEMPTS);
+      yield {
+        type: "status",
+        data: `Auto-fixing errors (attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})...`,
+      };
 
-  while (
-    autoFixAttempts < AUTO_FIX_MAX_ATTEMPTS &&
-    (shouldTriggerAutoFix(lastErrorMessage) || validationErrors)
-  ) {
-    autoFixAttempts += 1;
-    yield {
-      type: "status",
-      data: `Auto-fixing errors (attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})...`,
-    };
-
-    const fixPrompt = `CRITICAL BUILD/LINT ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
+      const fixPrompt = `CRITICAL BUILD/LINT ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
 
 Your previous code generation resulted in build or lint errors. You MUST fix these errors now.
 
@@ -475,164 +576,234 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 4. VERIFY YOUR FIX by running: npm run lint && npm run build
 5. PROVIDE SUMMARY with <task_summary> once fixed`;
 
-    const fixResult = await generateText({
-      model: openrouter.chat(selectedModel),
-      system: frameworkPrompt,
-      messages: [
-        ...messages,
-        { role: "assistant" as const, content: resultText },
-        { role: "user" as const, content: fixPrompt },
-      ],
-      tools,
-      stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
-      ...modelOptions,
+      const fixResult = await generateText({
+        model: openrouter.chat(selectedModel),
+        system: frameworkPrompt,
+        messages: [
+          ...messages,
+          { role: "assistant" as const, content: resultText },
+          { role: "user" as const, content: fixPrompt },
+        ],
+        tools,
+        stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
+        ...modelOptions,
+      });
+
+      console.log("[DEBUG] Auto-fix generation complete");
+
+      const fixSummary = extractSummaryText(fixResult.text || "");
+      if (fixSummary) {
+        state.summary = fixSummary;
+        summaryText = fixSummary;
+        console.log("[DEBUG] Auto-fix summary extracted");
+      }
+
+      console.log("[DEBUG] Re-running build check...");
+      const newBuildErrors = await runBuildCheck(sandbox);
+      validationErrors = newBuildErrors || "";
+
+      if (!validationErrors) {
+        console.log("[INFO] All validation errors resolved!");
+        break;
+      }
+
+      console.log("[ERROR] Validation errors remain:", validationErrors.substring(0, 300));
+      lastErrorMessage = validationErrors;
+    }
+
+    yield { type: "files", data: state.files };
+
+    const hasFiles = Object.keys(state.files).length > 0;
+
+    if (!summaryText && hasFiles) {
+      const previewFiles = Object.keys(state.files).slice(0, 5);
+      const remainingCount = Object.keys(state.files).length - previewFiles.length;
+      summaryText = `Generated or updated ${Object.keys(state.files).length} file(s): ${previewFiles.join(", ")}${remainingCount > 0 ? ` (and ${remainingCount} more)` : ""}.`;
+      console.log("[DEBUG] Generated default summary");
+    }
+
+    const criticalErrorReasons: string[] = [];
+    const warningReasons: string[] = [];
+
+    if (!hasFiles) {
+      criticalErrorReasons.push("no files generated");
+    }
+    if (!summaryText) {
+      criticalErrorReasons.push("no summary available");
+    }
+    if (validationErrors && hasFiles) {
+      warningReasons.push("validation errors detected");
+    }
+    if (
+      selectedFramework === "nextjs" &&
+      hasFiles &&
+      !usesShadcnComponents(state.files)
+    ) {
+      warningReasons.push("missing Shadcn UI components");
+    }
+
+    const isCriticalError = criticalErrorReasons.length > 0;
+
+    if (isCriticalError) {
+      console.error(
+        `[ERROR] Generation failed: ${criticalErrorReasons.join(", ")}`
+      );
+      yield {
+        type: "error",
+        data: `Generation failed: ${criticalErrorReasons.join(", ")}`,
+      };
+
+      try {
+        await convex.mutation(api.messages.createForUser, {
+          userId: project.userId,
+          projectId: projectId as Id<"projects">,
+          content: "Something went wrong. Please try again.",
+          role: "ASSISTANT",
+          type: "ERROR",
+          status: "COMPLETE",
+        });
+        console.log("[INFO] Error message saved to database");
+      } catch (error) {
+        console.error("[ERROR] Failed to save error message:", error);
+      }
+
+      return;
+    }
+
+    if (warningReasons.length > 0) {
+      console.log("[WARN] Warnings:", warningReasons.join(", "));
+    }
+
+    yield { type: "status", data: "Reading sandbox files..." };
+    console.log("[DEBUG] Reading sandbox files...");
+
+    const findCommand = getFindCommand(selectedFramework);
+    const findResult = await sandbox.commands.run(findCommand);
+    const filePaths = findResult.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.includes("Permission denied"))
+      .filter(isValidFilePath);
+
+    console.log("[DEBUG] Found", filePaths.length, "files in sandbox");
+
+    const sandboxFiles = await readFilesInBatches(sandbox, filePaths);
+    console.log("[DEBUG] Read", Object.keys(sandboxFiles).length, "files from sandbox");
+
+    const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
+    console.log("[DEBUG] Filtered to", Object.keys(filteredSandboxFiles).length, "files");
+
+    const mergedFiles = { ...filteredSandboxFiles, ...state.files };
+
+    const validatedMergedFiles: Record<string, string> = {};
+    for (const [path, content] of Object.entries(mergedFiles)) {
+      if (isValidFilePath(path)) {
+        validatedMergedFiles[path] = content;
+      }
+    }
+
+    console.log("[INFO] Final file count:", Object.keys(validatedMergedFiles).length);
+
+    yield { type: "status", data: "Starting dev server..." };
+    console.log("[INFO] Starting dev server...");
+
+    const [sandboxUrl, { title: fragmentTitle, response: responseContent }] =
+      await Promise.all([
+        startDevServer(sandbox, selectedFramework),
+        generateFragmentMetadata(summaryText),
+      ]);
+
+    console.log(`[INFO] Dev server URL: ${sandboxUrl}`);
+    console.log("[INFO] Fragment metadata generated:", {
+      title: fragmentTitle,
+      responseLength: responseContent.length,
     });
 
-    const fixSummary = extractSummaryText(fixResult.text || "");
-    if (fixSummary) {
-      state.summary = fixSummary;
-      summaryText = fixSummary;
-    }
+    const sanitizedResponse = sanitizeTextForDatabase(responseContent);
+    const warningsNote =
+      warningReasons.length > 0
+        ? sanitizeTextForDatabase(
+            `\n\n Warning:\n- ${warningReasons.join("\n- ")}`
+          )
+        : "";
+    const finalResponse = sanitizeTextForDatabase(
+      `${sanitizedResponse}${warningsNote}`
+    );
 
-    const newBuildErrors = await runBuildCheck(sandbox);
-
-    validationErrors = newBuildErrors || "";
-
-    if (!validationErrors) {
-      console.log("[DEBUG] All validation errors resolved!");
-      break;
-    }
-
-    lastErrorMessage = validationErrors;
-  }
-
-  yield { type: "files", data: state.files };
-
-  const hasFiles = Object.keys(state.files).length > 0;
-
-  if (!summaryText && hasFiles) {
-    const previewFiles = Object.keys(state.files).slice(0, 5);
-    const remainingCount = Object.keys(state.files).length - previewFiles.length;
-    summaryText = `Generated or updated ${Object.keys(state.files).length} file(s): ${previewFiles.join(", ")}${remainingCount > 0 ? ` (and ${remainingCount} more)` : ""}.`;
-  }
-
-  yield { type: "status", data: "Reading sandbox files..." };
-
-  const findCommand = getFindCommand(selectedFramework);
-  const findResult = await sandbox.commands.run(findCommand);
-  const filePaths = findResult.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.includes("Permission denied"))
-    .filter(isValidFilePath);
-
-  const sandboxFiles = await readFilesInBatches(sandbox, filePaths);
-  const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
-  const mergedFiles = { ...filteredSandboxFiles, ...state.files };
-
-  const validatedMergedFiles: Record<string, string> = {};
-  for (const [path, content] of Object.entries(mergedFiles)) {
-    if (isValidFilePath(path)) {
-      validatedMergedFiles[path] = content;
-    }
-  }
-
-  const criticalErrorReasons: string[] = [];
-  const warningReasons: string[] = [];
-
-  if (!hasFiles) {
-    criticalErrorReasons.push("no files generated");
-  }
-  if (!summaryText) {
-    criticalErrorReasons.push("no summary available");
-  }
-  if (validationErrors && hasFiles) {
-    warningReasons.push("validation errors detected");
-  }
-  if (
-    selectedFramework === "nextjs" &&
-    hasFiles &&
-    !usesShadcnComponents(state.files)
-  ) {
-    warningReasons.push("missing Shadcn UI components");
-  }
-
-  const isCriticalError = criticalErrorReasons.length > 0;
-
-  if (isCriticalError) {
-    yield {
-      type: "error",
-      data: `Generation failed: ${criticalErrorReasons.join(", ")}`,
+    const metadata: FragmentMetadata = {
+      model: selectedModel,
+      modelName: MODEL_CONFIGS[selectedModel].name,
+      provider: MODEL_CONFIGS[selectedModel].provider,
+      ...(warningReasons.length > 0 && { warnings: warningReasons }),
     };
 
-    await convex.mutation(api.messages.createForUser, {
+    console.log("[DEBUG] Saving message to database...");
+    const messageId = await convex.mutation(api.messages.createForUser, {
       userId: project.userId,
       projectId: projectId as Id<"projects">,
-      content: "Something went wrong. Please try again.",
+      content: finalResponse || "Generated code is ready.",
       role: "ASSISTANT",
-      type: "ERROR",
+      type: "RESULT",
       status: "COMPLETE",
     });
 
-    return;
-  }
-
-  yield { type: "status", data: "Finalizing..." };
-
-  const [sandboxUrl, { title: fragmentTitle, response: responseContent }] = await Promise.all([
-    startDevServer(sandbox, selectedFramework),
-    generateFragmentMetadata(summaryText),
-  ]);
-
-  const sanitizedResponse = sanitizeTextForDatabase(responseContent);
-  const warningsNote =
-    warningReasons.length > 0
-      ? sanitizeTextForDatabase(
-          `\n\n Warning:\n- ${warningReasons.join("\n- ")}`
-        )
-      : "";
-  const finalResponse = sanitizeTextForDatabase(
-    `${sanitizedResponse}${warningsNote}`
-  );
-
-  const metadata: FragmentMetadata = {
-    model: selectedModel,
-    modelName: MODEL_CONFIGS[selectedModel].name,
-    provider: MODEL_CONFIGS[selectedModel].provider,
-    ...(warningReasons.length > 0 && { warnings: warningReasons }),
-  };
-
-  const messageId = await convex.mutation(api.messages.createForUser, {
-    userId: project.userId,
-    projectId: projectId as Id<"projects">,
-    content: finalResponse || "Generated code is ready.",
-    role: "ASSISTANT",
-    type: "RESULT",
-    status: "COMPLETE",
-  });
-
-  await convex.mutation(api.messages.createFragmentForUser, {
-    userId: project.userId,
-    messageId: messageId as Id<"messages">,
-    sandboxId: sandboxId || undefined,
-    sandboxUrl: sandboxUrl,
-    title: sanitizeTextForDatabase(fragmentTitle) || "Generated Fragment",
-    files: validatedMergedFiles,
-    framework: frameworkToConvexEnum(selectedFramework),
-    metadata: metadata,
-  });
-
-  yield {
-    type: "complete",
-    data: {
-      url: sandboxUrl,
-      title: fragmentTitle,
+    console.log("[DEBUG] Saving fragment to database...");
+    await convex.mutation(api.messages.createFragmentForUser, {
+      userId: project.userId,
+      messageId: messageId as Id<"messages">,
+      sandboxId: sandboxId || undefined,
+      sandboxUrl: sandboxUrl,
+      title: sanitizeTextForDatabase(fragmentTitle) || "Generated Fragment",
       files: validatedMergedFiles,
-      summary: summaryText,
-      sandboxId,
-      framework: selectedFramework,
-    },
-  };
+      framework: frameworkToConvexEnum(selectedFramework),
+      metadata: metadata,
+    });
+
+    console.log("[INFO] Agent run completed successfully");
+
+    yield {
+      type: "complete",
+      data: {
+        url: sandboxUrl,
+        title: fragmentTitle,
+        files: validatedMergedFiles,
+        summary: summaryText,
+        sandboxId,
+        framework: selectedFramework,
+      },
+    };
+  } catch (error) {
+    console.error("[FATAL ERROR] Agent run failed:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[ERROR] Stack trace:", error instanceof Error ? error.stack : "No stack trace");
+
+    yield {
+      type: "error",
+      data: `Agent run failed: ${errorMessage}`,
+    };
+
+    try {
+      const project = await convex.query(api.projects.getForSystem, {
+        projectId: projectId as Id<"projects">,
+      });
+
+      if (project) {
+        await convex.mutation(api.messages.createForUser, {
+          userId: project.userId,
+          projectId: projectId as Id<"projects">,
+          content: `An error occurred: ${errorMessage}`,
+          role: "ASSISTANT",
+          type: "ERROR",
+          status: "COMPLETE",
+        });
+        console.log("[INFO] Error message saved to database");
+      }
+    } catch (dbError) {
+      console.error("[ERROR] Failed to save error to database:", dbError);
+    }
+
+    throw error;
+  }
 }
 
 export async function runErrorFix(fragmentId: string): Promise<{

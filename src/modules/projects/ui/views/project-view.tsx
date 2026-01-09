@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { EyeIcon, CodeIcon, CrownIcon } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -43,24 +43,47 @@ export const ProjectView = ({ projectId }: Props) => {
 
   const [activeFragment, setActiveFragment] = useState<Doc<"fragments"> | null>(null);
   const [tabState, setTabState] = useState<"preview" | "code">("preview");
+  const [streamingFiles, setStreamingFiles] = useState<Record<string, string>>({});
 
   const explorerFiles = useMemo(() => {
-    if (!activeFragment || typeof activeFragment.files !== "object" || activeFragment.files === null) {
-      return {} as Record<string, string>;
+    let files: Record<string, string> = {};
+
+    // Start with streaming files (real-time updates)
+    if (Object.keys(streamingFiles).length > 0) {
+      files = { ...streamingFiles };
     }
 
-    const normalizedFiles = Object.entries(activeFragment.files as Record<string, unknown>).reduce<Record<string, string>>(
-      (acc, [path, content]) => {
-        if (typeof content === "string") {
-          acc[path] = content;
-        }
-        return acc;
-      },
-      {}
-    );
+    // Overlay with active fragment files (final state)
+    if (activeFragment && typeof activeFragment.files === "object" && activeFragment.files !== null) {
+      const normalizedFiles = Object.entries(activeFragment.files as Record<string, unknown>).reduce<Record<string, string>>(
+        (acc, [path, content]) => {
+          if (typeof content === "string") {
+            acc[path] = content;
+          }
+          return acc;
+        },
+        {}
+      );
+      files = { ...files, ...normalizedFiles };
+    }
 
     // Filter out E2B sandbox system files - only show AI-generated code
-    return filterAIGeneratedFiles(normalizedFiles);
+    return filterAIGeneratedFiles(files);
+  }, [activeFragment, streamingFiles]);
+
+  const handleStreamingFiles = (files: Record<string, string>) => {
+    setStreamingFiles(files);
+    // Auto-switch to code tab when files start streaming
+    if (Object.keys(files).length > 0 && tabState === "preview") {
+      setTabState("code");
+    }
+  };
+
+  // Clear streaming files when fragment is set (generation complete)
+  useEffect(() => {
+    if (activeFragment) {
+      setStreamingFiles({});
+    }
   }, [activeFragment]);
 
   return (
@@ -82,6 +105,7 @@ export const ProjectView = ({ projectId }: Props) => {
                 projectId={projectId}
                 activeFragment={activeFragment}
                 setActiveFragment={setActiveFragment}
+                onStreamingFiles={handleStreamingFiles}
               />
             </Suspense>
           </ErrorBoundary>

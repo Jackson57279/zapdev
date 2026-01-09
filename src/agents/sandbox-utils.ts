@@ -56,10 +56,12 @@ export async function getOrCreateSandboxForProject(
   return sandbox;
 }
 
-export async function createSandbox(_framework: Framework): Promise<Sandbox> {
+export async function createSandbox(framework: Framework): Promise<Sandbox> {
   try {
-    console.log("[DEBUG] Creating sandbox...");
-    const sandbox = await Sandbox.create({
+    const templateName = getE2BTemplate(framework);
+    console.log(`[DEBUG] Creating sandbox with template: ${templateName}`);
+
+    const sandbox = await Sandbox.create(templateName, {
       apiKey: process.env.E2B_API_KEY,
       timeoutMs: SANDBOX_TIMEOUT,
     });
@@ -83,6 +85,7 @@ export async function runCodeCommand(
   sandbox: Sandbox,
   command: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  console.log("[DEBUG] Running command:", command);
   const pythonScript = `
 import subprocess
 import os
@@ -103,15 +106,34 @@ if result.stderr:
 print(f"\\nExitCode: {result.returncode}")
 `;
 
-  const result = await sandbox.runCode(pythonScript);
-  const stdout = result.logs.stdout.join('\n');
-  const stderr = result.logs.stderr.join('\n');
-  
-  // Extract exit code from output
-  const exitCodeMatch = stdout.match(/ExitCode: (\d+)/);
-  const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1]) : (result.error ? 1 : 0);
+  try {
+    const result = await sandbox.runCode(pythonScript);
+    const stdout = result.logs.stdout.join('\n');
+    const stderr = result.logs.stderr.join('\n');
+    
+    // Extract exit code from output
+    const exitCodeMatch = stdout.match(/ExitCode: (\d+)/);
+    const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1]) : (result.error ? 1 : 0);
 
-  return { stdout, stderr, exitCode };
+    console.log("[DEBUG] Command completed:", {
+      exitCode,
+      stdoutLength: stdout.length,
+      stderrLength: stderr.length,
+    });
+
+    if (exitCode !== 0 && stderr) {
+      console.log("[ERROR] Command failed:", stderr.substring(0, 300));
+    }
+
+    return { stdout, stderr, exitCode };
+  } catch (error) {
+    console.error("[ERROR] Command execution exception:", error);
+    return {
+      stdout: '',
+      stderr: error instanceof Error ? error.message : String(error),
+      exitCode: 1,
+    };
+  }
 }
 
 // Batch write files in single Python script (much faster than multiple API calls)
@@ -119,7 +141,12 @@ export async function writeFilesBatch(
   sandbox: Sandbox,
   files: Record<string, string>
 ): Promise<void> {
-  if (Object.keys(files).length === 0) return;
+  if (Object.keys(files).length === 0) {
+    console.log("[DEBUG] No files to write");
+    return;
+  }
+
+  console.log("[DEBUG] Writing", Object.keys(files).length, "files in batch");
 
   const fileWrites = Object.entries(files).map(([path, content]) => {
     const fullPath = path.startsWith('/') ? path : `/home/user/${path}`;
@@ -146,7 +173,13 @@ ${fileWrites}
 print("\\nAll files written successfully!")
 `;
 
-  await sandbox.runCode(pythonScript);
+  try {
+    await sandbox.runCode(pythonScript);
+    console.log("[INFO] Batch file write completed successfully");
+  } catch (error) {
+    console.error("[ERROR] Batch file write failed:", error);
+    throw new Error(`Failed to write files: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 // Fast build check using Python subprocess
@@ -165,18 +198,16 @@ export async function runBuildCheck(
     }
 
     if (result.exitCode !== 0) {
-      console.log("[DEBUG] Build failed with exit code:", result.exitCode);
-      // Only return critical errors, ignore warnings
-      if (/Error:|failed/i.test(output) && !/warning/i.test(output)) {
-        return `Build failed:\n${output}`;
-      }
+      console.log(`[ERROR] Build failed with exit code: ${result.exitCode}`);
+      console.log("[ERROR] Build output:", output.substring(0, 1000));
+      return `Build failed (exit code ${result.exitCode}):\n${output}`;
     }
 
-    console.log("[DEBUG] Build check passed");
+    console.log("[INFO] Build check passed");
     return null;
   } catch (error) {
-    console.error("[DEBUG] Build check failed:", error);
-    return null;
+    console.error("[ERROR] Build check exception:", error);
+    return `Build check error: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
@@ -379,24 +410,38 @@ export async function getSandboxUrl(sandbox: Sandbox, framework: Framework): Pro
 export async function startDevServer(sandbox: Sandbox, framework: Framework): Promise<string> {
   const port = getFrameworkPort(framework);
   const devCommand = getDevServerCommand(framework);
-  
-  console.log(`[DEBUG] Starting dev server for ${framework} on port ${port}...`);
-  
-  // Start dev server in background
-  sandbox.commands.run(devCommand, { background: true });
-  
-  // Wait for server to be ready (max 30 seconds)
+
+  console.log(`[INFO] Starting dev server for ${framework} on port ${port}...`);
+  console.log(`[DEBUG] Dev command: ${devCommand}`);
+
+  try {
+    sandbox.commands.run(devCommand, { background: true });
+    console.log("[DEBUG] Dev server started in background");
+  } catch (error) {
+    console.error("[ERROR] Failed to start dev server:", error);
+    throw new Error(`Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  console.log("[DEBUG] Waiting for dev server to be ready...");
   for (let i = 0; i < 60; i++) {
     await new Promise(resolve => setTimeout(resolve, 500));
     try {
       const result = await runCodeCommand(sandbox, `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}`);
       if (result.stdout.trim() === "200") {
-        console.log(`[DEBUG] Dev server ready after ${(i + 1) * 0.5}s`);
+        const readyTime = (i + 1) * 0.5;
+        console.log(`[INFO] Dev server ready after ${readyTime}s`);
         return getSandboxUrl(sandbox, framework);
       }
-    } catch {}
+    } catch (error) {
+      console.log(`[DEBUG] Ping attempt ${i + 1} failed:`, error instanceof Error ? error.message : String(error));
+    }
   }
-  
-  console.warn("[WARN] Dev server did not respond, using fallback URL");
-  return getSandboxUrl(sandbox, framework);
+
+  console.warn("[WARN] Dev server did not respond within 30s, using fallback URL");
+  try {
+    return getSandboxUrl(sandbox, framework);
+  } catch (error) {
+    console.error("[ERROR] Failed to get sandbox URL:", error);
+    throw new Error(`Failed to get sandbox URL: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
