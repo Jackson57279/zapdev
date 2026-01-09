@@ -4,7 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-import { openrouter } from "./client";
+import { getClientForModel } from "./client";
 import { createAgentTools } from "./tools";
 import {
   type Framework,
@@ -134,7 +134,9 @@ async function detectFramework(prompt: string): Promise<Framework> {
     cacheKey,
     async () => {
       const { text } = await generateText({
-        model: openrouter.chat("google/gemini-2.5-flash-lite"),
+        model: getClientForModel("google/gemini-2.5-flash-lite").chat(
+          "google/gemini-2.5-flash-lite"
+        ),
         system: FRAMEWORK_SELECTOR_PROMPT,
         prompt,
         temperature: 0.3,
@@ -159,13 +161,17 @@ async function generateFragmentMetadata(
   try {
     const [titleResult, responseResult] = await Promise.all([
       generateText({
-        model: openrouter.chat("openai/gpt-5-nano"),
+        model: getClientForModel("openai/gpt-5-nano").chat(
+          "openai/gpt-5-nano"
+        ),
         system: FRAGMENT_TITLE_PROMPT,
         prompt: summary,
         temperature: 0.3,
       }),
       generateText({
-        model: openrouter.chat("openai/gpt-5-nano"),
+        model: getClientForModel("openai/gpt-5-nano").chat(
+          "openai/gpt-5-nano"
+        ),
         system: RESPONSE_PROMPT,
         prompt: summary,
         temperature: 0.3,
@@ -419,20 +425,16 @@ export async function* runCodeAgent(
       temperature: modelConfig.temperature,
     };
 
-    if ("frequencyPenalty" in modelConfig) {
+    if (
+      modelConfig.supportsFrequencyPenalty &&
+      "frequencyPenalty" in modelConfig
+    ) {
       modelOptions.frequencyPenalty = modelConfig.frequencyPenalty;
-    }
-
-    if (selectedModel === "z-ai/glm-4.7") {
-      modelOptions.provider = {
-        order: ["Z.AI"],
-        allow_fallbacks: false,
-      };
     }
 
     console.log("[DEBUG] Beginning AI stream...");
     const result = streamText({
-      model: openrouter.chat(selectedModel),
+      model: getClientForModel(selectedModel).chat(selectedModel),
       system: frameworkPrompt,
       messages,
       tools,
@@ -492,7 +494,7 @@ export async function* runCodeAgent(
       yield { type: "status", data: "Generating summary..." };
 
       const followUp = await generateText({
-        model: openrouter.chat(selectedModel),
+        model: getClientForModel(selectedModel).chat(selectedModel),
         system: frameworkPrompt,
         messages: [
           ...messages,
@@ -577,7 +579,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 5. PROVIDE SUMMARY with <task_summary> once fixed`;
 
       const fixResult = await generateText({
-        model: openrouter.chat(selectedModel),
+        model: getClientForModel(selectedModel).chat(selectedModel),
         system: frameworkPrompt,
         messages: [
           ...messages,
@@ -902,7 +904,7 @@ REQUIRED ACTIONS:
 5. Provide a <task_summary> explaining what was fixed`;
 
   const result = await generateText({
-    model: openrouter.chat(fragmentModel),
+    model: getClientForModel(fragmentModel).chat(fragmentModel),
     system: frameworkPrompt,
     messages: [{ role: "user", content: fixPrompt }],
     tools,

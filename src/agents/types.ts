@@ -31,6 +31,7 @@ export const MODEL_CONFIGS = {
     provider: "anthropic",
     description: "Fast and efficient for most coding tasks",
     temperature: 0.7,
+    supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
   },
   "openai/gpt-5.1-codex": {
@@ -38,20 +39,22 @@ export const MODEL_CONFIGS = {
     provider: "openai",
     description: "OpenAI's flagship model for complex tasks",
     temperature: 0.7,
+    supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
   },
   "z-ai/glm-4.7": {
     name: "Z-AI GLM 4.7",
-    provider: "z-ai",
-    description: "Ultra-fast inference for speed-critical tasks",
+    provider: "cerebras",
+    description: "Ultra-fast inference for speed-critical tasks via Cerebras",
     temperature: 0.7,
-    frequencyPenalty: 0.5,
+    supportsFrequencyPenalty: false,
   },
   "moonshotai/kimi-k2-0905": {
     name: "Kimi K2",
     provider: "moonshot",
     description: "Specialized for coding tasks",
     temperature: 0.7,
+    supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
   },
   "google/gemini-3-pro-preview": {
