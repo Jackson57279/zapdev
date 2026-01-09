@@ -11,6 +11,31 @@ const clearCacheEntry = (sandboxId: string) => {
   }, CACHE_EXPIRY_MS);
 };
 
+async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 10): Promise<void> {
+  console.log("[DEBUG] Waiting for sandbox to be ready...");
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // Simple health check using runCode
+      const result = await sandbox.runCode("print('ready')");
+      if (result.logs.stdout.join('').includes('ready')) {
+        console.log(`[DEBUG] Sandbox ready after ${attempt} attempt(s)`);
+        return;
+      }
+    } catch (error) {
+      console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}):`,
+        error instanceof Error ? error.message.substring(0, 100) : String(error));
+
+      if (attempt < maxAttempts) {
+        // Exponential backoff: 500ms, 1s, 1.5s, 2s, etc.
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+      }
+    }
+  }
+
+  console.warn("[WARN] Sandbox may not be fully ready after max attempts");
+}
+
 export async function getSandbox(sandboxId: string): Promise<Sandbox> {
   const cached = SANDBOX_CACHE.get(sandboxId);
   if (cached) {
@@ -22,6 +47,9 @@ export async function getSandbox(sandboxId: string): Promise<Sandbox> {
       apiKey: process.env.E2B_API_KEY,
     });
     await sandbox.setTimeout(SANDBOX_TIMEOUT);
+
+    // Verify sandbox is responsive before caching
+    await waitForSandboxReady(sandbox, 5);
 
     SANDBOX_CACHE.set(sandboxId, sandbox);
     clearCacheEntry(sandboxId);
@@ -68,6 +96,9 @@ export async function createSandbox(framework: Framework): Promise<Sandbox> {
 
     console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
     await sandbox.setTimeout(SANDBOX_TIMEOUT);
+
+    // Wait for sandbox to be fully ready before returning
+    await waitForSandboxReady(sandbox);
 
     SANDBOX_CACHE.set(sandbox.sandboxId, sandbox);
     clearCacheEntry(sandbox.sandboxId);
