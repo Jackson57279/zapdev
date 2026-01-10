@@ -12,14 +12,42 @@ const clearCacheEntry = (sandboxId: string) => {
 };
 
 async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 30): Promise<void> {
-  console.log("[DEBUG] Waiting for sandbox to be ready...");
+  console.log("[DEBUG] Waiting for sandbox runtime to initialize...");
 
-  // Initial delay to let the sandbox fully spin up before first attempt
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Stage 1: Wait for the shell/command layer to be ready (faster than Python)
+  // This usually works before the Python kernel is fully initialized
+  console.log("[DEBUG] Stage 1: Checking shell availability...");
+  let shellReady = false;
+
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      const result = await sandbox.commands.run("echo ready", { timeoutMs: 5000 });
+      if (result.exitCode === 0 && result.stdout.includes("ready")) {
+        console.log(`[DEBUG] Shell ready after ${attempt} attempt(s)`);
+        shellReady = true;
+        break;
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const isPortNotReady = errorMsg.includes('port is not open') || errorMsg.includes('502');
+
+      if (attempt < 10) {
+        const delay = isPortNotReady ? 2000 : 1000;
+        console.log(`[DEBUG] Shell not ready yet (attempt ${attempt}/10), waiting ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  if (!shellReady) {
+    console.log("[DEBUG] Shell check inconclusive, proceeding to Python check...");
+  }
+
+  // Stage 2: Verify Python runtime is ready (required for code execution)
+  console.log("[DEBUG] Stage 2: Checking Python runtime...");
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      // Combined health check: Python execution + filesystem access
       const result = await sandbox.runCode(`
 import os
 print('ready')
@@ -28,28 +56,29 @@ print(os.path.exists('/home/user'))
       const output = result.logs.stdout.join('');
 
       if (output.includes('ready') && output.includes('True')) {
-        console.log(`[DEBUG] Sandbox ready after ${attempt} attempt(s)`);
+        console.log(`[DEBUG] Sandbox fully ready after ${attempt} Python check(s)`);
         return;
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-
-      // Check for port not ready error (502) - this needs more time
       const isPortNotReady = errorMsg.includes('port is not open') || errorMsg.includes('502');
 
-      console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}):`, errorMsg.substring(0, 150));
+      // Only log detailed message every few attempts to reduce noise
+      if (attempt <= 3 || attempt % 5 === 0) {
+        console.log(`[DEBUG] Python runtime starting (attempt ${attempt}/${maxAttempts})${isPortNotReady ? ' - port initializing' : ''}`);
+      }
 
       if (attempt < maxAttempts) {
-        // Longer delay for port issues, exponential backoff otherwise
-        const baseDelay = isPortNotReady ? 3000 : 1500;
-        const delay = Math.min(baseDelay * Math.ceil(attempt / 3), 8000);
+        // Progressive delay: start at 1.5s, max out at 5s
+        const baseDelay = isPortNotReady ? 2000 : 1500;
+        const delay = Math.min(baseDelay + (attempt * 200), 5000);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
 
-  // If we get here, sandbox never became ready - throw error instead of warning
-  const errorMessage = "E2B sandbox failed to initialize after maximum retry attempts. The sandbox may be experiencing issues or taking too long to start.";
+  // If we get here, sandbox never became ready - throw error
+  const errorMessage = "E2B sandbox Python runtime failed to initialize after maximum retry attempts.";
   console.error("[ERROR]", errorMessage);
   throw new Error(errorMessage);
 }
