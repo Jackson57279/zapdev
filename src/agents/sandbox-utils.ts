@@ -11,29 +11,39 @@ const clearCacheEntry = (sandboxId: string) => {
   }, CACHE_EXPIRY_MS);
 };
 
-async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 10): Promise<void> {
+async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 20): Promise<void> {
   console.log("[DEBUG] Waiting for sandbox to be ready...");
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      // Simple health check using runCode
-      const result = await sandbox.runCode("print('ready')");
-      if (result.logs.stdout.join('').includes('ready')) {
+      // Combined health check: Python execution + filesystem access
+      const result = await sandbox.runCode(`
+import os
+print('ready')
+print(os.path.exists('/home/user'))
+`);
+      const output = result.logs.stdout.join('');
+
+      if (output.includes('ready') && output.includes('True')) {
         console.log(`[DEBUG] Sandbox ready after ${attempt} attempt(s)`);
         return;
       }
     } catch (error) {
-      console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}):`,
-        error instanceof Error ? error.message.substring(0, 100) : String(error));
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}):`, errorMsg.substring(0, 150));
 
       if (attempt < maxAttempts) {
-        // Exponential backoff: 500ms, 1s, 1.5s, 2s, etc.
-        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        // Exponential backoff with cap: 1s, 2s, 3s, 4s, 5s, then 5s for remaining attempts
+        const delay = Math.min(1000 * attempt, 5000);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
 
-  console.warn("[WARN] Sandbox may not be fully ready after max attempts");
+  // If we get here, sandbox never became ready - throw error instead of warning
+  const errorMessage = "E2B sandbox failed to initialize after maximum retry attempts. The sandbox may be experiencing issues or taking too long to start.";
+  console.error("[ERROR]", errorMessage);
+  throw new Error(errorMessage);
 }
 
 export async function getSandbox(sandboxId: string): Promise<Sandbox> {
@@ -48,8 +58,8 @@ export async function getSandbox(sandboxId: string): Promise<Sandbox> {
     });
     await sandbox.setTimeout(SANDBOX_TIMEOUT);
 
-    // Verify sandbox is responsive before caching
-    await waitForSandboxReady(sandbox, 5);
+    // Verify sandbox is responsive before caching (use fewer attempts for reconnection)
+    await waitForSandboxReady(sandbox, 10);
 
     SANDBOX_CACHE.set(sandboxId, sandbox);
     clearCacheEntry(sandboxId);
@@ -205,11 +215,18 @@ print("\\nAll files written successfully!")
 `;
 
   try {
-    await sandbox.runCode(pythonScript);
+    // Add timeout wrapper for file writes (30 seconds)
+    const writePromise = sandbox.runCode(pythonScript);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("File write operation timed out after 30 seconds")), 30000)
+    );
+
+    await Promise.race([writePromise, timeoutPromise]);
     console.log("[INFO] Batch file write completed successfully");
   } catch (error) {
     console.error("[ERROR] Batch file write failed:", error);
-    throw new Error(`Failed to write files: ${error instanceof Error ? error.message : String(error)}`);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to write files: ${errorMsg}. This may indicate the sandbox is not ready.`);
   }
 }
 

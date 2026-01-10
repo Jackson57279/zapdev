@@ -71,7 +71,26 @@ export function createAgentTools(context: ToolContext) {
             console.log("[DEBUG] Queuing file for write:", file.path, `(${file.content.length} bytes)`);
           }
 
-          await writeFilesBatch(sandbox, filesToWrite);
+          // Retry logic for file writes (max 2 attempts)
+          let lastError: Error | null = null;
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              await writeFilesBatch(sandbox, filesToWrite);
+              lastError = null;
+              break; // Success
+            } catch (e) {
+              lastError = e instanceof Error ? e : new Error(String(e));
+              console.warn(`[WARN] File write attempt ${attempt} failed:`, lastError.message);
+              if (attempt < 2) {
+                console.log("[DEBUG] Retrying file write in 2 seconds...");
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            }
+          }
+
+          if (lastError) {
+            throw lastError;
+          }
 
           for (const file of files) {
             onFileCreated?.(file.path, file.content);
@@ -82,8 +101,8 @@ export function createAgentTools(context: ToolContext) {
           return `Successfully created/updated ${files.length} file(s)`;
         } catch (e) {
           const errorMessage = e instanceof Error ? e.message : String(e);
-          console.error("[ERROR] createOrUpdateFiles failed:", errorMessage);
-          return `Error: ${errorMessage}`;
+          console.error("[ERROR] createOrUpdateFiles failed after all retries:", errorMessage);
+          return `Error writing files: ${errorMessage}. The sandbox may not be responsive. Please try again.`;
         }
       },
     }),
