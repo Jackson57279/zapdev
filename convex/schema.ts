@@ -55,6 +55,13 @@ export const sandboxStateEnum = v.union(
   v.literal("KILLED")
 );
 
+export const webhookEventStatusEnum = v.union(
+  v.literal("received"),
+  v.literal("processed"),
+  v.literal("failed"),
+  v.literal("retrying")
+);
+
 export const subscriptionStatusEnum = v.union(
   v.literal("active"),
   v.literal("past_due"),
@@ -213,6 +220,35 @@ export default defineSchema({
     .index("by_status", ["status"]),
 
   polarCustomers,
+
+  webhookEvents: defineTable({
+    eventId: v.string(),
+    eventType: v.string(),
+    status: webhookEventStatusEnum,
+    payload: v.any(),
+    error: v.optional(v.string()),
+    processedAt: v.optional(v.number()),
+    retryCount: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_status", ["status"])
+    .index("by_eventType", ["eventType"])
+    .index("by_createdAt", ["createdAt"]),
+
+  pendingSubscriptions: defineTable({
+    polarSubscriptionId: v.string(),
+    customerId: v.string(),
+    eventData: v.any(),
+    status: v.union(v.literal("pending"), v.literal("resolved"), v.literal("failed")),
+    resolvedUserId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_polarSubscriptionId", ["polarSubscriptionId"])
+    .index("by_customerId", ["customerId"])
+    .index("by_status", ["status"]),
 
   sandboxSessions: defineTable({
     sandboxId: v.string(),
