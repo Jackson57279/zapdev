@@ -29,11 +29,18 @@ async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 30): Promise<
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      const isPortNotReady = errorMsg.includes('port is not open') || errorMsg.includes('502');
+      const errorCode = (error as any)?.code || (error as any)?.status;
+      const isPortNotReady = 
+        errorMsg.includes('port is not open') || 
+        errorMsg.includes('502') || 
+        errorCode === 502 ||
+        errorMsg.includes('ECONNREFUSED');
 
       if (attempt < 10) {
         const delay = isPortNotReady ? 2000 : 1000;
-        console.log(`[DEBUG] Shell not ready yet (attempt ${attempt}/10), waiting ${delay}ms...`);
+        if (attempt <= 3 || isPortNotReady) {
+          console.log(`[DEBUG] Shell not ready (attempt ${attempt}/10): ${isPortNotReady ? 'port initializing' : errorMsg}`);
+        }
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -61,24 +68,29 @@ print(os.path.exists('/home/user'))
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      const isPortNotReady = errorMsg.includes('port is not open') || errorMsg.includes('502');
+      const errorCode = (error as any)?.code || (error as any)?.status;
+      const isPortNotReady = 
+        errorMsg.includes('port is not open') || 
+        errorMsg.includes('502') || 
+        errorCode === 502 ||
+        errorMsg.includes('ECONNREFUSED');
 
-      // Only log detailed message every few attempts to reduce noise
-      if (attempt <= 3 || attempt % 5 === 0) {
-        console.log(`[DEBUG] Python runtime starting (attempt ${attempt}/${maxAttempts})${isPortNotReady ? ' - port initializing' : ''}`);
+      // Log detailed message more frequently if port is not ready
+      if (attempt <= 3 || attempt % 5 === 0 || isPortNotReady) {
+        console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}): ${isPortNotReady ? 'The sandbox is running but port is not open' : errorMsg}`);
       }
 
       if (attempt < maxAttempts) {
-        // Progressive delay: start at 1.5s, max out at 5s
-        const baseDelay = isPortNotReady ? 2000 : 1500;
-        const delay = Math.min(baseDelay + (attempt * 200), 5000);
+        // Progressive delay: start at 2s if port not ready, max out at 8s
+        const baseDelay = isPortNotReady ? 2500 : 1500;
+        const delay = Math.min(baseDelay + (attempt * 300), 8000);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
 
   // If we get here, sandbox never became ready - throw error
-  const errorMessage = "E2B sandbox Python runtime failed to initialize after maximum retry attempts.";
+  const errorMessage = `E2B sandbox failed to initialize after ${maxAttempts} attempts. This often happens during peak load or maintenance. Please try again in a moment.`;
   console.error("[ERROR]", errorMessage);
   throw new Error(errorMessage);
 }
