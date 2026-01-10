@@ -20,6 +20,7 @@ import type * as rateLimit from "../rateLimit.js";
 import type * as sandboxSessions from "../sandboxSessions.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as usage from "../usage.js";
+import type * as webhooks from "../webhooks.js";
 
 import type {
   ApiFromModules,
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   sandboxSessions: typeof sandboxSessions;
   subscriptions: typeof subscriptions;
   usage: typeof usage;
+  webhooks: typeof webhooks;
 }>;
 
 /**
