@@ -11,86 +11,50 @@ const clearCacheEntry = (sandboxId: string) => {
   }, CACHE_EXPIRY_MS);
 };
 
-async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 30): Promise<void> {
+async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 15): Promise<void> {
   console.log("[DEBUG] Waiting for sandbox runtime to initialize...");
 
-  // Stage 1: Wait for the shell/command layer to be ready (faster than Python)
-  // This usually works before the Python kernel is fully initialized
-  console.log("[DEBUG] Stage 1: Checking shell availability...");
-  let shellReady = false;
-
-  for (let attempt = 1; attempt <= 10; attempt++) {
-    try {
-      const result = await sandbox.commands.run("echo ready", { timeoutMs: 5000 });
-      if (result.exitCode === 0 && result.stdout.includes("ready")) {
-        console.log(`[DEBUG] Shell ready after ${attempt} attempt(s)`);
-        shellReady = true;
-        break;
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      const errorCode = (error as any)?.code || (error as any)?.status;
-      const isPortNotReady = 
-        errorMsg.includes('port is not open') || 
-        errorMsg.includes('502') || 
-        errorCode === 502 ||
-        errorMsg.includes('ECONNREFUSED');
-
-      if (attempt < 10) {
-        const delay = isPortNotReady ? 2000 : 1000;
-        if (attempt <= 3 || isPortNotReady) {
-          console.log(`[DEBUG] Shell not ready (attempt ${attempt}/10): ${isPortNotReady ? 'port initializing' : errorMsg}`);
-        }
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  if (!shellReady) {
-    console.log("[DEBUG] Shell check inconclusive, proceeding to Python check...");
-  }
-
-  // Stage 2: Verify Python runtime is ready (required for code execution)
-  console.log("[DEBUG] Stage 2: Checking Python runtime...");
-
+  // Use shell commands only - no Python kernel dependency
+  // This is faster and more reliable since shell is ready before Python
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const result = await sandbox.runCode(`
-import os
-print('ready')
-print(os.path.exists('/home/user'))
-`);
-      const output = result.logs.stdout.join('');
+      // Check shell is working and /home/user directory exists
+      const result = await sandbox.commands.run('test -d /home/user && echo "ready"', {
+        timeoutMs: 5000
+      });
 
-      if (output.includes('ready') && output.includes('True')) {
-        console.log(`[DEBUG] Sandbox fully ready after ${attempt} Python check(s)`);
+      if (result.exitCode === 0 && result.stdout.includes("ready")) {
+        console.log(`[DEBUG] Sandbox ready after ${attempt} attempt(s)`);
         return;
+      }
+
+      // Exit code != 0 means /home/user doesn't exist yet
+      if (attempt <= 3) {
+        console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}): waiting for filesystem`);
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorCode = (error as any)?.code || (error as any)?.status;
-      const isPortNotReady = 
-        errorMsg.includes('port is not open') || 
-        errorMsg.includes('502') || 
+      const isPortNotReady =
+        errorMsg.includes('port is not open') ||
+        errorMsg.includes('502') ||
         errorCode === 502 ||
         errorMsg.includes('ECONNREFUSED');
 
-      // Log detailed message more frequently if port is not ready
-      if (attempt <= 3 || attempt % 5 === 0 || isPortNotReady) {
-        console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}): ${isPortNotReady ? 'The sandbox is running but port is not open' : errorMsg}`);
+      if (attempt <= 3 || isPortNotReady) {
+        console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}): ${isPortNotReady ? 'port initializing' : errorMsg}`);
       }
+    }
 
-      if (attempt < maxAttempts) {
-        // Progressive delay: start at 2s if port not ready, max out at 8s
-        const baseDelay = isPortNotReady ? 2500 : 1500;
-        const delay = Math.min(baseDelay + (attempt * 300), 8000);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+    if (attempt < maxAttempts) {
+      // Progressive delay: 1s -> 1.5s -> 2s, capped at 3s
+      const delay = Math.min(1000 + (attempt * 200), 3000);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
   // If we get here, sandbox never became ready - throw error
-  const errorMessage = `E2B sandbox failed to initialize after ${maxAttempts} attempts. This often happens during peak load or maintenance. Please try again in a moment.`;
+  const errorMessage = `E2B sandbox failed to initialize after ${maxAttempts} attempts. Please try again.`;
   console.error("[ERROR]", errorMessage);
   throw new Error(errorMessage);
 }
@@ -170,52 +134,34 @@ export async function createSandbox(framework: Framework): Promise<Sandbox> {
   }
 }
 
-// Fast command execution using Python subprocess (3x faster than Node.js commands.run)
+// Command execution using shell (no Python kernel dependency)
 export async function runCodeCommand(
   sandbox: Sandbox,
   command: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   console.log("[DEBUG] Running command:", command);
-  const pythonScript = `
-import subprocess
-import os
-
-os.chdir('/home/user')
-result = subprocess.run(
-    ${JSON.stringify(command.split(' '))},
-    capture_output=True,
-    text=True,
-    shell=False
-)
-
-print("STDOUT:")
-print(result.stdout)
-if result.stderr:
-    print("\\nSTDERR:")
-    print(result.stderr)
-print(f"\\nExitCode: {result.returncode}")
-`;
 
   try {
-    const result = await sandbox.runCode(pythonScript);
-    const stdout = result.logs.stdout.join('\n');
-    const stderr = result.logs.stderr.join('\n');
-    
-    // Extract exit code from output
-    const exitCodeMatch = stdout.match(/ExitCode: (\d+)/);
-    const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1]) : (result.error ? 1 : 0);
-
-    console.log("[DEBUG] Command completed:", {
-      exitCode,
-      stdoutLength: stdout.length,
-      stderrLength: stderr.length,
+    // Run command directly in shell with timeout
+    const result = await sandbox.commands.run(`cd /home/user && ${command}`, {
+      timeoutMs: 120000, // 2 minute timeout for build commands
     });
 
-    if (exitCode !== 0 && stderr) {
-      console.log("[ERROR] Command failed:", stderr.substring(0, 300));
+    console.log("[DEBUG] Command completed:", {
+      exitCode: result.exitCode,
+      stdoutLength: result.stdout?.length || 0,
+      stderrLength: result.stderr?.length || 0,
+    });
+
+    if (result.exitCode !== 0 && result.stderr) {
+      console.log("[ERROR] Command failed:", result.stderr.substring(0, 300));
     }
 
-    return { stdout, stderr, exitCode };
+    return {
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      exitCode: result.exitCode,
+    };
   } catch (error) {
     console.error("[ERROR] Command execution exception:", error);
     return {
@@ -226,56 +172,63 @@ print(f"\\nExitCode: {result.returncode}")
   }
 }
 
-// Batch write files in single Python script (much faster than multiple API calls)
+// Write files using native E2B files API (no Python kernel dependency)
 export async function writeFilesBatch(
   sandbox: Sandbox,
   files: Record<string, string>
 ): Promise<void> {
-  if (Object.keys(files).length === 0) {
+  const entries = Object.entries(files);
+  if (entries.length === 0) {
     console.log("[DEBUG] No files to write");
     return;
   }
 
-  console.log("[DEBUG] Writing", Object.keys(files).length, "files in batch");
+  console.log("[DEBUG] Writing", entries.length, "files using native API");
 
-  const fileWrites = Object.entries(files).map(([path, content]) => {
+  // Create directories first using shell commands (fast and reliable)
+  const dirs = new Set<string>();
+  for (const [path] of entries) {
     const fullPath = path.startsWith('/') ? path : `/home/user/${path}`;
-    // Escape backslashes, quotes and newlines for Python
-    const escapedContent = content
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/\n/g, '\\n')
-      .replace(/\r/g, '\\r');
-    return `
-# Write ${path}
-dir_path = os.path.dirname("${fullPath}")
-os.makedirs(dir_path, exist_ok=True)
-with open("${fullPath}", "w") as f:
-    f.write("${escapedContent}")
-print("✓ ${path}")`;
-  }).join('\n');
+    const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+    if (dir && dir !== '/home/user') {
+      dirs.add(dir);
+    }
+  }
 
-  const pythonScript = `
-import os
+  if (dirs.size > 0) {
+    const mkdirCmd = `mkdir -p ${Array.from(dirs).map(d => `"${d}"`).join(' ')}`;
+    try {
+      await sandbox.commands.run(mkdirCmd, { timeoutMs: 10000 });
+    } catch (error) {
+      console.warn("[WARN] mkdir failed, continuing anyway:", error);
+    }
+  }
 
-print("Writing files...")
-${fileWrites}
-print("\\nAll files written successfully!")
-`;
+  // Write files using native E2B files API
+  const writePromises = entries.map(async ([path, content]) => {
+    const fullPath = path.startsWith('/') ? path : `/home/user/${path}`;
+    try {
+      await sandbox.files.write(fullPath, content);
+      console.log(`[DEBUG] Written: ${path}`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to write ${path}: ${errorMsg}`);
+    }
+  });
 
   try {
-    // Add timeout wrapper for file writes (30 seconds)
-    const writePromise = sandbox.runCode(pythonScript);
+    // Add timeout wrapper for file writes (30 seconds total)
+    const allWritesPromise = Promise.all(writePromises);
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("File write operation timed out after 30 seconds")), 30000)
     );
 
-    await Promise.race([writePromise, timeoutPromise]);
+    await Promise.race([allWritesPromise, timeoutPromise]);
     console.log("[INFO] Batch file write completed successfully");
   } catch (error) {
     console.error("[ERROR] Batch file write failed:", error);
     const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to write files: ${errorMsg}. This may indicate the sandbox is not ready.`);
+    throw new Error(`Failed to write files: ${errorMsg}`);
   }
 }
 
@@ -308,59 +261,46 @@ export async function runBuildCheck(
   }
 }
 
-// Clean .next directory using Python (faster)
+// Clean .next directory using shell command (no Python dependency)
 export async function cleanNextDirectory(sandbox: Sandbox): Promise<void> {
   try {
-    await runCodeCommand(sandbox, "rm -rf .next");
+    await sandbox.commands.run("rm -rf /home/user/.next", { timeoutMs: 10000 });
   } catch (error) {
     console.warn("[WARN] Failed to clean .next directory:", error);
   }
 }
 
-// List files using Python (faster than find command)
+// List files using shell find command (no Python dependency)
 export async function listFiles(
   sandbox: Sandbox,
   directory: string = "/home/user"
 ): Promise<string[]> {
-  const pythonScript = `
-import os
-import json
-
-def list_files(path):
-    files = []
-    for root, dirs, filenames in os.walk(path):
-        dirs[:] = [d for d in dirs if d not in ['node_modules', '.git', '.next', 'dist', 'build']]
-        for filename in filenames:
-            rel_path = os.path.relpath(os.path.join(root, filename), path)
-            files.append(rel_path)
-    return files
-
-files = list_files("${directory}")
-print(json.dumps(files))
-`;
-
-  const result = await sandbox.runCode(pythonScript);
   try {
-    return JSON.parse(result.logs.stdout.join(''));
-  } catch {
+    const excludes = "node_modules .git .next dist build";
+    const excludeArgs = excludes.split(' ').map(d => `-not -path '*/${d}/*'`).join(' ');
+    const cmd = `find "${directory}" -type f ${excludeArgs} 2>/dev/null | sed 's|^${directory}/||'`;
+
+    const result = await sandbox.commands.run(cmd, { timeoutMs: 15000 });
+    if (result.exitCode !== 0 || !result.stdout) {
+      return [];
+    }
+
+    return result.stdout.trim().split('\n').filter(f => f.length > 0);
+  } catch (error) {
+    console.warn("[WARN] Failed to list files:", error);
     return [];
   }
 }
 
-// Read file using Python (for consistency)
+// Read file using native E2B files API (no Python kernel dependency)
 export async function readFileFast(
   sandbox: Sandbox,
   path: string
 ): Promise<string | null> {
   try {
     const fullPath = path.startsWith('/') ? path : `/home/user/${path}`;
-    const pythonScript = `
-with open("${fullPath}", "r") as f:
-    print(f.read())
-`;
-
-    const result = await sandbox.runCode(pythonScript);
-    return result.logs.stdout.join('\n');
+    const content = await sandbox.files.read(fullPath);
+    return typeof content === 'string' ? content : null;
   } catch (error) {
     console.warn(`[WARN] Failed to read ${path}:`, error);
     return null;
