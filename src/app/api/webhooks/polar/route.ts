@@ -26,12 +26,14 @@ function mapPolarStatus(polarStatus: string): SubscriptionStatus {
   return statusMap[polarStatus] ?? "active";
 }
 
-function extractPlanName(productName: string | undefined): string {
-  if (!productName) return "Free";
-  const lower = productName.toLowerCase();
-  if (lower.includes("pro")) return "Pro";
-  if (lower.includes("enterprise")) return "Enterprise";
-  return productName;
+async function lookupUserIdByCustomerId(convex: ConvexHttpClient, customerId: string): Promise<string | null> {
+  try {
+    const customer = await convex.query(api.polar.getCustomerByPolarId, { polarCustomerId: customerId });
+    return customer?.userId ?? null;
+  } catch (error) {
+    console.error("Failed to lookup customer:", error);
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -73,61 +75,99 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    console.log(`📥 Polar webhook: ${event.type}`);
+    console.log(`📥 Polar webhook: ${event.type}`, JSON.stringify(event.data, null, 2));
 
     switch (event.type) {
+      case "checkout.created": {
+        console.log(`🛒 Checkout created: ${event.data.id}`);
+        break;
+      }
+
+      case "checkout.updated": {
+        const checkout = event.data as any;
+        console.log(`🛒 Checkout updated: ${checkout.id}, status: ${checkout.status}`);
+
+        // When checkout is confirmed/succeeded, sync the customer
+        if (checkout.status === "succeeded" || checkout.status === "confirmed") {
+          const userId = checkout.metadata?.userId as string | undefined;
+          const customerId = checkout.customerId || checkout.customer_id;
+
+          if (userId && customerId) {
+            try {
+              await convex.mutation(api.polar.syncCustomer, {
+                userId,
+                polarCustomerId: customerId,
+              });
+              console.log(`✅ Synced customer ${customerId} for user ${userId} from checkout`);
+            } catch (error) {
+              console.error("Failed to sync customer from checkout:", error);
+            }
+          }
+        }
+        break;
+      }
+
       case "subscription.created":
       case "subscription.updated":
       case "subscription.active": {
-        const subscription = event.data;
-        const userId = subscription.metadata?.userId as string | undefined;
+        const subscription = event.data as any;
+
+        // Try to get userId from metadata first
+        let userId = subscription.metadata?.userId as string | undefined;
+
+        // If no userId in metadata, try to look it up via customer_id
+        const customerId = subscription.customerId || subscription.customer_id;
+        if (!userId && customerId) {
+          console.log(`🔍 No userId in metadata, looking up by customerId: ${customerId}`);
+          userId = await lookupUserIdByCustomerId(convex, customerId) ?? undefined;
+        }
 
         if (!userId) {
-          console.error("❌ Missing userId in subscription metadata");
-          return NextResponse.json(
-            { error: "Missing userId in metadata" },
-            { status: 400 }
-          );
+          console.error("❌ Could not determine userId for subscription:", subscription.id);
+          console.error("Metadata:", subscription.metadata);
+          console.error("CustomerId:", customerId);
+          // Still return 200 to avoid webhook retries - log the issue instead
+          return NextResponse.json({ received: true, warning: "userId not found" });
+        }
+
+        // First, ensure the customer is synced
+        if (customerId) {
+          try {
+            await convex.mutation(api.polar.syncCustomer, {
+              userId,
+              polarCustomerId: customerId,
+            });
+          } catch (error) {
+            console.error("Failed to sync customer:", error);
+          }
         }
 
         const now = Date.now();
-        const periodStart = subscription.currentPeriodStart 
-          ? new Date(subscription.currentPeriodStart).getTime() 
-          : now;
-        const periodEnd = subscription.currentPeriodEnd 
-          ? new Date(subscription.currentPeriodEnd).getTime() 
-          : now + 30 * 24 * 60 * 60 * 1000;
+        const periodStart = subscription.currentPeriodStart || subscription.current_period_start;
+        const periodEnd = subscription.currentPeriodEnd || subscription.current_period_end;
 
-        // Use type assertion to access Polar subscription properties
-        const sub = subscription as unknown as {
-          id: string;
-          customerId: string;
-          productId: string;
-          price?: { recurringInterval?: string };
-          price_id?: string;
-          status: string;
-          currentPeriodStart?: string;
-          currentPeriodEnd?: string;
-          cancelAtPeriodEnd?: boolean;
-          metadata?: Record<string, unknown>;
-        };
+        const periodStartMs = periodStart ? new Date(periodStart).getTime() : now;
+        const periodEndMs = periodEnd ? new Date(periodEnd).getTime() : now + 30 * 24 * 60 * 60 * 1000;
 
-        const interval = sub.price?.recurringInterval === "year" ? "yearly" : "monthly";
+        const priceInterval = subscription.price?.recurringInterval || subscription.price?.recurring_interval;
+        const interval = priceInterval === "year" ? "yearly" : "monthly";
+        const priceId = subscription.priceId || subscription.price_id || subscription.price?.id || "";
+        const productId = subscription.productId || subscription.product_id || subscription.product?.id || "";
 
         await convex.mutation(api.subscriptions.createOrUpdateSubscription, {
           userId,
-          polarSubscriptionId: sub.id,
-          customerId: sub.customerId,
-          productId: sub.productId,
-          priceId: sub.price_id ?? "",
-          status: mapPolarStatus(sub.status),
+          polarSubscriptionId: subscription.id,
+          customerId: customerId || "",
+          productId,
+          priceId,
+          status: mapPolarStatus(subscription.status),
           interval,
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-          cancelAtPeriodEnd: sub.cancelAtPeriodEnd ?? false,
+          currentPeriodStart: periodStartMs,
+          currentPeriodEnd: periodEndMs,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd ?? subscription.cancel_at_period_end ?? false,
           metadata: {
-            ...sub.metadata,
-            polarCustomerId: sub.customerId,
+            ...subscription.metadata,
+            polarCustomerId: customerId,
             source: "polar",
           },
         });
@@ -138,39 +178,65 @@ export async function POST(request: NextRequest) {
 
       case "subscription.canceled": {
         const subscription = event.data;
-        
-        await convex.mutation(api.subscriptions.markSubscriptionForCancellation, {
-          polarSubscriptionId: subscription.id,
-        });
 
-        console.log(`✅ Subscription marked for cancellation: ${subscription.id}`);
+        try {
+          await convex.mutation(api.subscriptions.markSubscriptionForCancellation, {
+            polarSubscriptionId: subscription.id,
+          });
+          console.log(`✅ Subscription marked for cancellation: ${subscription.id}`);
+        } catch (error) {
+          console.error("Failed to mark subscription for cancellation:", error);
+        }
         break;
       }
 
       case "subscription.revoked": {
         const subscription = event.data;
-        
-        await convex.mutation(api.subscriptions.revokeSubscription, {
-          polarSubscriptionId: subscription.id,
-        });
 
-        console.log(`✅ Subscription revoked: ${subscription.id}`);
+        try {
+          await convex.mutation(api.subscriptions.revokeSubscription, {
+            polarSubscriptionId: subscription.id,
+          });
+          console.log(`✅ Subscription revoked: ${subscription.id}`);
+        } catch (error) {
+          console.error("Failed to revoke subscription:", error);
+        }
         break;
       }
 
       case "subscription.uncanceled": {
         const subscription = event.data;
-        
-        await convex.mutation(api.subscriptions.reactivateSubscription, {
-          polarSubscriptionId: subscription.id,
-        });
 
-        console.log(`✅ Subscription reactivated: ${subscription.id}`);
+        try {
+          await convex.mutation(api.subscriptions.reactivateSubscription, {
+            polarSubscriptionId: subscription.id,
+          });
+          console.log(`✅ Subscription reactivated: ${subscription.id}`);
+        } catch (error) {
+          console.error("Failed to reactivate subscription:", error);
+        }
         break;
       }
 
       case "order.created": {
-        console.log(`📦 Order created: ${event.data.id}`);
+        const order = event.data as any;
+        console.log(`📦 Order created: ${order.id}`);
+
+        // Orders can also trigger customer sync
+        const userId = order.metadata?.userId as string | undefined;
+        const customerId = order.customerId || order.customer_id;
+
+        if (userId && customerId) {
+          try {
+            await convex.mutation(api.polar.syncCustomer, {
+              userId,
+              polarCustomerId: customerId,
+            });
+            console.log(`✅ Synced customer ${customerId} for user ${userId} from order`);
+          } catch (error) {
+            console.error("Failed to sync customer from order:", error);
+          }
+        }
         break;
       }
 
@@ -187,4 +253,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

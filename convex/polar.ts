@@ -47,6 +47,20 @@ export const getCustomerIdByUserId = query({
   },
 });
 
+export const getCustomerByPolarId = query({
+  args: {
+    polarCustomerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const customer = await ctx.db
+      .query("polarCustomers")
+      .withIndex("by_polarCustomerId", (q) => q.eq("polarCustomerId", args.polarCustomerId))
+      .first();
+
+    return customer ?? null;
+  },
+});
+
 export const syncSubscription = mutation({
   args: {
     polarSubscriptionId: v.string(),
