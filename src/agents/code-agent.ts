@@ -40,6 +40,7 @@ import {
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
+import { withRateLimitRetry, isRateLimitError } from "./rate-limit";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -129,18 +130,21 @@ const usesShadcnComponents = (files: Record<string, string>) => {
 
 async function detectFramework(prompt: string): Promise<Framework> {
   const cacheKey = `framework:${prompt.slice(0, 200)}`;
-  
+
   return cache.getOrCompute(
     cacheKey,
     async () => {
-      const { text } = await generateText({
-        model: getClientForModel("google/gemini-2.5-flash-lite").chat(
-          "google/gemini-2.5-flash-lite"
-        ),
-        system: FRAMEWORK_SELECTOR_PROMPT,
-        prompt,
-        temperature: 0.3,
-      });
+      const { text } = await withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel("google/gemini-2.5-flash-lite").chat(
+            "google/gemini-2.5-flash-lite"
+          ),
+          system: FRAMEWORK_SELECTOR_PROMPT,
+          prompt,
+          temperature: 0.3,
+        }),
+        { context: "detectFramework" }
+      );
 
       const detectedFramework = text.trim().toLowerCase();
       if (
@@ -160,22 +164,28 @@ async function generateFragmentMetadata(
 ): Promise<{ title: string; response: string }> {
   try {
     const [titleResult, responseResult] = await Promise.all([
-      generateText({
-        model: getClientForModel("openai/gpt-5-nano").chat(
-          "openai/gpt-5-nano"
-        ),
-        system: FRAGMENT_TITLE_PROMPT,
-        prompt: summary,
-        temperature: 0.3,
-      }),
-      generateText({
-        model: getClientForModel("openai/gpt-5-nano").chat(
-          "openai/gpt-5-nano"
-        ),
-        system: RESPONSE_PROMPT,
-        prompt: summary,
-        temperature: 0.3,
-      }),
+      withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel("openai/gpt-5-nano").chat(
+            "openai/gpt-5-nano"
+          ),
+          system: FRAGMENT_TITLE_PROMPT,
+          prompt: summary,
+          temperature: 0.3,
+        }),
+        { context: "generateFragmentTitle" }
+      ),
+      withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel("openai/gpt-5-nano").chat(
+            "openai/gpt-5-nano"
+          ),
+          system: RESPONSE_PROMPT,
+          prompt: summary,
+          temperature: 0.3,
+        }),
+        { context: "generateFragmentResponse" }
+      ),
     ]);
 
     return {
@@ -433,48 +443,83 @@ export async function* runCodeAgent(
     }
 
     console.log("[DEBUG] Beginning AI stream...");
-    const result = streamText({
-      model: getClientForModel(selectedModel).chat(selectedModel),
-      system: frameworkPrompt,
-      messages,
-      tools,
-      stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
-      ...modelOptions,
-      onFinish: async ({ text }) => {
-        const summaryMatch = extractSummaryText(text);
-        if (summaryMatch) {
-          state.summary = summaryMatch;
-          console.log("[DEBUG] Summary extracted:", summaryMatch.substring(0, 100) + "...");
-        }
-      },
-    });
 
     let fullText = "";
     let chunkCount = 0;
     let previousFilesCount = 0;
+    const MAX_STREAM_RETRIES = 5;
+    const RATE_LIMIT_WAIT_MS = 60_000;
 
-    for await (const chunk of result.textStream) {
-      fullText += chunk;
-      chunkCount++;
-      if (chunkCount % 50 === 0) {
-        console.log("[DEBUG] Streamed", chunkCount, "chunks");
-      }
-      yield { type: "text", data: chunk };
+    for (let streamAttempt = 1; streamAttempt <= MAX_STREAM_RETRIES; streamAttempt++) {
+      try {
+        const result = streamText({
+          model: getClientForModel(selectedModel).chat(selectedModel),
+          system: frameworkPrompt,
+          messages,
+          tools,
+          stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
+          ...modelOptions,
+          onFinish: async ({ text }) => {
+            const summaryMatch = extractSummaryText(text);
+            if (summaryMatch) {
+              state.summary = summaryMatch;
+              console.log("[DEBUG] Summary extracted:", summaryMatch.substring(0, 100) + "...");
+            }
+          },
+        });
 
-      const currentFilesCount = Object.keys(state.files).length;
-      if (currentFilesCount > previousFilesCount) {
-        const newFiles = Object.entries(state.files).slice(previousFilesCount);
-        for (const [path, content] of newFiles) {
-          yield {
-            type: "file-created",
-            data: {
-              path,
-              content,
-              size: content.length,
-            },
-          };
+        for await (const chunk of result.textStream) {
+          fullText += chunk;
+          chunkCount++;
+          if (chunkCount % 50 === 0) {
+            console.log("[DEBUG] Streamed", chunkCount, "chunks");
+          }
+          yield { type: "text", data: chunk };
+
+          const currentFilesCount = Object.keys(state.files).length;
+          if (currentFilesCount > previousFilesCount) {
+            const newFiles = Object.entries(state.files).slice(previousFilesCount);
+            for (const [path, content] of newFiles) {
+              yield {
+                type: "file-created",
+                data: {
+                  path,
+                  content,
+                  size: content.length,
+                },
+              };
+            }
+            previousFilesCount = currentFilesCount;
+          }
         }
-        previousFilesCount = currentFilesCount;
+
+        // Stream completed successfully, break out of retry loop
+        break;
+      } catch (streamError) {
+        const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+        const isRateLimit = isRateLimitError(streamError);
+
+        if (streamAttempt === MAX_STREAM_RETRIES) {
+          console.error(`[RATE-LIMIT] Stream: All ${MAX_STREAM_RETRIES} attempts failed. Last error: ${errorMessage}`);
+          throw streamError;
+        }
+
+        if (isRateLimit) {
+          console.log(`[RATE-LIMIT] Stream: Rate limit hit on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}. Waiting 60s...`);
+          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
+          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_WAIT_MS));
+        } else {
+          const backoffMs = 1000 * Math.pow(2, streamAttempt - 1);
+          console.log(`[RATE-LIMIT] Stream: Error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+
+        // Reset state for retry - keep any files already created
+        fullText = "";
+        chunkCount = 0;
+        console.log(`[RATE-LIMIT] Stream: Retrying stream (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...`);
+        yield { type: "status", data: `Retrying AI generation (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...` };
       }
     }
 
@@ -493,25 +538,28 @@ export async function* runCodeAgent(
       console.log("[DEBUG] No summary detected, requesting explicitly...");
       yield { type: "status", data: "Generating summary..." };
 
-      const followUp = await generateText({
-        model: getClientForModel(selectedModel).chat(selectedModel),
-        system: frameworkPrompt,
-        messages: [
-          ...messages,
-          {
-            role: "assistant" as const,
-            content: resultText,
-          },
-          {
-            role: "user" as const,
-            content:
-              "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
-          },
-        ],
-        tools,
-        stopWhen: stepCountIs(2),
-        ...modelOptions,
-      });
+      const followUp = await withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel(selectedModel).chat(selectedModel),
+          system: frameworkPrompt,
+          messages: [
+            ...messages,
+            {
+              role: "assistant" as const,
+              content: resultText,
+            },
+            {
+              role: "user" as const,
+              content:
+                "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
+            },
+          ],
+          tools,
+          stopWhen: stepCountIs(2),
+          ...modelOptions,
+        }),
+        { context: "generateSummary" }
+      );
 
       summaryText = extractSummaryText(followUp.text || "");
       if (summaryText) {
@@ -578,18 +626,21 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 4. VERIFY YOUR FIX by running: npm run lint && npm run build
 5. PROVIDE SUMMARY with <task_summary> once fixed`;
 
-      const fixResult = await generateText({
-        model: getClientForModel(selectedModel).chat(selectedModel),
-        system: frameworkPrompt,
-        messages: [
-          ...messages,
-          { role: "assistant" as const, content: resultText },
-          { role: "user" as const, content: fixPrompt },
-        ],
-        tools,
-        stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
-        ...modelOptions,
-      });
+      const fixResult = await withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel(selectedModel).chat(selectedModel),
+          system: frameworkPrompt,
+          messages: [
+            ...messages,
+            { role: "assistant" as const, content: resultText },
+            { role: "user" as const, content: fixPrompt },
+          ],
+          tools,
+          stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
+          ...modelOptions,
+        }),
+        { context: "autoFix" }
+      );
 
       console.log("[DEBUG] Auto-fix generation complete");
 
@@ -903,14 +954,17 @@ REQUIRED ACTIONS:
 4. Verify the fixes by ensuring the code is syntactically correct
 5. Provide a <task_summary> explaining what was fixed`;
 
-  const result = await generateText({
-    model: getClientForModel(fragmentModel).chat(fragmentModel),
-    system: frameworkPrompt,
-    messages: [{ role: "user", content: fixPrompt }],
-    tools,
-    stopWhen: stepCountIs(10),
-    temperature: modelConfig.temperature,
-  });
+  const result = await withRateLimitRetry(
+    () => generateText({
+      model: getClientForModel(fragmentModel).chat(fragmentModel),
+      system: frameworkPrompt,
+      messages: [{ role: "user", content: fixPrompt }],
+      tools,
+      stopWhen: stepCountIs(10),
+      temperature: modelConfig.temperature,
+    }),
+    { context: "runErrorFix" }
+  );
 
   const summaryText = extractSummaryText(result.text || "");
   if (summaryText) {
