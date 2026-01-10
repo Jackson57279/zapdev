@@ -11,8 +11,11 @@ const clearCacheEntry = (sandboxId: string) => {
   }, CACHE_EXPIRY_MS);
 };
 
-async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 20): Promise<void> {
+async function waitForSandboxReady(sandbox: Sandbox, maxAttempts = 30): Promise<void> {
   console.log("[DEBUG] Waiting for sandbox to be ready...");
+
+  // Initial delay to let the sandbox fully spin up before first attempt
+  await new Promise(resolve => setTimeout(resolve, 2000));
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -30,11 +33,16 @@ print(os.path.exists('/home/user'))
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // Check for port not ready error (502) - this needs more time
+      const isPortNotReady = errorMsg.includes('port is not open') || errorMsg.includes('502');
+
       console.log(`[DEBUG] Sandbox not ready (attempt ${attempt}/${maxAttempts}):`, errorMsg.substring(0, 150));
 
       if (attempt < maxAttempts) {
-        // Exponential backoff with cap: 1s, 2s, 3s, 4s, 5s, then 5s for remaining attempts
-        const delay = Math.min(1000 * attempt, 5000);
+        // Longer delay for port issues, exponential backoff otherwise
+        const baseDelay = isPortNotReady ? 3000 : 1500;
+        const delay = Math.min(baseDelay * Math.ceil(attempt / 3), 8000);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }

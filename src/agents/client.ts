@@ -10,10 +10,25 @@ export const cerebras = createCerebras({
   apiKey: process.env.CEREBRAS_API_KEY || "",
 });
 
+// Cerebras model IDs
+const CEREBRAS_MODELS = ["zai-glm-4.7"];
+
+export function isCerebrasModel(modelId: string): boolean {
+  return CEREBRAS_MODELS.includes(modelId);
+}
+
 export function getModel(modelId: string) {
+  if (isCerebrasModel(modelId)) {
+    return cerebras(modelId);
+  }
   return openrouter(modelId);
 }
 
 export function getClientForModel(modelId: string) {
-  return modelId === "zai-glm-4.7" ? cerebras : openrouter;
+  if (isCerebrasModel(modelId)) {
+    return {
+      chat: (_modelId: string) => cerebras(modelId),
+    };
+  }
+  return openrouter;
 }
