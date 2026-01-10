@@ -42,7 +42,7 @@ export const MODEL_CONFIGS = {
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
   },
-  "z-ai/glm-4.7": {
+  "zai-glm-4.7": {
     name: "Z-AI GLM 4.7",
     provider: "cerebras",
     description: "Ultra-fast inference for speed-critical tasks via Cerebras",
@@ -128,7 +128,7 @@ export function selectModelForTask(
   );
 
   if (needsSpeed && !hasComplexityIndicators) {
-    chosenModel = "z-ai/glm-4.7";
+    chosenModel = "zai-glm-4.7";
   }
 
   if (hasComplexityIndicators || isVeryLongPrompt) {

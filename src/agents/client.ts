@@ -1,13 +1,13 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { createCerebras } from "@ai-sdk/cerebras";
 
 export const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY!,
   baseURL: "https://openrouter.ai/api/v1",
 });
 
-export const cerebras = createOpenAI({
+export const cerebras = createCerebras({
   apiKey: process.env.CEREBRAS_API_KEY || "",
-  baseURL: "https://api.cerebras.ai/v1",
 });
 
 export function getModel(modelId: string) {
@@ -15,5 +15,5 @@ export function getModel(modelId: string) {
 }
 
 export function getClientForModel(modelId: string) {
-  return modelId === "z-ai/glm-4.7" ? cerebras : openrouter;
+  return modelId === "zai-glm-4.7" ? cerebras : openrouter;
 }

@@ -23,7 +23,7 @@ describe('Model Selection Logic', () => {
     const prompt = 'Need a quick prototype landing page mockup.';
     const result = selectModelForTask(prompt);
 
-    expect(result).toBe('z-ai/glm-4.7');
+    expect(result).toBe('zai-glm-4.7');
   });
 
   it('keeps Claude Haiku when complexity indicators are present even if speed is requested', () => {

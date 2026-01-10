@@ -12,6 +12,7 @@
     "convex:deploy": "bunx convex deploy"
   },
   "dependencies": {
+    "@ai-sdk/cerebras": "^2.0.5",
     "@ai-sdk/openai": "^3.0.2",
     "@clerk/backend": "^2.29.0",
     "@clerk/nextjs": "^6.36.5",
