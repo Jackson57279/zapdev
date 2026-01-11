@@ -6,6 +6,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 
 import { getClientForModel } from "./client";
 import { createAgentTools } from "./tools";
+import { createExaTools } from "./exa-tools";
 import {
   type Framework,
   type AgentState,
@@ -41,6 +42,14 @@ import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
 import { withRateLimitRetry, isRateLimitError } from "./rate-limit";
+import { TimeoutManager, estimateComplexity } from "./timeout-manager";
+import { 
+  detectResearchNeed, 
+  spawnSubagent, 
+  spawnParallelSubagents,
+  type SubagentRequest,
+  type SubagentResponse 
+} from "./subagent";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -204,13 +213,16 @@ async function generateFragmentMetadata(
 export interface StreamEvent {
   type:
     | "status"
-    | "text"              // AI response chunks (streaming)
-    | "tool-call"         // Tool being invoked
-    | "tool-output"       // Command output (stdout/stderr streaming)
-    | "file-created"      // Individual file creation (streaming)
-    | "file-updated"      // File update event (streaming)
-    | "progress"          // Progress update (e.g., "3/10 files created")
-    | "files"             // Batch files (for compatibility)
+    | "text"
+    | "tool-call"
+    | "tool-output"
+    | "file-created"
+    | "file-updated"
+    | "progress"
+    | "files"
+    | "research-start"
+    | "research-complete"
+    | "time-budget"
     | "error"
     | "complete";
   data: unknown;
@@ -253,6 +265,13 @@ export async function* runCodeAgent(
     !!process.env.OPENROUTER_API_KEY
   );
 
+  const timeoutManager = new TimeoutManager();
+  const complexity = estimateComplexity(value);
+  timeoutManager.adaptBudget(complexity);
+  
+  console.log(`[INFO] Task complexity: ${complexity}`);
+
+  timeoutManager.startStage("initialization");
   yield { type: "status", data: "Initializing project..." };
 
   try {
@@ -270,6 +289,8 @@ export async function* runCodeAgent(
       framework: project.framework,
       modelPreference: project.modelPreference,
     });
+    
+    timeoutManager.endStage("initialization");
 
     let selectedFramework: Framework =
       (project?.framework?.toLowerCase() as Framework) || "nextjs";
@@ -395,6 +416,63 @@ export async function* runCodeAgent(
       content: `Crawled context from ${ctx.url}:\n${ctx.content}`,
     }));
 
+    let researchResults: SubagentResponse[] = [];
+    const selectedModelConfig = MODEL_CONFIGS[selectedModel];
+    
+    if (selectedModelConfig.supportsSubagents && !timeoutManager.shouldSkipStage("research")) {
+      const researchDetection = detectResearchNeed(value);
+      
+      if (researchDetection.needs && researchDetection.query) {
+        timeoutManager.startStage("research");
+        yield { type: "status", data: "Conducting research via subagents..." };
+        yield { 
+          type: "research-start", 
+          data: { 
+            taskType: researchDetection.taskType, 
+            query: researchDetection.query 
+          } 
+        };
+        
+        console.log(`[SUBAGENT] Detected ${researchDetection.taskType} need for: ${researchDetection.query}`);
+        
+        const subagentRequest: SubagentRequest = {
+          taskId: `research_${Date.now()}`,
+          taskType: researchDetection.taskType || "research",
+          query: researchDetection.query,
+          maxResults: 5,
+          timeout: 30_000,
+        };
+
+        try {
+          const result = await spawnSubagent(subagentRequest);
+          researchResults.push(result);
+          
+          yield { 
+            type: "research-complete", 
+            data: { 
+              taskId: result.taskId,
+              status: result.status,
+              elapsedTime: result.elapsedTime 
+            } 
+          };
+          
+          console.log(`[SUBAGENT] Research completed in ${result.elapsedTime}ms`);
+        } catch (error) {
+          console.error("[SUBAGENT] Research failed:", error);
+          yield { type: "status", data: "Research failed, proceeding with internal knowledge..." };
+        }
+        
+        timeoutManager.endStage("research");
+      }
+    }
+
+    const researchMessages = researchResults
+      .filter((r) => r.status === "complete" && r.findings)
+      .map((r) => ({
+        role: "user" as const,
+        content: `Research findings:\n${JSON.stringify(r.findings, null, 2)}`,
+      }));
+
     const state: AgentState = {
       summary: "",
       files: {},
@@ -403,7 +481,7 @@ export async function* runCodeAgent(
     };
 
     console.log("[DEBUG] Creating agent tools...");
-    const tools = createAgentTools({
+    const baseTools = createAgentTools({
       sandboxId,
       state,
       updateFiles: (files) => {
@@ -418,15 +496,37 @@ export async function* runCodeAgent(
         }
       },
     });
+    
+    const exaTools = process.env.EXA_API_KEY && selectedModelConfig.supportsSubagents 
+      ? createExaTools() 
+      : {};
+    
+    const tools = { ...baseTools, ...exaTools };
 
     const frameworkPrompt = getFrameworkPrompt(selectedFramework);
     const modelConfig = MODEL_CONFIGS[selectedModel];
 
+    timeoutManager.startStage("codeGeneration");
+    
+    const timeoutCheck = timeoutManager.checkTimeout();
+    if (timeoutCheck.isEmergency) {
+      yield { type: "status", data: timeoutCheck.message || "Emergency: Approaching timeout" };
+      console.error("[TIMEOUT]", timeoutCheck.message);
+    }
+
     yield { type: "status", data: `Running ${modelConfig.name} agent...` };
+    yield { 
+      type: "time-budget", 
+      data: { 
+        remaining: timeoutManager.getRemaining(), 
+        stage: "generating" 
+      } 
+    };
     console.log("[INFO] Starting AI generation...");
 
     const messages = [
       ...crawlMessages,
+      ...researchMessages,
       ...contextMessages,
       { role: "user" as const, content: value },
     ];
