@@ -173,7 +173,6 @@ User Request → GLM 4.7 (Orchestrator)
 
 ### Unit Tests
 ```bash
-cd /home/dih/zapdev
 bun test tests/glm-subagent-system.test.ts
 ```
 

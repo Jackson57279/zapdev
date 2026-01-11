@@ -628,6 +628,8 @@ export async function* runCodeAgent(
       totalLength: fullText.length,
     });
 
+    timeoutManager.endStage("codeGeneration");
+
     const resultText = fullText;
     let summaryText = extractSummaryText(state.summary || resultText || "");
 

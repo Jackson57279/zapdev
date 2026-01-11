@@ -37,7 +37,9 @@ export interface ResearchDetection {
 }
 
 export function detectResearchNeed(prompt: string): ResearchDetection {
-  const lowercasePrompt = prompt.toLowerCase();
+  // Truncate input to prevent ReDoS attacks
+  const truncatedPrompt = prompt.slice(0, 1000);
+  const lowercasePrompt = truncatedPrompt.toLowerCase();
   
   const researchPatterns: Array<{ pattern: RegExp; type: ResearchTaskType }> = [
     { pattern: /look\s+up/i, type: "research" },
@@ -46,7 +48,7 @@ export function detectResearchNeed(prompt: string): ResearchDetection {
     { pattern: /check\s+(docs|documentation)/i, type: "documentation" },
     { pattern: /how\s+does\s+(\w+\s+)?work/i, type: "research" },
     { pattern: /latest\s+version/i, type: "research" },
-    { pattern: /compare\s+.+\s+(vs|versus|and)\s+/i, type: "comparison" },
+    { pattern: /compare\s+(?:(?!\s+(?:vs|versus|and)\s+).){1,200}?\s+(vs|versus|and)\s+/i, type: "comparison" },
     { pattern: /search\s+for|find\s+(info|documentation|docs|examples?)/i, type: "research" },
     { pattern: /best\s+practices/i, type: "research" },
     { pattern: /how\s+to\s+use/i, type: "documentation" },
@@ -58,7 +60,7 @@ export function detectResearchNeed(prompt: string): ResearchDetection {
       return {
         needs: true,
         taskType: type,
-        query: extractResearchQuery(prompt),
+        query: extractResearchQuery(truncatedPrompt),
       };
     }
   }
@@ -71,23 +73,26 @@ export function detectResearchNeed(prompt: string): ResearchDetection {
 }
 
 function extractResearchQuery(prompt: string): string {
+  // Truncate input to prevent ReDoS attacks
+  const truncatedPrompt = prompt.slice(0, 500);
+
   const researchPhrases = [
-    /research\s+(.+?)(?:\.|$)/i,
-    /look up\s+(.+?)(?:\.|$)/i,
-    /find\s+(?:documentation|docs|info|information)\s+(?:for|about)\s+(.+?)(?:\.|$)/i,
-    /how (?:does|do|to)\s+(.+?)(?:\?|$)/i,
-    /compare\s+(.+?)\s+(?:vs|versus|and)/i,
-    /best\s+practices\s+(?:for|of)\s+(.+?)(?:\.|$)/i,
+    /research\s+(.{1,200}?)(?:\.|$)/i,
+    /look up\s+(.{1,200}?)(?:\.|$)/i,
+    /find\s+(?:documentation|docs|info|information)\s+(?:for|about)\s+(.{1,200}?)(?:\.|$)/i,
+    /how (?:does|do|to)\s+(.{1,200}?)(?:\?|$)/i,
+    /compare\s+(.{1,200}?)\s+(?:vs|versus|and)/i,
+    /best\s+practices\s+(?:for|of)\s+(.{1,200}?)(?:\.|$)/i,
   ];
 
   for (const pattern of researchPhrases) {
-    const match = prompt.match(pattern);
+    const match = truncatedPrompt.match(pattern);
     if (match && match[1]) {
       return match[1].trim();
     }
   }
 
-  return prompt.slice(0, 100);
+  return truncatedPrompt.slice(0, 100);
 }
 
 export function shouldUseSubagent(
