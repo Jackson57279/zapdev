@@ -5,7 +5,7 @@
 
 ## Overview
 
-This implementation transforms ZapDev's AI agent architecture to maximize the speed advantages of Cerebras GLM 4.7 by making it the default model and adding subagent research capabilities with Exa AI search integration.
+This implementation transforms ZapDev's AI agent architecture to maximize the speed advantages of Cerebras GLM 4.7 by making it the default model and adding subagent research capabilities with Brave Search API integration.
 
 ## Key Changes
 
@@ -41,17 +41,19 @@ This implementation transforms ZapDev's AI agent architecture to maximize the sp
 
 **Subagent Budget**: 30s timeout per subagent, 60s total for research phase
 
-### 3. Exa API Integration (Phase 3)
-**File**: `src/agents/exa-tools.ts` (NEW)
+### 3. Brave Search API Integration (Phase 3)
+**File**: `src/agents/brave-tools.ts` (NEW)
+**File**: `src/lib/brave-search.ts` (NEW)
 
 **Tools Added**:
-- `webSearch` - General web search with autoprompt
-- `lookupDocumentation` - Targeted docs search with domain filtering
+- `webSearch` - General web search with freshness filtering
+- `lookupDocumentation` - Targeted docs search for libraries and frameworks
 - `searchCodeExamples` - GitHub/StackOverflow code search
 
 **Features**:
-- Site filtering for official documentation (nextjs.org, react.dev, etc.)
-- Graceful fallback when EXA_API_KEY not configured
+- Freshness filtering (past day, week, month, year)
+- Free tier: 2,000 requests/month at no cost
+- Graceful fallback when BRAVE_SEARCH_API_KEY not configured
 - Smart result formatting for LLM consumption
 
 ### 4. Timeout Management (Phase 4)
@@ -115,8 +117,8 @@ Complex: 300s total (more time for generation)
 
 **Added**:
 ```bash
-# Exa API (AI-powered web search for subagent research - optional)
-EXA_API_KEY=""  # Get from https://dashboard.exa.ai
+# Brave Search API (web search for subagent research - optional)
+BRAVE_SEARCH_API_KEY=""  # Get from https://api-dashboard.search.brave.com/app/keys
 ```
 
 ## Architecture Diagram
@@ -133,7 +135,7 @@ User Request → GLM 4.7 (Orchestrator)
     Spawn Subagent(s)   Direct Generation
     (morph-v3-large)         ↓
              ↓          Code + Tools
-    Exa API Search           ↓
+         Brave Search API           ↓
     (webSearch, docs)    Validation
              ↓               ↓
     Return Findings      Complete
@@ -149,7 +151,7 @@ User Request → GLM 4.7 (Orchestrator)
 |--------|--------|-------|-------------|
 | Default Model Speed | 75 tokens/sec (Haiku) | 1500+ tokens/sec (GLM 4.7) | **20x faster** |
 | GLM 4.7 Usage | ~5% of requests | ~80% of requests | **16x more usage** |
-| Research Capability | None | Exa + Subagents | **NEW** |
+| Research Capability | None | Brave Search + Subagents | **NEW** |
 | Timeout Protection | Basic | Adaptive with warnings | **Enhanced** |
 | Parallel Execution | Limited | Subagents + Tools | **Improved** |
 
@@ -158,7 +160,7 @@ User Request → GLM 4.7 (Orchestrator)
 **None** - All changes are backward compatible:
 - Existing models still work
 - AUTO selection maintains compatibility
-- Exa integration is optional (graceful fallback)
+- Brave Search integration is optional (graceful fallback)
 - Timeout manager doesn't break existing flow
 
 ## Configuration Required
@@ -167,7 +169,7 @@ User Request → GLM 4.7 (Orchestrator)
 - ✅ `CEREBRAS_API_KEY` - Already in use for GLM 4.7
 
 ### Optional (New)
-- ⭕ `EXA_API_KEY` - For subagent research (degrades gracefully without it)
+- ⭕ `BRAVE_SEARCH_API_KEY` - For subagent research (degrades gracefully without it)
 
 ## Testing Instructions
 
@@ -200,7 +202,7 @@ bun run build
 **No action required** - changes are automatic
 
 ### For DevOps
-1. Add `EXA_API_KEY` to environment variables (optional)
+1. Add `BRAVE_SEARCH_API_KEY` to environment variables (optional)
 2. Redeploy application
 3. Monitor Cerebras usage (should increase significantly)
 
@@ -213,7 +215,7 @@ bun run build
 ## Known Limitations
 
 1. **Subagents only work with GLM 4.7** - Other models don't have this capability
-2. **Research requires EXA_API_KEY** - Falls back to internal knowledge without it
+2. **Research requires BRAVE_SEARCH_API_KEY** - Falls back to internal knowledge without it
 3. **30s subagent timeout** - Complex research may be truncated
 4. **Vercel 300s hard limit** - Cannot extend beyond this
 
@@ -229,15 +231,15 @@ bun run build
 
 ### New Files
 - `src/agents/subagent.ts` - Subagent orchestration
-- `src/agents/exa-tools.ts` - Exa API integration
+- `src/agents/brave-tools.ts` - Brave Search API integration
+- `src/lib/brave-search.ts` - Brave Search API client
 - `src/agents/timeout-manager.ts` - Timeout tracking
 - `tests/glm-subagent-system.test.ts` - Comprehensive tests
 
 ### Modified Files
 - `src/agents/types.ts` - Model configs, selection logic
 - `src/agents/code-agent.ts` - Integration of all features
-- `env.example` - Added EXA_API_KEY
-- `package.json` - Added exa-js dependency
+- `env.example` - Added BRAVE_SEARCH_API_KEY
 
 ## Verification Checklist
 
@@ -247,14 +249,14 @@ bun run build
 - [x] GLM 4.7 is default for AUTO
 - [x] Subagent detection works
 - [x] Timeout manager tracks stages
-- [x] Exa tools handle missing API key
+- [x] Brave Search tools handle missing API key
 - [x] Documentation updated
 
 ## Support
 
 For issues or questions:
 1. Check test output: `bun test tests/glm-subagent-system.test.ts`
-2. Verify environment: `EXA_API_KEY` (optional), `CEREBRAS_API_KEY` (required)
+2. Verify environment: `BRAVE_SEARCH_API_KEY` (optional), `CEREBRAS_API_KEY` (required)
 3. Check logs for `[SUBAGENT]` and `[TIMEOUT]` prefixes
 
 ---

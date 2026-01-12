@@ -6,7 +6,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 
 import { getClientForModel } from "./client";
 import { createAgentTools } from "./tools";
-import { createExaTools } from "./exa-tools";
+import { createBraveTools } from "./brave-tools";
 import {
   type Framework,
   type AgentState,
@@ -497,11 +497,11 @@ export async function* runCodeAgent(
       },
     });
     
-    const exaTools = process.env.EXA_API_KEY && selectedModelConfig.supportsSubagents 
-      ? createExaTools() 
+    const braveTools = process.env.BRAVE_SEARCH_API_KEY && selectedModelConfig.supportsSubagents 
+      ? createBraveTools() 
       : {};
     
-    const tools = { ...baseTools, ...exaTools };
+    const tools = { ...baseTools, ...braveTools };
 
     const frameworkPrompt = getFrameworkPrompt(selectedFramework);
     const modelConfig = MODEL_CONFIGS[selectedModel];
