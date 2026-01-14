@@ -29,6 +29,46 @@ export function isRateLimitError(error: unknown): boolean {
 }
 
 /**
+ * Checks if an error is a server error (5xx) that should be retried.
+ * This includes AI provider 500 errors and validation errors from malformed responses.
+ */
+export function isServerError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const message = error.message.toLowerCase();
+  const errorString = String(error).toLowerCase();
+  
+  const serverErrorPatterns = [
+    "server error",
+    "server_error",
+    "status_code\":500",
+    "status_code\": 500",
+    "500",
+    "502",
+    "503",
+    "504",
+    "internal error",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "encountered a server error",
+    "ai_typevalidationerror", // AI SDK validation error from malformed provider response
+    "type validation failed",
+  ];
+
+  return serverErrorPatterns.some(pattern => 
+    message.includes(pattern) || errorString.includes(pattern)
+  );
+}
+
+/**
+ * Checks if an error is retryable (either rate limit or server error)
+ */
+export function isRetryableError(error: unknown): boolean {
+  return isRateLimitError(error) || isServerError(error);
+}
+
+/**
  * Sleep for a specified duration with logging
  */
 async function sleep(ms: number, reason: string): Promise<void> {
@@ -58,22 +98,24 @@ export async function withRateLimitRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      const canRetry = isRetryableError(error);
 
-      if (attempt === maxRetries) {
-        console.error(`[RATE-LIMIT] ${context}: All ${maxRetries} attempts failed. Last error: ${lastError.message}`);
+      if (attempt === maxRetries || !canRetry) {
+        console.error(`[ERROR] ${context}: ${canRetry ? `All ${maxRetries} attempts failed` : "Non-retryable error"}. Error: ${lastError.message}`);
         throw lastError;
       }
 
       let waitMs: number;
 
       if (isRateLimitError(error)) {
-        // Rate limit - wait 60 seconds
         waitMs = RATE_LIMIT_WAIT_MS;
         console.log(`[RATE-LIMIT] ${context}: Rate limit hit on attempt ${attempt}/${maxRetries}. Waiting 60s...`);
+      } else if (isServerError(error)) {
+        waitMs = INITIAL_BACKOFF_MS * 2 * Math.pow(2, attempt - 1);
+        console.log(`[SERVER-ERROR] ${context}: Server error on attempt ${attempt}/${maxRetries}: ${lastError.message}. Retrying in ${waitMs / 1000}s...`);
       } else {
-        // Other error - exponential backoff
         waitMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-        console.log(`[RATE-LIMIT] ${context}: Error on attempt ${attempt}/${maxRetries}: ${lastError.message}. Retrying in ${waitMs / 1000}s...`);
+        console.log(`[ERROR] ${context}: Error on attempt ${attempt}/${maxRetries}: ${lastError.message}. Retrying in ${waitMs / 1000}s...`);
       }
 
       if (onRetry) {
@@ -84,7 +126,6 @@ export async function withRateLimitRetry<T>(
     }
   }
 
-  // This should never be reached due to the throw above, but TypeScript needs it
   throw lastError || new Error("Unexpected error in retry loop");
 }
 
@@ -114,22 +155,24 @@ export async function* withRateLimitRetryGenerator<T>(
       return;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      const canRetry = isRetryableError(error);
 
-      if (attempt === maxRetries) {
-        console.error(`[RATE-LIMIT] ${context}: All ${maxRetries} attempts failed. Last error: ${lastError.message}`);
+      if (attempt === maxRetries || !canRetry) {
+        console.error(`[ERROR] ${context}: ${canRetry ? `All ${maxRetries} attempts failed` : "Non-retryable error"}. Error: ${lastError.message}`);
         throw lastError;
       }
 
       let waitMs: number;
 
       if (isRateLimitError(error)) {
-        // Rate limit - wait 60 seconds
         waitMs = RATE_LIMIT_WAIT_MS;
         console.log(`[RATE-LIMIT] ${context}: Rate limit hit on attempt ${attempt}/${maxRetries}. Waiting 60s...`);
+      } else if (isServerError(error)) {
+        waitMs = INITIAL_BACKOFF_MS * 2 * Math.pow(2, attempt - 1);
+        console.log(`[SERVER-ERROR] ${context}: Server error on attempt ${attempt}/${maxRetries}: ${lastError.message}. Retrying in ${waitMs / 1000}s...`);
       } else {
-        // Other error - exponential backoff
         waitMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-        console.log(`[RATE-LIMIT] ${context}: Error on attempt ${attempt}/${maxRetries}: ${lastError.message}. Retrying in ${waitMs / 1000}s...`);
+        console.log(`[ERROR] ${context}: Error on attempt ${attempt}/${maxRetries}: ${lastError.message}. Retrying in ${waitMs / 1000}s...`);
       }
 
       if (onRetry) {

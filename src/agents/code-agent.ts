@@ -40,7 +40,7 @@ import {
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
-import { withRateLimitRetry, isRateLimitError } from "./rate-limit";
+import { withRateLimitRetry, isRateLimitError, isRetryableError, isServerError } from "./rate-limit";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -498,9 +498,11 @@ export async function* runCodeAgent(
       } catch (streamError) {
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         const isRateLimit = isRateLimitError(streamError);
+        const isServer = isServerError(streamError);
+        const canRetry = isRateLimit || isServer;
 
-        if (streamAttempt === MAX_STREAM_RETRIES) {
-          console.error(`[RATE-LIMIT] Stream: All ${MAX_STREAM_RETRIES} attempts failed. Last error: ${errorMessage}`);
+        if (streamAttempt === MAX_STREAM_RETRIES || !canRetry) {
+          console.error(`[ERROR] Stream: ${canRetry ? `All ${MAX_STREAM_RETRIES} attempts failed` : "Non-retryable error"}. Error: ${errorMessage}`);
           throw streamError;
         }
 
@@ -508,17 +510,21 @@ export async function* runCodeAgent(
           console.log(`[RATE-LIMIT] Stream: Rate limit hit on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}. Waiting 60s...`);
           yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
           await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_WAIT_MS));
+        } else if (isServer) {
+          const backoffMs = 2000 * Math.pow(2, streamAttempt - 1);
+          console.log(`[SERVER-ERROR] Stream: Server error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Server error. Retrying in ${backoffMs / 1000}s (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
         } else {
           const backoffMs = 1000 * Math.pow(2, streamAttempt - 1);
-          console.log(`[RATE-LIMIT] Stream: Error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          console.log(`[ERROR] Stream: Error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
           yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
 
-        // Reset state for retry - keep any files already created
         fullText = "";
         chunkCount = 0;
-        console.log(`[RATE-LIMIT] Stream: Retrying stream (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...`);
+        console.log(`[RETRY] Stream: Retrying stream (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...`);
         yield { type: "status", data: `Retrying AI generation (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...` };
       }
     }
