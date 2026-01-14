@@ -140,5 +140,52 @@ export async function* withRateLimitRetryGenerator<T>(
     }
   }
 
+  // This should never be reached due to the throw above, but TypeScript needs it
   throw lastError || new Error("Unexpected error in retry loop");
+}
+
+export interface GatewayFallbackOptions {
+  modelId: string;
+  context?: string;
+}
+
+export async function* withGatewayFallbackGenerator<T>(
+  createGenerator: (useGateway: boolean) => AsyncGenerator<T>,
+  options: GatewayFallbackOptions
+): AsyncGenerator<T> {
+  const { modelId, context = "AI call" } = options;
+  let triedGateway = false;
+  const MAX_ATTEMPTS = 2;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const generator = createGenerator(triedGateway);
+      for await (const value of generator) {
+        yield value;
+      }
+      return;
+    } catch (error) {
+      const lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt === MAX_ATTEMPTS || triedGateway) {
+        console.error(`[GATEWAY-FALLBACK] ${context}: All ${MAX_ATTEMPTS} attempts failed. Last error: ${lastError.message}`);
+        throw lastError;
+      }
+
+      if (isRateLimitError(error) && !triedGateway) {
+        console.log(`[GATEWAY-FALLBACK] ${context}: Rate limit hit for ${modelId}. Switching to Vercel AI Gateway with Cerebras provider...`);
+        triedGateway = true;
+      } else if (isRateLimitError(error)) {
+        const waitMs = RATE_LIMIT_WAIT_MS;
+        console.log(`[GATEWAY-FALLBACK] ${context}: Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      } else {
+        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+        console.log(`[GATEWAY-FALLBACK] ${context}: Error: ${lastError.message}. Retrying in ${backoffMs / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+
+  throw new Error("Unexpected error in gateway fallback loop");
 }

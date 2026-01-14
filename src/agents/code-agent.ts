@@ -4,7 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-import { getClientForModel } from "./client";
+import { getClientForModel, isCerebrasModel } from "./client";
 import { createAgentTools } from "./tools";
 import { createBraveTools } from "./brave-tools";
 import {
@@ -41,7 +41,7 @@ import {
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
-import { withRateLimitRetry, isRateLimitError } from "./rate-limit";
+import { withRateLimitRetry, isRateLimitError, withGatewayFallbackGenerator } from "./rate-limit";
 import { TimeoutManager, estimateComplexity } from "./timeout-manager";
 import { 
   detectResearchNeed, 
@@ -547,13 +547,18 @@ export async function* runCodeAgent(
     let fullText = "";
     let chunkCount = 0;
     let previousFilesCount = 0;
-    const MAX_STREAM_RETRIES = 5;
-    const RATE_LIMIT_WAIT_MS = 60_000;
+    let useGatewayFallbackForStream = isCerebrasModel(selectedModel);
 
-    for (let streamAttempt = 1; streamAttempt <= MAX_STREAM_RETRIES; streamAttempt++) {
+    while (true) {
       try {
+        const client = getClientForModel(selectedModel, { useGatewayFallback: useGatewayFallbackForStream });
         const result = streamText({
-          model: getClientForModel(selectedModel).chat(selectedModel),
+          model: client.chat(selectedModel),
+          providerOptions: useGatewayFallbackForStream ? {
+            gateway: {
+              only: ['cerebras'],
+            }
+          } : undefined,
           system: frameworkPrompt,
           messages,
           tools,
@@ -593,35 +598,39 @@ export async function* runCodeAgent(
           }
         }
 
-        // Stream completed successfully, break out of retry loop
         break;
       } catch (streamError) {
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         const isRateLimit = isRateLimitError(streamError);
 
-        if (streamAttempt === MAX_STREAM_RETRIES) {
-          console.error(`[RATE-LIMIT] Stream: All ${MAX_STREAM_RETRIES} attempts failed. Last error: ${errorMessage}`);
-          throw streamError;
+        if (!useGatewayFallbackForStream && isRateLimit) {
+          console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
+          useGatewayFallbackForStream = true;
+          continue;
         }
 
         if (isRateLimit) {
-          console.log(`[RATE-LIMIT] Stream: Rate limit hit on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}. Waiting 60s...`);
-          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
-          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_WAIT_MS));
+          const waitMs = 60_000;
+          console.log(`[RATE-LIMIT] Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
+          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry...` };
+          await new Promise(resolve => setTimeout(resolve, waitMs));
         } else {
-          const backoffMs = 1000 * Math.pow(2, streamAttempt - 1);
-          console.log(`[RATE-LIMIT] Stream: Error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
-          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
+          const backoffMs = 1000 * Math.pow(2, chunkCount);
+          console.log(`[RATE-LIMIT] Error: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s...` };
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
 
-        // Reset state for retry - keep any files already created
         fullText = "";
         chunkCount = 0;
-        console.log(`[RATE-LIMIT] Stream: Retrying stream (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...`);
-        yield { type: "status", data: `Retrying AI generation (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...` };
+        previousFilesCount = Object.keys(state.files).length;
       }
     }
+
+    console.log("[INFO] AI generation complete:", {
+      totalChunks: chunkCount,
+      totalLength: fullText.length,
+    });
 
     console.log("[INFO] AI generation complete:", {
       totalChunks: chunkCount,
@@ -640,30 +649,65 @@ export async function* runCodeAgent(
       console.log("[DEBUG] No summary detected, requesting explicitly...");
       yield { type: "status", data: "Generating summary..." };
 
-      const followUp = await withRateLimitRetry(
-        () => generateText({
-          model: getClientForModel(selectedModel).chat(selectedModel),
-          system: frameworkPrompt,
-          messages: [
-            ...messages,
-            {
-              role: "assistant" as const,
-              content: resultText,
-            },
-            {
-              role: "user" as const,
-              content:
-                "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
-            },
-          ],
-          tools,
-          stopWhen: stepCountIs(2),
-          ...modelOptions,
-        }),
-        { context: "generateSummary" }
-      );
+      let summaryUseGatewayFallback = isCerebrasModel(selectedModel);
+      let summaryRetries = 0;
+      const MAX_SUMMARY_RETRIES = 2;
+      let followUpResult: { text: string } | null = null;
 
-      summaryText = extractSummaryText(followUp.text || "");
+      while (summaryRetries < MAX_SUMMARY_RETRIES) {
+        try {
+          const client = getClientForModel(selectedModel, { useGatewayFallback: summaryUseGatewayFallback });
+          followUpResult = await generateText({
+            model: client.chat(selectedModel),
+            providerOptions: summaryUseGatewayFallback ? {
+              gateway: {
+                only: ['cerebras'],
+              }
+            } : undefined,
+            system: frameworkPrompt,
+            messages: [
+              ...messages,
+              {
+                role: "assistant" as const,
+                content: resultText,
+              },
+              {
+                role: "user" as const,
+                content:
+                  "You have completed to file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete task.",
+              },
+            ],
+            tools,
+            stopWhen: stepCountIs(2),
+            ...modelOptions,
+          });
+          summaryText = extractSummaryText(followUpResult.text || "");
+          break;
+        } catch (error) {
+          const lastError = error instanceof Error ? error : new Error(String(error));
+          summaryRetries++;
+
+          if (summaryRetries >= MAX_SUMMARY_RETRIES) {
+            console.error(`[GATEWAY-FALLBACK] Summary generation failed after ${MAX_SUMMARY_RETRIES} attempts: ${lastError.message}`);
+            break;
+          }
+
+          if (isRateLimitError(error) && !summaryUseGatewayFallback) {
+            console.log(`[GATEWAY-FALLBACK] Rate limit hit for summary. Switching to Vercel AI Gateway...`);
+            summaryUseGatewayFallback = true;
+          } else if (isRateLimitError(error)) {
+            const waitMs = 60_000;
+            console.log(`[GATEWAY-FALLBACK] Gateway rate limit for summary. Waiting ${waitMs / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+          } else {
+            const backoffMs = 1000 * Math.pow(2, summaryRetries - 1);
+            console.log(`[GATEWAY-FALLBACK] Summary error: ${lastError.message}. Retrying in ${backoffMs / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          }
+        }
+      }
+
+      summaryText = extractSummaryText(followUpResult?.text || "");
       if (summaryText) {
         state.summary = summaryText;
         console.log("[DEBUG] Summary generated successfully");
