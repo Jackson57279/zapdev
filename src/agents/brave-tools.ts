@@ -23,6 +23,8 @@ export function createBraveTools() {
         query: z.string().describe("The search query"),
         numResults: z
           .number()
+          .min(1)
+          .max(20)
           .default(5)
           .describe("Number of results to return (1-20)"),
         category: z
@@ -96,7 +98,7 @@ export function createBraveTools() {
             "The library or framework name (e.g., 'Next.js', 'React', 'Stripe')"
           ),
         topic: z.string().describe("Specific topic or API to look up"),
-        numResults: z.number().default(3).describe("Number of results (1-10)"),
+        numResults: z.number().min(1).max(10).default(3).describe("Number of results (1-10)"),
       }),
       execute: async ({
         library,
@@ -169,7 +171,7 @@ export function createBraveTools() {
           .describe(
             "Programming language filter (e.g., 'TypeScript', 'JavaScript')"
           ),
-        numResults: z.number().default(3).describe("Number of examples (1-10)"),
+        numResults: z.number().min(1).max(10).default(3).describe("Number of examples (1-10)"),
       }),
       execute: async ({
         query,

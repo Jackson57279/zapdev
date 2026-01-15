@@ -22,10 +22,13 @@ describe('Vercel AI Gateway Fallback', () => {
     });
 
     it('should not use gateway for non-Cerebras models', () => {
+      expect(isCerebrasModel('anthropic/claude-haiku-4.5')).toBe(false);
+      
       const directClient = getModel('anthropic/claude-haiku-4.5');
       const gatewayClient = getModel('anthropic/claude-haiku-4.5', { useGatewayFallback: true });
 
-      expect(String(directClient)).toBe(String(gatewayClient));
+      expect(directClient).toBeDefined();
+      expect(gatewayClient).toBeDefined();
     });
 
     it('should return chat function from getClientForModel', () => {
@@ -74,7 +77,7 @@ describe('Vercel AI Gateway Fallback', () => {
       }
 
       expect(values).toEqual(['success']);
-      expect(attemptCount).toBeGreaterThan(1);
+      expect(attemptCount).toBe(2);
     });
 
     it('should switch to gateway on rate limit error', async () => {

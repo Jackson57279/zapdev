@@ -240,13 +240,53 @@ Format your response as JSON:
   return `${baseInstructions}\n\nTask: ${query}`;
 }
 
+function extractFirstJsonObject(text: string): string | null {
+  const startIndex = text.indexOf('{');
+  if (startIndex === -1) return null;
+  
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  
+  for (let i = startIndex; i < text.length; i++) {
+    const char = text[i];
+    
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    
+    if (char === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+    
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (char === '{') depth++;
+    if (char === '}') {
+      depth--;
+      if (depth === 0) {
+        return text.slice(startIndex, i + 1);
+      }
+    }
+  }
+  
+  return null;
+}
+
 function parseSubagentResponse(
   responseText: string,
   taskType: ResearchTaskType
 ): Partial<SubagentResponse> {
   try {
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const jsonStr = extractFirstJsonObject(responseText);
+    if (!jsonStr) {
       console.warn("[SUBAGENT] No JSON found in response, using fallback parsing");
       return {
         findings: {
@@ -257,7 +297,7 @@ function parseSubagentResponse(
       };
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonStr);
 
     if (taskType === "comparison" && parsed.items) {
       return {

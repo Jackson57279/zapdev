@@ -548,8 +548,10 @@ export async function* runCodeAgent(
     let chunkCount = 0;
     let previousFilesCount = 0;
     let useGatewayFallbackForStream = isCerebrasModel(selectedModel);
+    let retryCount = 0;
+    const MAX_STREAM_RETRIES = 5;
 
-    while (true) {
+    while (retryCount < MAX_STREAM_RETRIES) {
       try {
         const client = getClientForModel(selectedModel, { useGatewayFallback: useGatewayFallbackForStream });
         const result = streamText({
@@ -600,6 +602,7 @@ export async function* runCodeAgent(
 
         break;
       } catch (streamError) {
+        retryCount++;
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         const isRateLimit = isRateLimitError(streamError);
 
@@ -609,14 +612,19 @@ export async function* runCodeAgent(
           continue;
         }
 
+        if (retryCount >= MAX_STREAM_RETRIES) {
+          console.error(`[STREAM] Max retries (${MAX_STREAM_RETRIES}) reached. Last error: ${errorMessage}`);
+          throw streamError;
+        }
+
         if (isRateLimit) {
           const waitMs = 60_000;
           console.log(`[RATE-LIMIT] Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
           yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry...` };
           await new Promise(resolve => setTimeout(resolve, waitMs));
         } else {
-          const backoffMs = 1000 * Math.pow(2, chunkCount);
-          console.log(`[RATE-LIMIT] Error: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          const backoffMs = 1000 * Math.pow(2, retryCount);
+          console.log(`[RETRY] Error: ${errorMessage}. Retrying in ${backoffMs / 1000}s... (attempt ${retryCount}/${MAX_STREAM_RETRIES})`);
           yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s...` };
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
@@ -626,11 +634,6 @@ export async function* runCodeAgent(
         previousFilesCount = Object.keys(state.files).length;
       }
     }
-
-    console.log("[INFO] AI generation complete:", {
-      totalChunks: chunkCount,
-      totalLength: fullText.length,
-    });
 
     console.log("[INFO] AI generation complete:", {
       totalChunks: chunkCount,
@@ -674,7 +677,7 @@ export async function* runCodeAgent(
               {
                 role: "user" as const,
                 content:
-                  "You have completed to file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete task.",
+                  "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
               },
             ],
             tools,

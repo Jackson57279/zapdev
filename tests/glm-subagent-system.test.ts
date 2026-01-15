@@ -192,16 +192,24 @@ describe('Timeout Management', () => {
     const manager = new TimeoutManager();
     manager.adaptBudget('simple');
     
-    const summary = manager.getSummary();
-    expect(summary.elapsed).toBeGreaterThanOrEqual(0);
+    expect(manager.shouldSkipStage('research')).toBe(false);
+    expect(manager.shouldSkipStage('codeGeneration')).toBe(false);
   });
 
   it('adapts budget for complex tasks', () => {
     const manager = new TimeoutManager();
     manager.adaptBudget('complex');
     
-    const summary = manager.getSummary();
-    expect(summary.elapsed).toBeGreaterThanOrEqual(0);
+    expect(manager.shouldSkipStage('research')).toBe(false);
+    expect(manager.shouldSkipStage('codeGeneration')).toBe(false);
+  });
+
+  it('adapts budget for medium tasks (default budget)', () => {
+    const manager = new TimeoutManager();
+    manager.adaptBudget('medium');
+    
+    expect(manager.shouldSkipStage('research')).toBe(false);
+    expect(manager.shouldSkipStage('codeGeneration')).toBe(false);
   });
 
   it('calculates percentage used correctly', () => {

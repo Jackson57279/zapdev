@@ -193,7 +193,7 @@ bun run build
 3. Verify:
    - GLM 4.7 selected
    - Research phase triggers
-   - Subagent spawns (if EXA_API_KEY configured)
+   - Subagent spawns (if BRAVE_SEARCH_API_KEY configured)
    - Generation completes in <2 min
 
 ## Migration Guide

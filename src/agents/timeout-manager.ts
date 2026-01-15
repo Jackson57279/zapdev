@@ -149,6 +149,14 @@ export class TimeoutManager {
         validation: 15_000,
         finalization: 30_000,
       };
+    } else if (complexity === "medium") {
+      this.budget = {
+        initialization: 5_000,
+        research: 30_000,
+        codeGeneration: 120_000,
+        validation: 25_000,
+        finalization: 40_000,
+      };
     } else if (complexity === "complex") {
       this.budget = {
         initialization: 5_000,

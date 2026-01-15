@@ -11,6 +11,7 @@
 const BRAVE_SEARCH_BASE_URL = "https://api.search.brave.com/res/v1";
 const MAX_RESULTS = 20;
 const MAX_CONTENT_LENGTH = 1500;
+const FETCH_TIMEOUT_MS = 30_000;
 
 export interface BraveSearchResult {
   url: string;
@@ -138,6 +139,9 @@ export async function braveWebSearch(
   try {
     console.log(`[brave-search] Searching: "${options.query}" (count: ${options.count || 10})`);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -145,7 +149,8 @@ export async function braveWebSearch(
         "Accept-Encoding": "gzip",
         "X-Subscription-Token": apiKey,
       },
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId));
 
     if (!response.ok) {
       const errorText = await response.text();

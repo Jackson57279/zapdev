@@ -167,23 +167,27 @@ export async function* withGatewayFallbackGenerator<T>(
     } catch (error) {
       const lastError = error instanceof Error ? error : new Error(String(error));
 
-      if (attempt === MAX_ATTEMPTS || triedGateway) {
+      if (isRateLimitError(error) && !triedGateway) {
+        console.log(`[GATEWAY-FALLBACK] ${context}: Rate limit hit for ${modelId}. Switching to Vercel AI Gateway with Cerebras provider...`);
+        triedGateway = true;
+        continue;
+      }
+
+      if (isRateLimitError(error) && triedGateway) {
+        const waitMs = RATE_LIMIT_WAIT_MS;
+        console.log(`[GATEWAY-FALLBACK] ${context}: Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        continue;
+      }
+
+      if (attempt === MAX_ATTEMPTS) {
         console.error(`[GATEWAY-FALLBACK] ${context}: All ${MAX_ATTEMPTS} attempts failed. Last error: ${lastError.message}`);
         throw lastError;
       }
 
-      if (isRateLimitError(error) && !triedGateway) {
-        console.log(`[GATEWAY-FALLBACK] ${context}: Rate limit hit for ${modelId}. Switching to Vercel AI Gateway with Cerebras provider...`);
-        triedGateway = true;
-      } else if (isRateLimitError(error)) {
-        const waitMs = RATE_LIMIT_WAIT_MS;
-        console.log(`[GATEWAY-FALLBACK] ${context}: Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
-      } else {
-        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-        console.log(`[GATEWAY-FALLBACK] ${context}: Error: ${lastError.message}. Retrying in ${backoffMs / 1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-      }
+      const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+      console.log(`[GATEWAY-FALLBACK] ${context}: Error: ${lastError.message}. Retrying in ${backoffMs / 1000}s...`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
 
