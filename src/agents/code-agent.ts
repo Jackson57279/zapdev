@@ -41,7 +41,7 @@ import {
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
-import { withRateLimitRetry, isRateLimitError, withGatewayFallbackGenerator } from "./rate-limit";
+import { withRateLimitRetry, isRateLimitError, isRetryableError, isServerError } from "./rate-limit";
 import { TimeoutManager, estimateComplexity } from "./timeout-manager";
 import { 
   detectResearchNeed, 
@@ -605,6 +605,8 @@ export async function* runCodeAgent(
         retryCount++;
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         const isRateLimit = isRateLimitError(streamError);
+        const isServer = isServerError(streamError);
+        const canRetry = isRateLimit || isServer;
 
         if (!useGatewayFallbackForStream && isRateLimit) {
           console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
@@ -612,26 +614,33 @@ export async function* runCodeAgent(
           continue;
         }
 
-        if (retryCount >= MAX_STREAM_RETRIES) {
-          console.error(`[STREAM] Max retries (${MAX_STREAM_RETRIES}) reached. Last error: ${errorMessage}`);
+        if (retryCount >= MAX_STREAM_RETRIES || !canRetry) {
+          console.error(`[ERROR] Stream: ${canRetry ? `All ${MAX_STREAM_RETRIES} attempts failed` : "Non-retryable error"}. Error: ${errorMessage}`);
           throw streamError;
         }
 
         if (isRateLimit) {
           const waitMs = 60_000;
-          console.log(`[RATE-LIMIT] Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
-          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry...` };
+          console.log(`[RATE-LIMIT] Stream: Rate limit hit on attempt ${retryCount}/${MAX_STREAM_RETRIES}. Waiting 60s...`);
+          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry (attempt ${retryCount}/${MAX_STREAM_RETRIES})...` };
           await new Promise(resolve => setTimeout(resolve, waitMs));
+        } else if (isServer) {
+          const backoffMs = 2000 * Math.pow(2, retryCount - 1);
+          console.log(`[SERVER-ERROR] Stream: Server error on attempt ${retryCount}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Server error. Retrying in ${backoffMs / 1000}s (attempt ${retryCount}/${MAX_STREAM_RETRIES})...` };
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
         } else {
-          const backoffMs = 1000 * Math.pow(2, retryCount);
-          console.log(`[RETRY] Error: ${errorMessage}. Retrying in ${backoffMs / 1000}s... (attempt ${retryCount}/${MAX_STREAM_RETRIES})`);
-          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s...` };
+          const backoffMs = 1000 * Math.pow(2, retryCount - 1);
+          console.log(`[ERROR] Stream: Error on attempt ${retryCount}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s (attempt ${retryCount}/${MAX_STREAM_RETRIES})...` };
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
 
         fullText = "";
         chunkCount = 0;
         previousFilesCount = Object.keys(state.files).length;
+        console.log(`[RETRY] Stream: Retrying stream (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...`);
+        yield { type: "status", data: `Retrying AI generation (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...` };
       }
     }
 
