@@ -4,8 +4,9 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-import { getClientForModel } from "./client";
+import { getClientForModel, isCerebrasModel } from "./client";
 import { createAgentTools } from "./tools";
+import { createBraveTools } from "./brave-tools";
 import {
   type Framework,
   type AgentState,
@@ -41,6 +42,14 @@ import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
 import { withRateLimitRetry, isRateLimitError, isRetryableError, isServerError } from "./rate-limit";
+import { TimeoutManager, estimateComplexity } from "./timeout-manager";
+import { 
+  detectResearchNeed, 
+  spawnSubagent, 
+  spawnParallelSubagents,
+  type SubagentRequest,
+  type SubagentResponse 
+} from "./subagent";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -204,13 +213,16 @@ async function generateFragmentMetadata(
 export interface StreamEvent {
   type:
     | "status"
-    | "text"              // AI response chunks (streaming)
-    | "tool-call"         // Tool being invoked
-    | "tool-output"       // Command output (stdout/stderr streaming)
-    | "file-created"      // Individual file creation (streaming)
-    | "file-updated"      // File update event (streaming)
-    | "progress"          // Progress update (e.g., "3/10 files created")
-    | "files"             // Batch files (for compatibility)
+    | "text"
+    | "tool-call"
+    | "tool-output"
+    | "file-created"
+    | "file-updated"
+    | "progress"
+    | "files"
+    | "research-start"
+    | "research-complete"
+    | "time-budget"
     | "error"
     | "complete";
   data: unknown;
@@ -253,6 +265,13 @@ export async function* runCodeAgent(
     !!process.env.OPENROUTER_API_KEY
   );
 
+  const timeoutManager = new TimeoutManager();
+  const complexity = estimateComplexity(value);
+  timeoutManager.adaptBudget(complexity);
+  
+  console.log(`[INFO] Task complexity: ${complexity}`);
+
+  timeoutManager.startStage("initialization");
   yield { type: "status", data: "Initializing project..." };
 
   try {
@@ -270,6 +289,8 @@ export async function* runCodeAgent(
       framework: project.framework,
       modelPreference: project.modelPreference,
     });
+    
+    timeoutManager.endStage("initialization");
 
     let selectedFramework: Framework =
       (project?.framework?.toLowerCase() as Framework) || "nextjs";
@@ -395,6 +416,63 @@ export async function* runCodeAgent(
       content: `Crawled context from ${ctx.url}:\n${ctx.content}`,
     }));
 
+    let researchResults: SubagentResponse[] = [];
+    const selectedModelConfig = MODEL_CONFIGS[selectedModel];
+    
+    if (selectedModelConfig.supportsSubagents && !timeoutManager.shouldSkipStage("research")) {
+      const researchDetection = detectResearchNeed(value);
+      
+      if (researchDetection.needs && researchDetection.query) {
+        timeoutManager.startStage("research");
+        yield { type: "status", data: "Conducting research via subagents..." };
+        yield { 
+          type: "research-start", 
+          data: { 
+            taskType: researchDetection.taskType, 
+            query: researchDetection.query 
+          } 
+        };
+        
+        console.log(`[SUBAGENT] Detected ${researchDetection.taskType} need for: ${researchDetection.query}`);
+        
+        const subagentRequest: SubagentRequest = {
+          taskId: `research_${Date.now()}`,
+          taskType: researchDetection.taskType || "research",
+          query: researchDetection.query,
+          maxResults: 5,
+          timeout: 30_000,
+        };
+
+        try {
+          const result = await spawnSubagent(subagentRequest);
+          researchResults.push(result);
+          
+          yield { 
+            type: "research-complete", 
+            data: { 
+              taskId: result.taskId,
+              status: result.status,
+              elapsedTime: result.elapsedTime 
+            } 
+          };
+          
+          console.log(`[SUBAGENT] Research completed in ${result.elapsedTime}ms`);
+        } catch (error) {
+          console.error("[SUBAGENT] Research failed:", error);
+          yield { type: "status", data: "Research failed, proceeding with internal knowledge..." };
+        }
+        
+        timeoutManager.endStage("research");
+      }
+    }
+
+    const researchMessages = researchResults
+      .filter((r) => r.status === "complete" && r.findings)
+      .map((r) => ({
+        role: "user" as const,
+        content: `Research findings:\n${JSON.stringify(r.findings, null, 2)}`,
+      }));
+
     const state: AgentState = {
       summary: "",
       files: {},
@@ -403,7 +481,7 @@ export async function* runCodeAgent(
     };
 
     console.log("[DEBUG] Creating agent tools...");
-    const tools = createAgentTools({
+    const baseTools = createAgentTools({
       sandboxId,
       state,
       updateFiles: (files) => {
@@ -418,15 +496,37 @@ export async function* runCodeAgent(
         }
       },
     });
+    
+    const braveTools = process.env.BRAVE_SEARCH_API_KEY && selectedModelConfig.supportsSubagents 
+      ? createBraveTools() 
+      : {};
+    
+    const tools = { ...baseTools, ...braveTools };
 
     const frameworkPrompt = getFrameworkPrompt(selectedFramework);
     const modelConfig = MODEL_CONFIGS[selectedModel];
 
+    timeoutManager.startStage("codeGeneration");
+    
+    const timeoutCheck = timeoutManager.checkTimeout();
+    if (timeoutCheck.isEmergency) {
+      yield { type: "status", data: timeoutCheck.message || "Emergency: Approaching timeout" };
+      console.error("[TIMEOUT]", timeoutCheck.message);
+    }
+
     yield { type: "status", data: `Running ${modelConfig.name} agent...` };
+    yield { 
+      type: "time-budget", 
+      data: { 
+        remaining: timeoutManager.getRemaining(), 
+        stage: "generating" 
+      } 
+    };
     console.log("[INFO] Starting AI generation...");
 
     const messages = [
       ...crawlMessages,
+      ...researchMessages,
       ...contextMessages,
       { role: "user" as const, content: value },
     ];
@@ -447,13 +547,20 @@ export async function* runCodeAgent(
     let fullText = "";
     let chunkCount = 0;
     let previousFilesCount = 0;
+    let useGatewayFallbackForStream = isCerebrasModel(selectedModel);
+    let retryCount = 0;
     const MAX_STREAM_RETRIES = 5;
-    const RATE_LIMIT_WAIT_MS = 60_000;
 
-    for (let streamAttempt = 1; streamAttempt <= MAX_STREAM_RETRIES; streamAttempt++) {
+    while (retryCount < MAX_STREAM_RETRIES) {
       try {
+        const client = getClientForModel(selectedModel, { useGatewayFallback: useGatewayFallbackForStream });
         const result = streamText({
-          model: getClientForModel(selectedModel).chat(selectedModel),
+          model: client.chat(selectedModel),
+          providerOptions: useGatewayFallbackForStream ? {
+            gateway: {
+              only: ['cerebras'],
+            }
+          } : undefined,
           system: frameworkPrompt,
           messages,
           tools,
@@ -493,39 +600,47 @@ export async function* runCodeAgent(
           }
         }
 
-        // Stream completed successfully, break out of retry loop
         break;
       } catch (streamError) {
+        retryCount++;
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         const isRateLimit = isRateLimitError(streamError);
         const isServer = isServerError(streamError);
         const canRetry = isRateLimit || isServer;
 
-        if (streamAttempt === MAX_STREAM_RETRIES || !canRetry) {
+        if (!useGatewayFallbackForStream && isRateLimit) {
+          console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
+          useGatewayFallbackForStream = true;
+          continue;
+        }
+
+        if (retryCount >= MAX_STREAM_RETRIES || !canRetry) {
           console.error(`[ERROR] Stream: ${canRetry ? `All ${MAX_STREAM_RETRIES} attempts failed` : "Non-retryable error"}. Error: ${errorMessage}`);
           throw streamError;
         }
 
         if (isRateLimit) {
-          console.log(`[RATE-LIMIT] Stream: Rate limit hit on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}. Waiting 60s...`);
-          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
-          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_WAIT_MS));
+          const waitMs = 60_000;
+          console.log(`[RATE-LIMIT] Stream: Rate limit hit on attempt ${retryCount}/${MAX_STREAM_RETRIES}. Waiting 60s...`);
+          yield { type: "status", data: `Rate limit hit. Waiting 60 seconds before retry (attempt ${retryCount}/${MAX_STREAM_RETRIES})...` };
+          await new Promise(resolve => setTimeout(resolve, waitMs));
         } else if (isServer) {
-          const backoffMs = 2000 * Math.pow(2, streamAttempt - 1);
-          console.log(`[SERVER-ERROR] Stream: Server error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
-          yield { type: "status", data: `Server error. Retrying in ${backoffMs / 1000}s (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
+          const backoffMs = 2000 * Math.pow(2, retryCount - 1);
+          console.log(`[SERVER-ERROR] Stream: Server error on attempt ${retryCount}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Server error. Retrying in ${backoffMs / 1000}s (attempt ${retryCount}/${MAX_STREAM_RETRIES})...` };
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         } else {
-          const backoffMs = 1000 * Math.pow(2, streamAttempt - 1);
-          console.log(`[ERROR] Stream: Error on attempt ${streamAttempt}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
-          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s (attempt ${streamAttempt}/${MAX_STREAM_RETRIES})...` };
+          const backoffMs = 1000 * Math.pow(2, retryCount - 1);
+          console.log(`[ERROR] Stream: Error on attempt ${retryCount}/${MAX_STREAM_RETRIES}: ${errorMessage}. Retrying in ${backoffMs / 1000}s...`);
+          yield { type: "status", data: `Error occurred. Retrying in ${backoffMs / 1000}s (attempt ${retryCount}/${MAX_STREAM_RETRIES})...` };
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
 
         fullText = "";
         chunkCount = 0;
-        console.log(`[RETRY] Stream: Retrying stream (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...`);
-        yield { type: "status", data: `Retrying AI generation (attempt ${streamAttempt + 1}/${MAX_STREAM_RETRIES})...` };
+        previousFilesCount = Object.keys(state.files).length;
+        console.log(`[RETRY] Stream: Retrying stream (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...`);
+        yield { type: "status", data: `Retrying AI generation (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...` };
       }
     }
 
@@ -533,6 +648,8 @@ export async function* runCodeAgent(
       totalChunks: chunkCount,
       totalLength: fullText.length,
     });
+
+    timeoutManager.endStage("codeGeneration");
 
     const resultText = fullText;
     let summaryText = extractSummaryText(state.summary || resultText || "");
@@ -544,30 +661,65 @@ export async function* runCodeAgent(
       console.log("[DEBUG] No summary detected, requesting explicitly...");
       yield { type: "status", data: "Generating summary..." };
 
-      const followUp = await withRateLimitRetry(
-        () => generateText({
-          model: getClientForModel(selectedModel).chat(selectedModel),
-          system: frameworkPrompt,
-          messages: [
-            ...messages,
-            {
-              role: "assistant" as const,
-              content: resultText,
-            },
-            {
-              role: "user" as const,
-              content:
-                "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
-            },
-          ],
-          tools,
-          stopWhen: stepCountIs(2),
-          ...modelOptions,
-        }),
-        { context: "generateSummary" }
-      );
+      let summaryUseGatewayFallback = isCerebrasModel(selectedModel);
+      let summaryRetries = 0;
+      const MAX_SUMMARY_RETRIES = 2;
+      let followUpResult: { text: string } | null = null;
 
-      summaryText = extractSummaryText(followUp.text || "");
+      while (summaryRetries < MAX_SUMMARY_RETRIES) {
+        try {
+          const client = getClientForModel(selectedModel, { useGatewayFallback: summaryUseGatewayFallback });
+          followUpResult = await generateText({
+            model: client.chat(selectedModel),
+            providerOptions: summaryUseGatewayFallback ? {
+              gateway: {
+                only: ['cerebras'],
+              }
+            } : undefined,
+            system: frameworkPrompt,
+            messages: [
+              ...messages,
+              {
+                role: "assistant" as const,
+                content: resultText,
+              },
+              {
+                role: "user" as const,
+                content:
+                  "You have completed the file generation. Now provide your final <task_summary> tag with a brief description of what was built. This is required to complete the task.",
+              },
+            ],
+            tools,
+            stopWhen: stepCountIs(2),
+            ...modelOptions,
+          });
+          summaryText = extractSummaryText(followUpResult.text || "");
+          break;
+        } catch (error) {
+          const lastError = error instanceof Error ? error : new Error(String(error));
+          summaryRetries++;
+
+          if (summaryRetries >= MAX_SUMMARY_RETRIES) {
+            console.error(`[GATEWAY-FALLBACK] Summary generation failed after ${MAX_SUMMARY_RETRIES} attempts: ${lastError.message}`);
+            break;
+          }
+
+          if (isRateLimitError(error) && !summaryUseGatewayFallback) {
+            console.log(`[GATEWAY-FALLBACK] Rate limit hit for summary. Switching to Vercel AI Gateway...`);
+            summaryUseGatewayFallback = true;
+          } else if (isRateLimitError(error)) {
+            const waitMs = 60_000;
+            console.log(`[GATEWAY-FALLBACK] Gateway rate limit for summary. Waiting ${waitMs / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+          } else {
+            const backoffMs = 1000 * Math.pow(2, summaryRetries - 1);
+            console.log(`[GATEWAY-FALLBACK] Summary error: ${lastError.message}. Retrying in ${backoffMs / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          }
+        }
+      }
+
+      summaryText = extractSummaryText(followUpResult?.text || "");
       if (summaryText) {
         state.summary = summaryText;
         console.log("[DEBUG] Summary generated successfully");
