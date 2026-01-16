@@ -220,7 +220,8 @@ export async function* withGatewayFallbackGenerator<T>(
         const waitMs = RATE_LIMIT_WAIT_MS;
         console.log(`[GATEWAY-FALLBACK] ${context}: Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
         await new Promise(resolve => setTimeout(resolve, waitMs));
-        continue;
+        // We've tried both direct and gateway, throw the actual rate limit error
+        throw lastError;
       }
 
       if (attempt === MAX_ATTEMPTS) {

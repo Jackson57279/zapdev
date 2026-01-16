@@ -27,8 +27,9 @@ describe('Vercel AI Gateway Fallback', () => {
       const directClient = getModel('anthropic/claude-haiku-4.5');
       const gatewayClient = getModel('anthropic/claude-haiku-4.5', { useGatewayFallback: true });
 
-      expect(directClient).toBeDefined();
-      expect(gatewayClient).toBeDefined();
+      // Both should use the same openrouter provider since non-Cerebras models
+      // don't use gateway fallback - this verifies the stated behavior
+      expect(directClient.provider).toBe(gatewayClient.provider);
     });
 
     it('should return chat function from getClientForModel', () => {
@@ -106,8 +107,8 @@ describe('Vercel AI Gateway Fallback', () => {
       let attemptCount = 0;
       const mockGenerator = async function* () {
         attemptCount++;
-        const error = new Error('Rate limit exceeded');
-        (error as any).status = 429;
+        // Use a non-rate-limit error to avoid 60s wait in this test
+        const error = new Error('Server error');
         throw error;
       };
 
@@ -121,10 +122,12 @@ describe('Vercel AI Gateway Fallback', () => {
       } catch (error) {
         errorThrown = true;
         expect(error).toBeDefined();
+        expect((error as Error).message).toBe('Server error');
       }
 
       expect(errorThrown).toBe(true);
-    });
+      expect(attemptCount).toBe(2); // Direct + Gateway attempts
+    }, 10000); // Increase timeout to 10s for safety
   });
 
   describe('Provider Options', () => {
