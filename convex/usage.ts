@@ -9,6 +9,59 @@ const UNLIMITED_POINTS = Number.MAX_SAFE_INTEGER;
 const DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const GENERATION_COST = 1;
 
+// Expo-specific limits by tier
+export const EXPO_LIMITS = {
+  free: {
+    webPreview: true,
+    expoGo: true,
+    androidEmulator: false,
+    easBuild: false,
+    maxBuildsPerDay: 5,
+    maxEmulatorMinutes: 0
+  },
+  pro: {
+    webPreview: true,
+    expoGo: true,
+    androidEmulator: true,
+    easBuild: true,
+    maxBuildsPerDay: 50,
+    maxEmulatorMinutes: 120 // 2 hours per day
+  },
+  enterprise: {
+    webPreview: true,
+    expoGo: true,
+    androidEmulator: true,
+    easBuild: true,
+    maxBuildsPerDay: 500,
+    maxEmulatorMinutes: 600 // 10 hours per day
+  }
+} as const;
+
+export type ExpoPreviewMode = 'web' | 'expo-go' | 'android-emulator' | 'eas-build';
+export type UserTier = 'free' | 'pro' | 'enterprise';
+
+/**
+ * Check if user can use a specific Expo preview mode
+ */
+export function canUseExpoPreviewMode(
+  tier: UserTier,
+  mode: ExpoPreviewMode
+): boolean {
+  const limits = EXPO_LIMITS[tier];
+  switch (mode) {
+    case 'web':
+      return limits.webPreview;
+    case 'expo-go':
+      return limits.expoGo;
+    case 'android-emulator':
+      return limits.androidEmulator;
+    case 'eas-build':
+      return limits.easBuild;
+    default:
+      return false;
+  }
+}
+
 /**
  * Check and consume credits for a generation
  * Returns true if credits were successfully consumed, false if insufficient credits

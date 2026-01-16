@@ -6,7 +6,15 @@ export const frameworkEnum = v.union(
   v.literal("ANGULAR"),
   v.literal("REACT"),
   v.literal("VUE"),
-  v.literal("SVELTE")
+  v.literal("SVELTE"),
+  v.literal("EXPO")
+);
+
+export const expoPreviewModeEnum = v.union(
+  v.literal("web"),
+  v.literal("expo-go"),
+  v.literal("android-emulator"),
+  v.literal("eas-build")
 );
 
 export const messageRoleEnum = v.union(
@@ -115,6 +123,11 @@ export default defineSchema({
     files: v.any(),
     metadata: v.optional(v.any()),
     framework: frameworkEnum,
+    expoPreviewMode: v.optional(expoPreviewModeEnum),
+    expoQrCodeUrl: v.optional(v.string()),
+    expoVncUrl: v.optional(v.string()),
+    expoEasBuildUrl: v.optional(v.string()),
+    expoApkUrl: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })

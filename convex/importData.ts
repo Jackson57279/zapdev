@@ -16,7 +16,8 @@ export const importProject = internalMutation({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     createdAt: v.string(), // ISO date string
     updatedAt: v.string(), // ISO date string
@@ -89,7 +90,8 @@ export const importFragment = internalMutation({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -130,7 +132,8 @@ export const importFragmentDraft = internalMutation({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -278,7 +281,8 @@ export const importProjectAction = action({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -320,7 +324,8 @@ export const importFragmentAction = action({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -343,7 +348,8 @@ export const importFragmentDraftAction = action({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     createdAt: v.string(),
     updatedAt: v.string(),

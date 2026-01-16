@@ -12,6 +12,7 @@ import {
   type AgentState,
   type AgentRunInput,
   type ModelId,
+  type ExpoPreviewMode,
   MODEL_CONFIGS,
   selectModelForTask,
   frameworkToConvexEnum,
@@ -37,6 +38,9 @@ import {
   REACT_PROMPT,
   VUE_PROMPT,
   SVELTE_PROMPT,
+  EXPO_PROMPT,
+  EXPO_WEB_PROMPT,
+  EXPO_NATIVE_PROMPT,
 } from "@/prompt";
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
@@ -111,7 +115,7 @@ const extractSummaryText = (value: string): string => {
   return trimmed;
 };
 
-const getFrameworkPrompt = (framework: Framework): string => {
+const getFrameworkPrompt = (framework: Framework, expoPreviewMode?: ExpoPreviewMode): string => {
   switch (framework) {
     case "nextjs":
       return NEXTJS_PROMPT;
@@ -123,6 +127,11 @@ const getFrameworkPrompt = (framework: Framework): string => {
       return VUE_PROMPT;
     case "svelte":
       return SVELTE_PROMPT;
+    case "expo":
+      // Use appropriate prompt based on preview mode
+      if (expoPreviewMode === "web") return EXPO_WEB_PROMPT;
+      if (expoPreviewMode === "android-emulator" || expoPreviewMode === "expo-go") return EXPO_NATIVE_PROMPT;
+      return EXPO_PROMPT;
     default:
       return NEXTJS_PROMPT;
   }
@@ -157,7 +166,7 @@ async function detectFramework(prompt: string): Promise<Framework> {
 
       const detectedFramework = text.trim().toLowerCase();
       if (
-        ["nextjs", "angular", "react", "vue", "svelte"].includes(detectedFramework)
+        ["nextjs", "angular", "react", "vue", "svelte", "expo"].includes(detectedFramework)
       ) {
         return detectedFramework as Framework;
       }

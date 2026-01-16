@@ -1,0 +1,15 @@
+# E2B Sandbox Template Configuration for Expo Full (Web + Expo Go)
+
+# Template name used when creating sandboxes
+template_id = "zapdev-expo-full"
+
+# Dockerfile to build the template
+dockerfile = "e2b.Dockerfile"
+
+# Start command (runs when sandbox starts)
+start_cmd = "npx expo start --port 8081 --host 0.0.0.0 --tunnel"
+
+# Template resource configuration
+[resources]
+cpu_count = 2
+memory_mb = 2048

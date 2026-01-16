@@ -1,12 +1,22 @@
 export const SANDBOX_TIMEOUT = 60_000 * 60;
 
-export type Framework = "nextjs" | "angular" | "react" | "vue" | "svelte";
+export type Framework = "nextjs" | "angular" | "react" | "vue" | "svelte" | "expo";
+
+export type ExpoPreviewMode = "web" | "expo-go" | "android-emulator" | "eas-build";
 
 export interface AgentState {
   summary: string;
   files: Record<string, string>;
   selectedFramework?: Framework;
   summaryRetryCount: number;
+}
+
+export interface ExpoAgentState extends AgentState {
+  previewMode: ExpoPreviewMode;
+  qrCodeUrl?: string;
+  vncUrl?: string;
+  easBuildUrl?: string;
+  apkDownloadUrl?: string;
 }
 
 export interface AgentRunInput {
@@ -23,6 +33,11 @@ export interface AgentRunResult {
   summary: string;
   sandboxId: string;
   framework: Framework;
+  expoPreviewMode?: ExpoPreviewMode;
+  expoQrCodeUrl?: string;
+  expoVncUrl?: string;
+  expoEasBuildUrl?: string;
+  expoApkUrl?: string;
 }
 
 export const MODEL_CONFIGS = {
@@ -145,16 +160,17 @@ export function selectModelForTask(
 
 export function frameworkToConvexEnum(
   framework: Framework
-): "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE" {
+): "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE" | "EXPO" {
   const mapping: Record<
     Framework,
-    "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE"
+    "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE" | "EXPO"
   > = {
     nextjs: "NEXTJS",
     angular: "ANGULAR",
     react: "REACT",
     vue: "VUE",
     svelte: "SVELTE",
+    expo: "EXPO",
   };
   return mapping[framework];
 }

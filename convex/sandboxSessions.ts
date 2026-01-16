@@ -16,7 +16,8 @@ export const create = mutation({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
     autoPauseTimeout: v.optional(v.number()), // Default 10 minutes
   },
