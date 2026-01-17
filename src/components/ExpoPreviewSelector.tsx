@@ -82,6 +82,12 @@ export function ExpoPreviewSelector({
     setBrowserCapabilities(checkWebContainerSupport());
   }, []);
 
+  useEffect(() => {
+    if (selectedMode !== undefined) {
+      setSelected(selectedMode);
+    }
+  }, [selectedMode]);
+
   const handleSelect = (mode: ExpoPreviewMode) => {
     const option = PREVIEW_OPTIONS.find(o => o.mode === mode);
     if (!option) return;

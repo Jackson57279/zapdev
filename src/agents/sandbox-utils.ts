@@ -137,14 +137,21 @@ export async function createSandbox(framework: Framework): Promise<Sandbox> {
 // Command execution using shell (no Python kernel dependency)
 export async function runCodeCommand(
   sandbox: Sandbox,
-  command: string
+  command: string,
+  env?: Record<string, string>
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  console.log("[DEBUG] Running command:", command);
+  const redactedCommand = env 
+    ? command.replace(/EXPO_TOKEN="[^"]*"/g, 'EXPO_TOKEN="***"').replace(/Bearer [^\s]*/g, 'Bearer ***')
+    : command;
+  console.log("[DEBUG] Running command:", redactedCommand);
 
   try {
-    // Run command directly in shell with timeout
-    const result = await sandbox.commands.run(`cd /home/user && ${command}`, {
-      timeoutMs: 120000, // 2 minute timeout for build commands
+    const envPrefix = env 
+      ? Object.entries(env).map(([key, value]) => `${key}="${value}"`).join(' ') + ' '
+      : '';
+    
+    const result = await sandbox.commands.run(`cd /home/user && ${envPrefix}${command}`, {
+      timeoutMs: 120000,
     });
 
     console.log("[DEBUG] Command completed:", {

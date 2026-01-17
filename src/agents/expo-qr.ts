@@ -53,7 +53,7 @@ export function getEASUpdateQRUrl(
   channel: string = 'preview',
   runtimeVersion?: string
 ): string {
-  let url = `https://qr.expo.dev/eas-update?projectId=${projectId}&channel=${channel}`;
+  let url = `https://qr.expo.dev/eas-update?projectId=${encodeURIComponent(projectId)}&channel=${encodeURIComponent(channel)}`;
   if (runtimeVersion) {
     url += `&runtimeVersion=${encodeURIComponent(runtimeVersion)}`;
   }

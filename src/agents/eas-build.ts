@@ -1,5 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { getSandbox, runCodeCommand } from "./sandbox-utils";
+import { getSandbox, runCodeCommand, writeFilesBatch } from "./sandbox-utils";
 
 export interface EASBuildConfig {
   platform: 'android' | 'ios' | 'all';
@@ -30,11 +30,10 @@ export interface EASBuildStatus {
 export async function initializeEAS(sandbox: Sandbox): Promise<void> {
   console.log('[INFO] Initializing EAS configuration...');
   
-  // Check if eas.json exists
   const checkResult = await runCodeCommand(sandbox, 'test -f eas.json && echo "exists"');
+  const filesToWrite: Record<string, string> = {};
   
   if (!checkResult.stdout.includes('exists')) {
-    // Create default eas.json configuration
     const easConfig = {
       cli: {
         version: ">= 13.0.0"
@@ -59,32 +58,33 @@ export async function initializeEAS(sandbox: Sandbox): Promise<void> {
       }
     };
     
-    // Write eas.json
-    await sandbox.files.write('/home/user/eas.json', JSON.stringify(easConfig, null, 2));
-    console.log('[INFO] Created eas.json configuration');
+    filesToWrite['/home/user/eas.json'] = JSON.stringify(easConfig, null, 2);
+    console.log('[INFO] Prepared eas.json configuration');
   }
   
-  // Ensure app.json has required fields for EAS
   try {
     const appJsonContent = await sandbox.files.read('/home/user/app.json');
     if (typeof appJsonContent === 'string') {
       const appJson = JSON.parse(appJsonContent);
       
-      // Ensure required fields exist
       if (!appJson.expo) appJson.expo = {};
       if (!appJson.expo.slug) appJson.expo.slug = 'zapdev-app';
       if (!appJson.expo.name) appJson.expo.name = 'ZapDev App';
       if (!appJson.expo.version) appJson.expo.version = '1.0.0';
       
-      // Add EAS project ID placeholder if not present
       if (!appJson.expo.extra) appJson.expo.extra = {};
       if (!appJson.expo.extra.eas) appJson.expo.extra.eas = {};
       
-      await sandbox.files.write('/home/user/app.json', JSON.stringify(appJson, null, 2));
-      console.log('[INFO] Updated app.json for EAS compatibility');
+      filesToWrite['/home/user/app.json'] = JSON.stringify(appJson, null, 2);
+      console.log('[INFO] Prepared app.json for EAS compatibility');
     }
   } catch (error) {
     console.warn('[WARN] Could not update app.json:', error);
+  }
+  
+  if (Object.keys(filesToWrite).length > 0) {
+    await writeFilesBatch(sandbox, filesToWrite);
+    console.log('[INFO] Batch wrote EAS configuration files');
   }
 }
 
@@ -107,10 +107,11 @@ export async function triggerEASBuild(
   
   console.log(`[INFO] Triggering EAS build for platform: ${config.platform}, profile: ${config.profile}`);
   
-  // Build the command with proper token handling
-  const buildCommand = `EXPO_TOKEN="${expoToken}" npx eas-cli build --platform ${config.platform} --profile ${config.profile} --non-interactive --json --no-wait`;
+  const buildCommand = `npx eas-cli build --platform ${config.platform} --profile ${config.profile} --non-interactive --json --no-wait`;
   
-  const result = await runCodeCommand(sandbox, buildCommand);
+  const result = await runCodeCommand(sandbox, buildCommand, {
+    EXPO_TOKEN: expoToken
+  });
   
   if (result.exitCode !== 0) {
     console.error('[ERROR] EAS build command failed:', result.stderr);
