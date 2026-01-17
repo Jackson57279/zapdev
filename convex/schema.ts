@@ -63,6 +63,11 @@ export const sandboxStateEnum = v.union(
   v.literal("KILLED")
 );
 
+export const runtimeTypeEnum = v.union(
+  v.literal("webcontainer"),
+  v.literal("e2b")
+);
+
 export const webhookEventStatusEnum = v.union(
   v.literal("received"),
   v.literal("processed"),
@@ -268,6 +273,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     userId: v.string(),
     framework: frameworkEnum,
+    runtimeType: v.optional(runtimeTypeEnum),
     state: sandboxStateEnum,
     lastActivity: v.number(),
     autoPauseTimeout: v.number(),
@@ -278,5 +284,6 @@ export default defineSchema({
     .index("by_projectId", ["projectId"])
     .index("by_userId", ["userId"])
     .index("by_state", ["state"])
-    .index("by_sandboxId", ["sandboxId"]),
+    .index("by_sandboxId", ["sandboxId"])
+    .index("by_runtimeType", ["runtimeType"]),
 });

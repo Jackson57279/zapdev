@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { checkWebContainerSupport, type BrowserCapabilities } from '@/lib/browser-capabilities';
 
 export type ExpoPreviewMode = 'web' | 'expo-go' | 'android-emulator' | 'eas-build';
 export type UserTier = 'free' | 'pro' | 'enterprise';
+export type RuntimeType = 'webcontainer' | 'e2b';
 
 interface PreviewOption {
   mode: ExpoPreviewMode;
@@ -16,16 +18,18 @@ interface PreviewOption {
   buildTime: string;
   tier: UserTier;
   icon: string;
+  runtime: RuntimeType;
 }
 
 const PREVIEW_OPTIONS: PreviewOption[] = [
   {
     mode: 'web',
     title: 'Web Preview',
-    description: 'Fastest preview using react-native-web',
-    buildTime: '~30 seconds',
+    description: 'Instant preview in browser via WebContainers',
+    buildTime: '~10 seconds',
     tier: 'free',
-    icon: '🌐'
+    icon: '🌐',
+    runtime: 'webcontainer'
   },
   {
     mode: 'expo-go',
@@ -33,7 +37,8 @@ const PREVIEW_OPTIONS: PreviewOption[] = [
     description: 'Test on real device via Expo Go app',
     buildTime: '~1-2 minutes',
     tier: 'free',
-    icon: '📱'
+    icon: '📱',
+    runtime: 'e2b'
   },
   {
     mode: 'android-emulator',
@@ -42,7 +47,8 @@ const PREVIEW_OPTIONS: PreviewOption[] = [
     badge: 'Pro',
     buildTime: '~3-5 minutes',
     tier: 'pro',
-    icon: '🤖'
+    icon: '🤖',
+    runtime: 'e2b'
   },
   {
     mode: 'eas-build',
@@ -51,12 +57,13 @@ const PREVIEW_OPTIONS: PreviewOption[] = [
     badge: 'Pro',
     buildTime: '~5-15 minutes',
     tier: 'pro',
-    icon: '🚀'
+    icon: '🚀',
+    runtime: 'e2b'
   }
 ];
 
 interface ExpoPreviewSelectorProps {
-  onSelect: (mode: ExpoPreviewMode) => void;
+  onSelect: (mode: ExpoPreviewMode, runtime: RuntimeType) => void;
   userTier?: UserTier;
   selectedMode?: ExpoPreviewMode;
   className?: string;
@@ -69,6 +76,11 @@ export function ExpoPreviewSelector({
   className
 }: ExpoPreviewSelectorProps) {
   const [selected, setSelected] = useState<ExpoPreviewMode>(selectedMode ?? 'web');
+  const [browserCapabilities, setBrowserCapabilities] = useState<BrowserCapabilities | null>(null);
+
+  useEffect(() => {
+    setBrowserCapabilities(checkWebContainerSupport());
+  }, []);
 
   const handleSelect = (mode: ExpoPreviewMode) => {
     const option = PREVIEW_OPTIONS.find(o => o.mode === mode);
@@ -77,9 +89,15 @@ export function ExpoPreviewSelector({
     const tierOrder: Record<UserTier, number> = { free: 0, pro: 1, enterprise: 2 };
     const isLocked = tierOrder[userTier] < tierOrder[option.tier];
     
+    const webContainerUnavailable = 
+      option.runtime === 'webcontainer' && 
+      browserCapabilities && 
+      !browserCapabilities.isSupported;
+    
     if (!isLocked) {
       setSelected(mode);
-      onSelect(mode);
+      const actualRuntime = webContainerUnavailable ? 'e2b' : option.runtime;
+      onSelect(mode, actualRuntime);
     }
   };
 
@@ -89,6 +107,8 @@ export function ExpoPreviewSelector({
         const tierOrder: Record<UserTier, number> = { free: 0, pro: 1, enterprise: 2 };
         const isLocked = tierOrder[userTier] < tierOrder[option.tier];
         const isSelected = selected === option.mode;
+        const isWebContainer = option.runtime === 'webcontainer';
+        const webContainerSupported = browserCapabilities?.isSupported ?? false;
 
         return (
           <Card
@@ -108,6 +128,16 @@ export function ExpoPreviewSelector({
                   <h4 className="font-semibold text-sm">{option.title}</h4>
                 </div>
                 <div className="flex gap-1">
+                  {isWebContainer && webContainerSupported && (
+                    <Badge variant="default" className="text-xs bg-green-600">
+                      Instant
+                    </Badge>
+                  )}
+                  {isWebContainer && !webContainerSupported && browserCapabilities && (
+                    <Badge variant="outline" className="text-xs">
+                      Cloud
+                    </Badge>
+                  )}
                   {option.badge && (
                     <Badge variant="secondary" className="text-xs">
                       {option.badge}
@@ -121,7 +151,9 @@ export function ExpoPreviewSelector({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mb-2">
-                {option.description}
+                {isWebContainer && !webContainerSupported && browserCapabilities
+                  ? 'Preview via cloud sandbox (WebContainers unavailable)'
+                  : option.description}
               </p>
               <p className="text-xs text-muted-foreground/70">
                 Build time: {option.buildTime}
