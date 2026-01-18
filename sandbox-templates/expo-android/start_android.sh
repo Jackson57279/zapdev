@@ -15,17 +15,24 @@ fluxbox &
 # Generate VNC password if not exists
 VNC_PASSWD_FILE="/home/user/.vnc_passwd"
 if [ ! -f "$VNC_PASSWD_FILE" ]; then
-    echo "vncpasswd" | head -1 > "$VNC_PASSWD_FILE" 2>/dev/null || true
+    echo "[INFO] Creating VNC password file..."
+    mkdir -p /home/user
+    echo "vncpasswd" | head -1 > "$VNC_PASSWD_FILE" 2>/dev/null
+    if [ $? -ne 0 ] || [ ! -f "$VNC_PASSWD_FILE" ]; then
+        echo "[ERROR] Failed to create VNC password file. Exiting to prevent unauthenticated VNC access."
+        exit 1
+    fi
+fi
+
+# Verify VNC password file exists before starting server
+if [ ! -f "$VNC_PASSWD_FILE" ]; then
+    echo "[ERROR] VNC password file not found at $VNC_PASSWD_FILE. Refusing to start VNC without authentication."
+    exit 1
 fi
 
 # Start VNC server with password authentication
 echo "[INFO] Starting VNC server on port 5900..."
-if [ -f "$VNC_PASSWD_FILE" ]; then
-    x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth "$VNC_PASSWD_FILE" &
-else
-    echo "[WARN] VNC password file not found, starting without authentication"
-    x11vnc -display :99 -forever -shared -rfbport 5900 &
-fi
+x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth "$VNC_PASSWD_FILE" &
 
 # Wait for display services
 sleep 2
