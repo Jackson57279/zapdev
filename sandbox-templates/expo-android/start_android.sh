@@ -12,9 +12,20 @@ sleep 2
 echo "[INFO] Starting window manager..."
 fluxbox &
 
-# Start VNC server
+# Generate VNC password if not exists
+VNC_PASSWD_FILE="/home/user/.vnc_passwd"
+if [ ! -f "$VNC_PASSWD_FILE" ]; then
+    echo "vncpasswd" | head -1 > "$VNC_PASSWD_FILE" 2>/dev/null || true
+fi
+
+# Start VNC server with password authentication
 echo "[INFO] Starting VNC server on port 5900..."
-x11vnc -display :99 -forever -shared -rfbport 5900 -nopw &
+if [ -f "$VNC_PASSWD_FILE" ]; then
+    x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth "$VNC_PASSWD_FILE" &
+else
+    echo "[WARN] VNC password file not found, starting without authentication"
+    x11vnc -display :99 -forever -shared -rfbport 5900 &
+fi
 
 # Wait for display services
 sleep 2

@@ -123,7 +123,15 @@ export async function createWebContainerSandbox(
           return { stdout: "", stderr: "", exitCode: 0 };
         }
 
-        const exitCode = await process.exit;
+        // Timeout handling: race between process exit and timeout
+        const timeoutMs = opts?.timeoutMs ?? 300000; // Default 5 minutes
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Command timed out after ${timeoutMs}ms`)), timeoutMs)
+        );
+
+        const exitCodePromise = process.exit.then((code: number) => code);
+        const exitCode = await Promise.race([exitCodePromise, timeoutPromise]);
+
         let stdout = "";
         let stderr = "";
 
@@ -206,9 +214,11 @@ export async function mountFiles(
   files: Record<string, string>
 ): Promise<void> {
   if (sandbox.runtimeType !== "webcontainer") {
-    for (const [path, content] of Object.entries(files)) {
+    // Use parallel writes for better performance (O(1) vs O(N) latency)
+    const writePromises = Object.entries(files).map(async ([path, content]) => {
       await sandbox.files.write(path, content);
-    }
+    });
+    await Promise.all(writePromises);
     return;
   }
 
@@ -300,7 +310,10 @@ export async function runWebContainerBuildCheck(sandbox: SandboxInterface): Prom
   console.log("[WebContainer] Running build check...");
   const result = await sandbox.commands.run("npm run build", { timeoutMs: 120000 });
 
-  if (result.exitCode === 127) {
+  // Check for missing script by examining npm error output (exit code 1 = script missing, exit code 127 = command not found)
+  const isMissingScript = result.exitCode === 1 && (result.stderr.includes("Missing script") || result.stdout.includes("Missing script"));
+
+  if (isMissingScript) {
     console.warn("[WebContainer] Build script not found, skipping");
     return null;
   }

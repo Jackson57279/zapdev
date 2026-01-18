@@ -82,16 +82,18 @@ export function selectRuntime(
 
 export function shouldUseWebContainersForPreview(
   framework: Framework,
-  expoPreviewMode?: ExpoPreviewMode
+  expoPreviewMode?: ExpoPreviewMode,
+  browserSupportsWebContainers: boolean = true
 ): boolean {
-  const config = selectRuntime(framework, "preview", expoPreviewMode);
+  const config = selectRuntime(framework, "preview", expoPreviewMode, browserSupportsWebContainers);
   return config.useWebContainers;
 }
 
 export function getOptimalRuntimeForTask(
   framework: Framework,
   userPrompt: string,
-  expoPreviewMode?: ExpoPreviewMode
+  expoPreviewMode?: ExpoPreviewMode,
+  browserSupportsWebContainers: boolean = true
 ): RuntimeConfig {
   const lowerPrompt = userPrompt.toLowerCase();
 
@@ -111,7 +113,7 @@ export function getOptimalRuntimeForTask(
   );
 
   if (isNativeBuild) {
-    return selectRuntime(framework, "native-build", expoPreviewMode);
+    return selectRuntime(framework, "native-build", expoPreviewMode, browserSupportsWebContainers);
   }
 
   const previewIndicators = [
@@ -128,10 +130,10 @@ export function getOptimalRuntimeForTask(
   );
 
   if (isPreview || framework !== "expo") {
-    return selectRuntime(framework, "preview", expoPreviewMode);
+    return selectRuntime(framework, "preview", expoPreviewMode, browserSupportsWebContainers);
   }
 
-  return selectRuntime(framework, "full-dev", expoPreviewMode);
+  return selectRuntime(framework, "full-dev", expoPreviewMode, browserSupportsWebContainers);
 }
 
 export interface RuntimeMetrics {

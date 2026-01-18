@@ -106,9 +106,13 @@ export async function triggerEASBuild(
   await initializeEAS(sandbox);
   
   console.log(`[INFO] Triggering EAS build for platform: ${config.platform}, profile: ${config.profile}`);
-  
+
   const buildCommand = `npx eas-cli build --platform ${config.platform} --profile ${config.profile} --non-interactive --json --no-wait`;
-  
+
+  // Redact token before logging but pass securely to command execution
+  const redactedCommand = `EXPO_TOKEN="***" ${buildCommand}`;
+  console.log(`[DEBUG] Running command: ${redactedCommand}`);
+
   const result = await runCodeCommand(sandbox, buildCommand, {
     EXPO_TOKEN: expoToken
   });

@@ -75,18 +75,14 @@ export function ExpoPreviewSelector({
   selectedMode,
   className
 }: ExpoPreviewSelectorProps) {
-  const [selected, setSelected] = useState<ExpoPreviewMode>(selectedMode ?? 'web');
   const [browserCapabilities, setBrowserCapabilities] = useState<BrowserCapabilities | null>(null);
 
   useEffect(() => {
     setBrowserCapabilities(checkWebContainerSupport());
   }, []);
 
-  useEffect(() => {
-    if (selectedMode !== undefined) {
-      setSelected(selectedMode);
-    }
-  }, [selectedMode]);
+  // Use selectedMode directly as controlled component
+  const selected = selectedMode ?? 'web';
 
   const handleSelect = (mode: ExpoPreviewMode) => {
     const option = PREVIEW_OPTIONS.find(o => o.mode === mode);
@@ -101,7 +97,6 @@ export function ExpoPreviewSelector({
       !browserCapabilities.isSupported;
     
     if (!isLocked) {
-      setSelected(mode);
       const actualRuntime = webContainerUnavailable ? 'e2b' : option.runtime;
       onSelect(mode, actualRuntime);
     }

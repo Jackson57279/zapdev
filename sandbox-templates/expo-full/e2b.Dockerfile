@@ -6,18 +6,18 @@ RUN apt-get update && apt-get install -y curl git qrencode && apt-get clean && r
 WORKDIR /home/user
 
 # Create Expo app with TypeScript blank template
-RUN npx create-expo-app@latest . --template blank-typescript --yes
+RUN bunx create-expo-app@latest . --template blank-typescript --yes
 
 # Install web dependencies
-RUN npm install react-dom react-native-web @expo/metro-runtime
+RUN bun add react-dom react-native-web @expo/metro-runtime
 
 # Install common Expo SDK modules
-RUN npx expo install expo-font expo-linear-gradient expo-blur expo-status-bar expo-camera expo-image-picker expo-location expo-haptics
+RUN bunx expo install expo-font expo-linear-gradient expo-blur expo-status-bar expo-camera expo-image-picker expo-location expo-haptics
 
 # Install Expo CLI globally for tunnel support
-RUN npm install -g @expo/cli eas-cli
+RUN bun add -g @expo/cli eas-cli
 
 WORKDIR /home/user
 
-# Start Metro bundler with tunnel for Expo Go access
-CMD ["npx", "expo", "start", "--port", "8081", "--host", "0.0.0.0", "--tunnel"]
+# Keep container idle - dev servers are started by agents when needed
+CMD ["bash"]
