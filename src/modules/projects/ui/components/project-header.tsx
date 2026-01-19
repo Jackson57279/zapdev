@@ -13,6 +13,9 @@ import {
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DeployButton } from "./deploy-button";
+import { DeploymentStatus } from "./deployment-status";
+import { GitHubExportButton } from "./github-export-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -126,15 +129,20 @@ export const ProjectHeader = ({ projectId }: Props) => {
         </DropdownMenu>
       </div>
 
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleDownload}
-        disabled={isDownloading}
-      >
-        <DownloadIcon className="size-4 mr-2" />
-        {isDownloading ? 'Downloading...' : 'Download Code'}
-      </Button>
+      <div className="flex items-center gap-3">
+        <DeploymentStatus projectId={projectId} />
+        <DeployButton projectId={projectId} />
+        <GitHubExportButton projectId={projectId} />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleDownload}
+          disabled={isDownloading}
+        >
+          <DownloadIcon className="size-4 mr-2" />
+          {isDownloading ? "Downloading..." : "Download Code"}
+        </Button>
+      </div>
     </header>
   );
 };

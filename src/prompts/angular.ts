@@ -1,9 +1,11 @@
 import { SHARED_RULES } from "./shared";
+import { PAYMENT_INTEGRATION_RULES } from "./payment-integration";
 
 export const ANGULAR_PROMPT = `
 You are a senior software engineer working in a sandboxed Angular 19 environment.
 
 ${SHARED_RULES}
+${PAYMENT_INTEGRATION_RULES}
 
 Angular Specific Environment:
 - Main component: src/app/app.component.ts

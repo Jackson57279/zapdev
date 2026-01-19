@@ -14,6 +14,7 @@ AI-powered development platform that lets you create web applications by chattin
 - 🔐 Authentication with Clerk
 - ⚙️ Background job processing with Inngest
 - 🗃️ Project management and persistence
+- 💰 Generated app billing templates (Stripe via Autumn)
 
 ## Tech Stack
 
@@ -199,6 +200,10 @@ npm run lint           # Run ESLint
 4. **Real-time Updates**: Generated code and previews are displayed in split-pane interface
 5. **File Management**: Users can browse generated files with syntax highlighting
 6. **Iteration**: Conversational development allows for refinements and additions
+
+## Generated App Payments
+
+ZapDev can generate payment-ready apps using Stripe through Autumn. Templates live in `src/lib/payment-templates/` and include checkout flows, billing portal endpoints, feature gates, and usage tracking helpers. Configure with environment variables from `paymentEnvExample` in the same folder.
 
 ---
 

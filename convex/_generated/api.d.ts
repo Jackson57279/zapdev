@@ -10,6 +10,8 @@
 
 import type * as helpers from "../helpers.js";
 import type * as http from "../http.js";
+import type * as deployments from "../deployments.js";
+import type * as githubExports from "../githubExports.js";
 import type * as importData from "../importData.js";
 import type * as imports from "../imports.js";
 import type * as messages from "../messages.js";
@@ -31,6 +33,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   helpers: typeof helpers;
   http: typeof http;
+  deployments: typeof deployments;
+  githubExports: typeof githubExports;
   importData: typeof importData;
   imports: typeof imports;
   messages: typeof messages;

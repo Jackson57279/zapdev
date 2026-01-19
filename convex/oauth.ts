@@ -70,6 +70,23 @@ export const getConnection = query({
   },
 });
 
+export const getGithubAccessToken = query({
+  args: {},
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+
+    const connection = await ctx.db
+      .query("oauthConnections")
+      .withIndex("by_userId_provider", (q) =>
+        q.eq("userId", userId).eq("provider", "github"),
+      )
+      .first();
+
+    return connection?.accessToken ?? null;
+  },
+});
+
 // List all OAuth connections for user
 export const listConnections = query({
   handler: async (ctx) => {

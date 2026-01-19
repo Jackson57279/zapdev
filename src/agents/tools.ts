@@ -1,6 +1,11 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getSandbox, writeFilesBatch, readFileFast } from "./sandbox-utils";
+import {
+  autumnConfigTemplate,
+  getPaymentTemplate,
+  paymentEnvExample,
+} from "@/lib/payment-templates";
 import type { AgentState } from "./types";
 
 export interface ToolContext {
@@ -136,6 +141,21 @@ export function createAgentTools(context: ToolContext) {
           console.error("[ERROR] readFiles failed:", errorMessage);
           return `Error: ${errorMessage}`;
         }
+      },
+    }),
+    paymentTemplates: tool({
+      description:
+        "Get Stripe + Autumn payment integration templates for a framework",
+      inputSchema: z.object({
+        framework: z.enum(["nextjs", "react", "vue", "angular", "svelte"]),
+      }),
+      execute: async ({ framework }) => {
+        const template = getPaymentTemplate(framework);
+        return JSON.stringify({
+          ...template,
+          autumnConfigTemplate,
+          paymentEnvExample,
+        });
       },
     }),
   };
