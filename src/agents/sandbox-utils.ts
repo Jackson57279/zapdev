@@ -387,17 +387,31 @@ export const readFilesInBatches = async (
 ): Promise<Record<string, string>> => {
   const allFilesMap: Record<string, string> = {};
   const validFilePaths = filePaths.filter(isValidFilePath).slice(0, MAX_FILE_COUNT);
-  
+
+  const batches: Array<string[]> = [];
   for (let i = 0; i < validFilePaths.length; i += batchSize) {
-    const batch = validFilePaths.slice(i, i + batchSize);
+    batches.push(validFilePaths.slice(i, i + batchSize));
+  }
+
+  const maxConcurrentBatches = 3;
+  for (let i = 0; i < batches.length; i += maxConcurrentBatches) {
+    const batchSlice = batches.slice(i, i + maxConcurrentBatches);
     const batchResults = await Promise.all(
-      batch.map(async (filePath) => {
-        const content = await readFileWithTimeout(sandbox, filePath);
-        return { filePath, content };
+      batchSlice.map(async (batch) => {
+        const results = await Promise.all(
+          batch.map(async (filePath) => {
+            const content = await readFileWithTimeout(sandbox, filePath);
+            return { filePath, content };
+          })
+        );
+        return results;
       })
     );
-    for (const { filePath, content } of batchResults) {
-      if (content !== null) allFilesMap[filePath] = content;
+
+    for (const results of batchResults) {
+      for (const { filePath, content } of results) {
+        if (content !== null) allFilesMap[filePath] = content;
+      }
     }
   }
   

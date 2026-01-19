@@ -108,7 +108,28 @@ const extractSummaryText = (value: string): string => {
     return match[1].trim();
   }
 
-  return trimmed;
+  return "";
+};
+
+const isModelNotFoundError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  if (message.includes("model not found") || message.includes("model_not_found")) {
+    return true;
+  }
+
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    const causeMessage = cause.message.toLowerCase();
+    if (causeMessage.includes("model not found") || causeMessage.includes("model_not_found")) {
+      return true;
+    }
+  }
+
+  return error.name === "GatewayModelNotFoundError";
 };
 
 const getFrameworkPrompt = (framework: Framework): string => {
@@ -480,6 +501,11 @@ export async function* runCodeAgent(
       summaryRetryCount: 0,
     };
 
+    const pendingEvents: StreamEvent[] = [];
+    const queueEvent = (event: StreamEvent) => {
+      pendingEvents.push({ ...event, timestamp: Date.now() });
+    };
+
     console.log("[DEBUG] Creating agent tools...");
     const baseTools = createAgentTools({
       sandboxId,
@@ -489,11 +515,29 @@ export async function* runCodeAgent(
       },
       onFileCreated: (path, content) => {
         console.log("[DEBUG] File created:", path, `(${content.length} bytes)`);
+        queueEvent({
+          type: "file-created",
+          data: {
+            path,
+            content,
+            size: content.length,
+          },
+        });
+      },
+      onToolCall: (tool, args) => {
+        queueEvent({
+          type: "tool-call",
+          data: { tool, args },
+        });
       },
       onToolOutput: (source, chunk) => {
         if (chunk.includes("error") || chunk.includes("Error")) {
           console.log(`[${source.toUpperCase()}]`, chunk.trim());
         }
+        queueEvent({
+          type: "tool-output",
+          data: { source, chunk },
+        });
       },
     });
     
@@ -546,10 +590,9 @@ export async function* runCodeAgent(
 
     let fullText = "";
     let chunkCount = 0;
-    let previousFilesCount = 0;
-    let useGatewayFallbackForStream = isCerebrasModel(selectedModel);
+    let useGatewayFallbackForStream = false;
     let retryCount = 0;
-    const MAX_STREAM_RETRIES = 5;
+    const MAX_STREAM_RETRIES = 3;
 
     while (retryCount < MAX_STREAM_RETRIES) {
       try {
@@ -578,25 +621,27 @@ export async function* runCodeAgent(
         for await (const chunk of result.textStream) {
           fullText += chunk;
           chunkCount++;
-          if (chunkCount % 50 === 0) {
+          if (chunkCount % 10 === 0) {
             console.log("[DEBUG] Streamed", chunkCount, "chunks");
+            yield {
+              type: "progress",
+              data: { stage: "generating", chunks: chunkCount },
+            };
           }
           yield { type: "text", data: chunk };
 
-          const currentFilesCount = Object.keys(state.files).length;
-          if (currentFilesCount > previousFilesCount) {
-            const newFiles = Object.entries(state.files).slice(previousFilesCount);
-            for (const [path, content] of newFiles) {
-              yield {
-                type: "file-created",
-                data: {
-                  path,
-                  content,
-                  size: content.length,
-                },
-              };
+          while (pendingEvents.length > 0) {
+            const nextEvent = pendingEvents.shift();
+            if (nextEvent) {
+              yield nextEvent;
             }
-            previousFilesCount = currentFilesCount;
+          }
+        }
+
+        while (pendingEvents.length > 0) {
+          const nextEvent = pendingEvents.shift();
+          if (nextEvent) {
+            yield nextEvent;
           }
         }
 
@@ -606,15 +651,26 @@ export async function* runCodeAgent(
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         const isRateLimit = isRateLimitError(streamError);
         const isServer = isServerError(streamError);
+        const isModelNotFound = isModelNotFoundError(streamError);
         const canRetry = isRateLimit || isServer;
 
-        if (!useGatewayFallbackForStream && isRateLimit) {
+        if (useGatewayFallbackForStream && isModelNotFound) {
+          console.log(`[GATEWAY-FALLBACK] Model not found in gateway for ${selectedModel}. Switching to direct Cerebras API...`);
+          useGatewayFallbackForStream = false;
+          continue;
+        }
+
+        if (
+          !useGatewayFallbackForStream &&
+          isRateLimit &&
+          isCerebrasModel(selectedModel)
+        ) {
           console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
           useGatewayFallbackForStream = true;
           continue;
         }
 
-        if (retryCount >= MAX_STREAM_RETRIES || !canRetry) {
+        if (isModelNotFound || retryCount >= MAX_STREAM_RETRIES || !canRetry) {
           console.error(`[ERROR] Stream: ${canRetry ? `All ${MAX_STREAM_RETRIES} attempts failed` : "Non-retryable error"}. Error: ${errorMessage}`);
           throw streamError;
         }
@@ -638,7 +694,6 @@ export async function* runCodeAgent(
 
         fullText = "";
         chunkCount = 0;
-        previousFilesCount = Object.keys(state.files).length;
         console.log(`[RETRY] Stream: Retrying stream (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...`);
         yield { type: "status", data: `Retrying AI generation (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...` };
       }
@@ -661,7 +716,7 @@ export async function* runCodeAgent(
       console.log("[DEBUG] No summary detected, requesting explicitly...");
       yield { type: "status", data: "Generating summary..." };
 
-      let summaryUseGatewayFallback = isCerebrasModel(selectedModel);
+      let summaryUseGatewayFallback = false;
       let summaryRetries = 0;
       const MAX_SUMMARY_RETRIES = 2;
       let followUpResult: { text: string } | null = null;
@@ -704,7 +759,14 @@ export async function* runCodeAgent(
             break;
           }
 
-          if (isRateLimitError(error) && !summaryUseGatewayFallback) {
+          if (summaryUseGatewayFallback && isModelNotFoundError(error)) {
+            console.log(`[GATEWAY-FALLBACK] Summary model not found in gateway. Switching to direct Cerebras API...`);
+            summaryUseGatewayFallback = false;
+          } else if (
+            isRateLimitError(error) &&
+            !summaryUseGatewayFallback &&
+            isCerebrasModel(selectedModel)
+          ) {
             console.log(`[GATEWAY-FALLBACK] Rate limit hit for summary. Switching to Vercel AI Gateway...`);
             summaryUseGatewayFallback = true;
           } else if (isRateLimitError(error)) {
