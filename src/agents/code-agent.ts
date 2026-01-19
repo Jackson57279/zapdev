@@ -12,9 +12,11 @@ import {
   type AgentState,
   type AgentRunInput,
   type ModelId,
+  type DatabaseProvider,
   MODEL_CONFIGS,
   selectModelForTask,
   frameworkToConvexEnum,
+  databaseProviderToConvexEnum,
 } from "./types";
 import {
   createSandbox,
@@ -32,11 +34,14 @@ import {
   FRAGMENT_TITLE_PROMPT,
   RESPONSE_PROMPT,
   FRAMEWORK_SELECTOR_PROMPT,
+  DATABASE_SELECTOR_PROMPT,
   NEXTJS_PROMPT,
   ANGULAR_PROMPT,
   REACT_PROMPT,
   VUE_PROMPT,
   SVELTE_PROMPT,
+  getDatabaseIntegrationRules,
+  isValidDatabaseSelection,
 } from "@/prompt";
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
@@ -72,6 +77,7 @@ const convex = new Proxy({} as ConvexHttpClient, {
 const AUTO_FIX_MAX_ATTEMPTS = 1;
 const MAX_AGENT_ITERATIONS = 8;
 const FRAMEWORK_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
+const DATABASE_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
 
 type FragmentMetadata = Record<string, unknown>;
 
@@ -109,6 +115,22 @@ const extractSummaryText = (value: string): string => {
   }
 
   return "";
+};
+
+const normalizeDatabaseProvider = (value?: string): DatabaseProvider => {
+  if (!value) {
+    return "none";
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized === "drizzle_neon" || normalized === "drizzle-neon") {
+    return "drizzle-neon";
+  }
+  if (normalized === "convex") {
+    return "convex";
+  }
+
+  return "none";
 };
 
 const isModelNotFoundError = (error: unknown): boolean => {
@@ -186,6 +208,35 @@ async function detectFramework(prompt: string): Promise<Framework> {
       return "nextjs";
     },
     FRAMEWORK_CACHE_TTL_30_MINUTES
+  );
+}
+
+async function detectDatabaseProvider(prompt: string): Promise<DatabaseProvider> {
+  const cacheKey = `database:${prompt.slice(0, 200)}`;
+
+  return cache.getOrCompute(
+    cacheKey,
+    async () => {
+      const { text } = await withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel("google/gemini-2.5-flash-lite").chat(
+            "google/gemini-2.5-flash-lite"
+          ),
+          system: DATABASE_SELECTOR_PROMPT,
+          prompt,
+          temperature: 0.3,
+        }),
+        { context: "detectDatabaseProvider" }
+      );
+
+      const detectedProvider = text.trim().toLowerCase();
+      if (isValidDatabaseSelection(detectedProvider)) {
+        return detectedProvider;
+      }
+
+      return "none";
+    },
+    DATABASE_CACHE_TTL_30_MINUTES
   );
 }
 
@@ -315,8 +366,12 @@ export async function* runCodeAgent(
 
     let selectedFramework: Framework =
       (project?.framework?.toLowerCase() as Framework) || "nextjs";
+    let selectedDatabase: DatabaseProvider = normalizeDatabaseProvider(
+      project?.databaseProvider
+    );
 
     const needsFrameworkDetection = !project?.framework;
+    const needsDatabaseDetection = !project?.databaseProvider;
 
     if (needsFrameworkDetection) {
       console.log("[INFO] Framework detection required");
@@ -324,11 +379,22 @@ export async function* runCodeAgent(
       console.log("[INFO] Using existing framework:", selectedFramework);
     }
 
+    if (needsDatabaseDetection) {
+      console.log("[INFO] Database provider detection required");
+    } else {
+      console.log("[INFO] Using existing database provider:", selectedDatabase);
+    }
+
     yield { type: "status", data: "Setting up environment..." };
 
     console.log("[DEBUG] Creating sandbox...");
-    const [detectedFramework, sandbox] = await Promise.all([
-      needsFrameworkDetection ? detectFramework(value) : Promise.resolve(selectedFramework),
+    const [detectedFramework, detectedDatabase, sandbox] = await Promise.all([
+      needsFrameworkDetection
+        ? detectFramework(value)
+        : Promise.resolve(selectedFramework),
+      needsDatabaseDetection
+        ? detectDatabaseProvider(value)
+        : Promise.resolve(selectedDatabase),
       createSandbox(selectedFramework),
     ]);
 
@@ -348,6 +414,11 @@ export async function* runCodeAgent(
       } catch (error) {
         console.warn("[WARN] Failed to save framework to project:", error);
       }
+    }
+
+    if (needsDatabaseDetection) {
+      selectedDatabase = detectedDatabase;
+      console.log("[INFO] Detected database provider:", selectedDatabase);
     }
 
     const sandboxId = sandbox.sandboxId;
@@ -498,6 +569,7 @@ export async function* runCodeAgent(
       summary: "",
       files: {},
       selectedFramework,
+      selectedDatabase,
       summaryRetryCount: 0,
     };
 
@@ -548,6 +620,13 @@ export async function* runCodeAgent(
     const tools = { ...baseTools, ...braveTools };
 
     const frameworkPrompt = getFrameworkPrompt(selectedFramework);
+    const databaseIntegrationRules =
+      selectedDatabase === "none"
+        ? ""
+        : getDatabaseIntegrationRules(selectedDatabase);
+    const systemPrompt = databaseIntegrationRules
+      ? `${frameworkPrompt}\n${databaseIntegrationRules}`
+      : frameworkPrompt;
     const modelConfig = MODEL_CONFIGS[selectedModel];
 
     timeoutManager.startStage("codeGeneration");
@@ -604,7 +683,7 @@ export async function* runCodeAgent(
               only: ['cerebras'],
             }
           } : undefined,
-          system: frameworkPrompt,
+          system: systemPrompt,
           messages,
           tools,
           stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
@@ -731,7 +810,7 @@ export async function* runCodeAgent(
                 only: ['cerebras'],
               }
             } : undefined,
-            system: frameworkPrompt,
+            system: systemPrompt,
             messages: [
               ...messages,
               {
@@ -849,7 +928,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       const fixResult = await withRateLimitRetry(
         () => generateText({
           model: getClientForModel(selectedModel).chat(selectedModel),
-          system: frameworkPrompt,
+          system: systemPrompt,
           messages: [
             ...messages,
             { role: "assistant" as const, content: resultText },
@@ -1031,6 +1110,24 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       framework: frameworkToConvexEnum(selectedFramework),
       metadata: metadata,
     });
+
+    const databaseProviderEnum =
+      databaseProviderToConvexEnum(selectedDatabase);
+    if (project.databaseProvider !== databaseProviderEnum) {
+      try {
+        await convex.mutation(api.projects.updateForUser, {
+          userId: project.userId,
+          projectId: projectId as Id<"projects">,
+          databaseProvider: databaseProviderEnum,
+        });
+        console.log("[INFO] Database provider saved to project");
+      } catch (error) {
+        console.warn(
+          "[WARN] Failed to save database provider to project:",
+          error
+        );
+      }
+    }
 
     console.log("[INFO] Agent run completed successfully");
 

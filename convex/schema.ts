@@ -9,6 +9,12 @@ export const frameworkEnum = v.union(
   v.literal("SVELTE")
 );
 
+export const databaseProviderEnum = v.union(
+  v.literal("NONE"),
+  v.literal("DRIZZLE_NEON"),
+  v.literal("CONVEX")
+);
+
 export const messageRoleEnum = v.union(
   v.literal("USER"),
   v.literal("ASSISTANT")
@@ -96,6 +102,7 @@ export default defineSchema({
     name: v.string(),
     userId: v.string(),
     framework: frameworkEnum,
+    databaseProvider: v.optional(databaseProviderEnum),
     modelPreference: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),

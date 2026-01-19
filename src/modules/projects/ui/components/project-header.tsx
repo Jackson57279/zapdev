@@ -9,6 +9,7 @@ import {
   ChevronLeftIcon,
   SunMoonIcon,
   DownloadIcon,
+  PaletteIcon,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { DeployButton } from "./deploy-button";
 import { DeploymentStatus } from "./deployment-status";
 import { GitHubExportButton } from "./github-export-button";
+import { ColorThemePicker } from "@/components/color-theme-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -122,6 +124,17 @@ export const ProjectHeader = ({ projectId }: Props) => {
                       <span>System</span>
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <PaletteIcon className="size-4 text-muted-foreground" />
+                <span>Color Theme</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent className="p-2">
+                  <ColorThemePicker />
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
             </DropdownMenuSub>

@@ -1,11 +1,13 @@
 export const SANDBOX_TIMEOUT = 60_000 * 60;
 
 export type Framework = "nextjs" | "angular" | "react" | "vue" | "svelte";
+export type DatabaseProvider = "none" | "drizzle-neon" | "convex";
 
 export interface AgentState {
   summary: string;
   files: Record<string, string>;
   selectedFramework?: Framework;
+  selectedDatabase?: DatabaseProvider;
   summaryRetryCount: number;
 }
 
@@ -23,6 +25,7 @@ export interface AgentRunResult {
   summary: string;
   sandboxId: string;
   framework: Framework;
+  databaseProvider?: DatabaseProvider;
 }
 
 export const MODEL_CONFIGS = {
@@ -157,4 +160,15 @@ export function frameworkToConvexEnum(
     svelte: "SVELTE",
   };
   return mapping[framework];
+}
+
+export function databaseProviderToConvexEnum(
+  provider: DatabaseProvider
+): "NONE" | "DRIZZLE_NEON" | "CONVEX" {
+  const mapping: Record<DatabaseProvider, "NONE" | "DRIZZLE_NEON" | "CONVEX"> = {
+    none: "NONE",
+    "drizzle-neon": "DRIZZLE_NEON",
+    convex: "CONVEX",
+  };
+  return mapping[provider];
 }

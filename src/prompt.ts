@@ -5,5 +5,11 @@ export { REACT_PROMPT } from "./prompts/react";
 export { VUE_PROMPT } from "./prompts/vue";
 export { SVELTE_PROMPT } from "./prompts/svelte";
 export { FRAMEWORK_SELECTOR_PROMPT } from "./prompts/framework-selector";
+export {
+  DATABASE_SELECTOR_PROMPT,
+  isValidDatabaseSelection,
+  type DatabaseSelection,
+} from "./prompts/database-selector";
+export { getDatabaseIntegrationRules } from "./prompts/database-integration";
 export { PAYMENT_INTEGRATION_RULES } from "./prompts/payment-integration";
 export { NEXTJS_PROMPT as PROMPT } from "./prompts/nextjs";

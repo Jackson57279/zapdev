@@ -13,6 +13,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals-reporter";
 import { ConvexClientProvider } from "@/components/convex-provider";
+import { ColorThemeProvider } from "@/components/color-theme-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
@@ -107,9 +108,11 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <Toaster />
-              <WebVitalsReporter />
-              {children}
+              <ColorThemeProvider>
+                <Toaster />
+                <WebVitalsReporter />
+                {children}
+              </ColorThemeProvider>
             </ThemeProvider>
           </ConvexClientProvider>
         </body>
