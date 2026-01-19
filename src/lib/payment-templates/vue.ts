@@ -69,31 +69,39 @@ const router = Router();
 const autumn = createAutumnClient();
 
 router.post("/checkout", async (req: Request, res: Response) => {
-  if (!isCheckoutRequest(req.body)) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    if (!isCheckoutRequest(req.body)) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    const checkout = await autumn.request<{ url: string; id: string }>("/v1/checkout", {
+      method: "POST",
+      body: req.body,
+    });
+    res.json(checkout);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  const checkout = await autumn.request<{ url: string; id: string }>("/v1/checkout", {
-    method: "POST",
-    body: req.body,
-  });
-  res.json(checkout);
 });
 
 router.post("/portal", async (req: Request, res: Response) => {
-  const { customerId, returnUrl } = req.body as {
-    customerId?: string;
-    returnUrl?: string;
-  };
-  if (!customerId || !returnUrl) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    const { customerId, returnUrl } = req.body as {
+      customerId?: string;
+      returnUrl?: string;
+    };
+    if (!customerId || !returnUrl) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    const portal = await autumn.request<{ url: string }>("/v1/portal", {
+      method: "POST",
+      body: { customerId, returnUrl },
+    });
+    res.json(portal);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  const portal = await autumn.request<{ url: string }>("/v1/portal", {
-    method: "POST",
-    body: { customerId, returnUrl },
-  });
-  res.json(portal);
 });
 
 router.patch("/subscription", async (req: Request, res: Response) => {
@@ -135,36 +143,44 @@ router.delete("/subscription", async (req: Request, res: Response) => {
 });
 
 router.post("/feature-check", async (req: Request, res: Response) => {
-  const { customerId, featureId } = req.body as {
-    customerId?: string;
-    featureId?: string;
-  };
-  if (!customerId || !featureId) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    const { customerId, featureId } = req.body as {
+      customerId?: string;
+      featureId?: string;
+    };
+    if (!customerId || !featureId) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    const result = await autumn.request<unknown>("/v1/features/check", {
+      method: "POST",
+      body: { customerId, featureId },
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  const result = await autumn.request<unknown>("/v1/features/check", {
-    method: "POST",
-    body: { customerId, featureId },
-  });
-  res.json(result);
 });
 
 router.post("/usage", async (req: Request, res: Response) => {
-  const { customerId, meterId, quantity } = req.body as {
-    customerId?: string;
-    meterId?: string;
-    quantity?: number;
-  };
-  if (!customerId || !meterId || typeof quantity !== "number") {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    const { customerId, meterId, quantity } = req.body as {
+      customerId?: string;
+      meterId?: string;
+      quantity?: number;
+    };
+    if (!customerId || !meterId || typeof quantity !== "number") {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    await autumn.request("/v1/usage", {
+      method: "POST",
+      body: { customerId, meterId, quantity },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  await autumn.request("/v1/usage", {
-    method: "POST",
-    body: { customerId, meterId, quantity },
-  });
-  res.json({ ok: true });
 });
 
 export default router;
@@ -172,6 +188,7 @@ export default router;
     "server/routes/webhooks.ts": `
 import type { Request, Response } from "express";
 import { Router } from "express";
+import express from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const router = Router();
@@ -186,7 +203,7 @@ const verifySignature = (signature: string, payload: string, secret: string) => 
   return timingSafeEqual(signatureBuffer, digestBuffer);
 };
 
-router.post("/autumn", async (req: Request, res: Response) => {
+router.post("/autumn", express.raw({ type: "application/json" }), async (req: Request, res: Response) => {
   const secret = process.env.AUTUMN_WEBHOOK_SECRET;
   if (!secret) {
     res.status(500).json({ error: "Missing webhook secret" });
@@ -194,23 +211,27 @@ router.post("/autumn", async (req: Request, res: Response) => {
   }
   const signature = req.headers["autumn-signature"];
   const signatureValue = Array.isArray(signature) ? signature[0] : signature ?? "";
-  const rawBody = req.body as string;
+  const rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : String(req.body);
   if (!verifySignature(signatureValue, rawBody, secret)) {
     res.status(401).json({ error: "Invalid signature" });
     return;
   }
-  const event = JSON.parse(rawBody) as { type: string; data: unknown };
-  switch (event.type) {
-    case "subscription.created":
-    case "subscription.updated":
-    case "subscription.canceled":
-    case "invoice.payment_failed":
-    case "invoice.payment_succeeded":
-      break;
-    default:
-      break;
+  try {
+    const event = JSON.parse(rawBody) as { type: string; data: unknown };
+    switch (event.type) {
+      case "subscription.created":
+      case "subscription.updated":
+      case "subscription.canceled":
+      case "invoice.payment_failed":
+      case "invoice.payment_succeeded":
+        break;
+      default:
+        break;
+    }
+    res.json({ received: true });
+  } catch (err) {
+    res.status(400).json({ error: "Invalid JSON" });
   }
-  res.json({ received: true });
 });
 
 export default router;
@@ -258,10 +279,16 @@ const startCheckout = async () => {
         cancelUrl: props.cancelUrl,
       }),
     });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || "Checkout failed");
+    }
     const data = (await response.json()) as { url?: string };
     if (data.url) {
       window.location.href = data.url;
     }
+  } catch (error) {
+    alert(error instanceof Error ? error.message : "Checkout failed");
   } finally {
     loading.value = false;
   }

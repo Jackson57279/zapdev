@@ -69,102 +69,126 @@ const router = Router();
 const autumn = createAutumnClient();
 
 router.post("/checkout", async (req: Request, res: Response) => {
-  if (!isCheckoutRequest(req.body)) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    if (!isCheckoutRequest(req.body)) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    const checkout = await autumn.request<{ url: string; id: string }>("/v1/checkout", {
+      method: "POST",
+      body: req.body,
+    });
+    res.json(checkout);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  const checkout = await autumn.request<{ url: string; id: string }>("/v1/checkout", {
-    method: "POST",
-    body: req.body,
-  });
-  res.json(checkout);
 });
 
 router.post("/portal", async (req: Request, res: Response) => {
-  const { customerId, returnUrl } = req.body as {
-    customerId?: string;
-    returnUrl?: string;
-  };
-  if (!customerId || !returnUrl) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    const { customerId, returnUrl } = req.body as {
+      customerId?: string;
+      returnUrl?: string;
+    };
+    if (!customerId || !returnUrl) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    const portal = await autumn.request<{ url: string }>("/v1/portal", {
+      method: "POST",
+      body: { customerId, returnUrl },
+    });
+    res.json(portal);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  const portal = await autumn.request<{ url: string }>("/v1/portal", {
-    method: "POST",
-    body: { customerId, returnUrl },
-  });
-  res.json(portal);
 });
 
 router.patch("/subscription", async (req: Request, res: Response) => {
-  const { subscriptionId, productId } = req.body as {
-    subscriptionId?: string;
-    productId?: string;
-  };
-  if (!subscriptionId || !productId) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
-  }
-  const updated = await autumn.request<unknown>(
-    \`/v1/subscriptions/\${encodeURIComponent(subscriptionId)}\`,
-    {
-      method: "PATCH",
-      body: { productId },
+  try {
+    const { subscriptionId, productId } = req.body as {
+      subscriptionId?: string;
+      productId?: string;
+    };
+    if (!subscriptionId || !productId) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
     }
-  );
-  res.json(updated);
+    const updated = await autumn.request<unknown>(
+      `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+      {
+        method: "PATCH",
+        body: { productId },
+      }
+    );
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
 router.delete("/subscription", async (req: Request, res: Response) => {
-  const { subscriptionId, cancelAtPeriodEnd } = req.body as {
-    subscriptionId?: string;
-    cancelAtPeriodEnd?: boolean;
-  };
-  if (!subscriptionId) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
-  }
-  const canceled = await autumn.request<unknown>(
-    \`/v1/subscriptions/\${encodeURIComponent(subscriptionId)}/cancel\`,
-    {
-      method: "POST",
-      body: { cancelAtPeriodEnd: cancelAtPeriodEnd ?? true },
+  try {
+    const { subscriptionId, cancelAtPeriodEnd } = req.body as {
+      subscriptionId?: string;
+      cancelAtPeriodEnd?: boolean;
+    };
+    if (!subscriptionId) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
     }
-  );
-  res.json(canceled);
+    const canceled = await autumn.request<unknown>(
+      `/v1/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+      {
+        method: "POST",
+        body: { cancelAtPeriodEnd: cancelAtPeriodEnd ?? true },
+      }
+    );
+    res.json(canceled);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
 router.post("/feature-check", async (req: Request, res: Response) => {
-  const { customerId, featureId } = req.body as {
-    customerId?: string;
-    featureId?: string;
-  };
-  if (!customerId || !featureId) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    const { customerId, featureId } = req.body as {
+      customerId?: string;
+      featureId?: string;
+    };
+    if (!customerId || !featureId) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    const result = await autumn.request<unknown>("/v1/features/check", {
+      method: "POST",
+      body: { customerId, featureId },
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  const result = await autumn.request<unknown>("/v1/features/check", {
-    method: "POST",
-    body: { customerId, featureId },
-  });
-  res.json(result);
 });
 
 router.post("/usage", async (req: Request, res: Response) => {
-  const { customerId, meterId, quantity } = req.body as {
-    customerId?: string;
-    meterId?: string;
-    quantity?: number;
-  };
-  if (!customerId || !meterId || typeof quantity !== "number") {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
+  try {
+    const { customerId, meterId, quantity } = req.body as {
+      customerId?: string;
+      meterId?: string;
+      quantity?: number;
+    };
+    if (!customerId || !meterId || typeof quantity !== "number") {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+    await autumn.request("/v1/usage", {
+      method: "POST",
+      body: { customerId, meterId, quantity },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
   }
-  await autumn.request("/v1/usage", {
-    method: "POST",
-    body: { customerId, meterId, quantity },
-  });
-  res.json({ ok: true });
 });
 
 export default router;
@@ -194,23 +218,27 @@ router.post("/autumn", async (req: Request, res: Response) => {
   }
   const signature = req.headers["autumn-signature"];
   const signatureValue = Array.isArray(signature) ? signature[0] : signature ?? "";
-  const rawBody = req.body as string;
-  if (!verifySignature(signatureValue, rawBody, secret)) {
+  const rawBody = (req as any).rawBody;
+  if (!rawBody || !verifySignature(signatureValue, rawBody, secret)) {
     res.status(401).json({ error: "Invalid signature" });
     return;
   }
-  const event = JSON.parse(rawBody) as { type: string; data: unknown };
-  switch (event.type) {
-    case "subscription.created":
-    case "subscription.updated":
-    case "subscription.canceled":
-    case "invoice.payment_failed":
-    case "invoice.payment_succeeded":
-      break;
-    default:
-      break;
+  try {
+    const event = JSON.parse(rawBody) as { type: string; data: unknown };
+    switch (event.type) {
+      case "subscription.created":
+      case "subscription.updated":
+      case "subscription.canceled":
+      case "invoice.payment_failed":
+      case "invoice.payment_succeeded":
+        break;
+      default:
+        break;
+    }
+    res.json({ received: true });
+  } catch (err) {
+    res.status(400).json({ error: "Invalid JSON" });
   }
-  res.json({ received: true });
 });
 
 export default router;
@@ -221,7 +249,11 @@ import billingRoutes from "./routes/billing";
 import webhookRoutes from "./routes/webhooks";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
 
 app.use("/api/billing", billingRoutes);
 app.use("/api/webhooks", webhookRoutes);
@@ -244,14 +276,22 @@ interface CheckoutPayload {
 @Injectable({ providedIn: "root" })
 export class BillingService {
   async startCheckout(payload: CheckoutPayload): Promise<void> {
-    const response = await fetch("/api/billing/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = (await response.json()) as { url?: string };
-    if (data.url) {
-      window.location.href = data.url;
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Checkout failed");
+      }
+      const data = (await response.json()) as { url?: string };
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Checkout failed");
     }
   }
 

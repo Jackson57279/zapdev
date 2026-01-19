@@ -1,4 +1,6 @@
-export type PaymentFramework = "nextjs" | "react" | "vue" | "angular" | "svelte";
+import { frameworks } from "../frameworks";
+
+export type PaymentFramework = keyof typeof frameworks;
 
 export interface PaymentTemplateBundle {
   framework: PaymentFramework;

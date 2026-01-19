@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import { getUser } from "@/lib/auth-server";
+import { getUser, getToken } from "@/lib/auth-server";
 import { createNetlifyClient } from "@/lib/netlify-client";
 
 type NetlifyConnection = {
@@ -16,9 +16,10 @@ type EnvVarPayload = {
 };
 
 const getNetlifyAccessToken = async (): Promise<string> => {
+  const token = await getToken();
   const connection = await fetchQuery(api.oauth.getConnection, {
     provider: "netlify",
-  }) as NetlifyConnection | null;
+  }, { token: token ?? undefined }) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found.");
@@ -43,7 +44,12 @@ export async function GET(request: Request) {
     const netlifyClient = createNetlifyClient(await getNetlifyAccessToken());
     const envVars = await netlifyClient.getEnvVars(siteId);
 
-    return NextResponse.json(envVars);
+    const sanitizedEnvVars = Array.isArray(envVars) ? envVars.map((envVar) => {
+      const { values, ...rest } = envVar as { values?: unknown; [key: string]: unknown };
+      return rest;
+    }) : [];
+
+    return NextResponse.json(sanitizedEnvVars);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch env vars";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -58,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as EnvVarPayload;
-    if (!body.siteId || !body.key || !body.value) {
+    if (!body.siteId || !body.key || body.value === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -85,7 +91,7 @@ export async function PUT(request: Request) {
     }
 
     const body = (await request.json()) as EnvVarPayload;
-    if (!body.siteId || !body.key || !body.value) {
+    if (!body.siteId || !body.key || body.value === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 

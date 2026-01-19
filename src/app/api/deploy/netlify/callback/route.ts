@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
+import crypto from "crypto";
 
 const NETLIFY_CLIENT_ID = process.env.NETLIFY_CLIENT_ID;
 const NETLIFY_CLIENT_SECRET = process.env.NETLIFY_CLIENT_SECRET;
+const NETLIFY_OAUTH_STATE_SECRET = process.env.NETLIFY_OAUTH_STATE_SECRET || "fallback-secret-change-me";
 const NETLIFY_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/deploy/netlify/callback`;
+const STATE_TTL_MS = 10 * 60 * 1000;
 
 type NetlifyTokenResponse = {
   access_token?: string;
@@ -78,9 +81,42 @@ export async function GET(request: Request) {
   }
 
   try {
-    const decodedState = JSON.parse(Buffer.from(state, "base64").toString());
-    if (decodedState.userId !== user.id) {
-      throw new Error("State token mismatch");
+    const decodedStateStr = Buffer.from(state, "base64").toString();
+    let decodedState: { payload?: string; signature?: string };
+    try {
+      decodedState = JSON.parse(decodedStateStr);
+    } catch {
+      throw new Error("Invalid state token format");
+    }
+
+    if (!decodedState.payload || !decodedState.signature) {
+      throw new Error("Invalid state token structure");
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", NETLIFY_OAUTH_STATE_SECRET)
+      .update(decodedState.payload)
+      .digest("hex");
+
+    if (!crypto.timingSafeEqual(
+      Buffer.from(decodedState.signature),
+      Buffer.from(expectedSignature)
+    )) {
+      throw new Error("State token signature mismatch");
+    }
+
+    const payload = JSON.parse(decodedState.payload) as { userId?: string; timestamp?: number };
+    if (!payload.userId || !payload.timestamp) {
+      throw new Error("Invalid state token payload");
+    }
+
+    if (payload.userId !== user.id) {
+      throw new Error("State token user mismatch");
+    }
+
+    const age = Date.now() - payload.timestamp;
+    if (age > STATE_TTL_MS || age < 0) {
+      throw new Error("State token expired");
     }
 
     const tokenParams = new URLSearchParams({

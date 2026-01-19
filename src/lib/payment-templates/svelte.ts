@@ -250,7 +250,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   let loading = false;
 
-  const startCheckout = async () => {
+    const startCheckout = async () => {
     loading = true;
     try {
       const response = await fetch("/api/billing/checkout", {
@@ -258,10 +258,16 @@ export const POST: RequestHandler = async ({ request }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId, customerId, successUrl, cancelUrl }),
       });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Checkout failed");
+      }
       const data = (await response.json()) as { url?: string };
       if (data.url) {
         window.location.href = data.url;
       }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Checkout failed");
     } finally {
       loading = false;
     }

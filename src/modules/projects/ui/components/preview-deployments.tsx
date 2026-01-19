@@ -2,15 +2,17 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 
 type PreviewDeploymentsProps = {
-  projectId: string;
+  projectId: Id<"projects">;
 };
 
 export const PreviewDeployments = ({ projectId }: PreviewDeploymentsProps) => {
   const deployments = useQuery(api.deployments.listDeployments, { projectId });
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const previews = useMemo(
     () => (deployments ?? []).filter((deployment) => deployment.isPreview),
@@ -39,6 +41,7 @@ export const PreviewDeployments = ({ projectId }: PreviewDeploymentsProps) => {
 
   const handleDeletePreview = async (deployId?: string) => {
     if (!deployId) return;
+    setDeletingId(deployId);
     try {
       const response = await fetch(`/api/deploy/netlify/preview?deployId=${deployId}`, {
         method: "DELETE",
@@ -50,6 +53,8 @@ export const PreviewDeployments = ({ projectId }: PreviewDeploymentsProps) => {
       toast.success("Preview deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete preview");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -79,9 +84,9 @@ export const PreviewDeployments = ({ projectId }: PreviewDeploymentsProps) => {
               variant="ghost"
               size="sm"
               onClick={() => handleDeletePreview(deployment.deployId)}
-              disabled={!deployment.deployId}
+              disabled={!deployment.deployId || deletingId === deployment.deployId}
             >
-              Delete
+              {deletingId === deployment.deployId ? "Deleting..." : "Delete"}
             </Button>
           </div>
         </div>

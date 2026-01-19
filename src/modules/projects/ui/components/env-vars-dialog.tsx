@@ -22,6 +22,7 @@ type EnvVarsDialogProps = {
 export const EnvVarsDialog = ({ siteId }: EnvVarsDialogProps) => {
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
 
@@ -42,11 +43,14 @@ export const EnvVarsDialog = ({ siteId }: EnvVarsDialogProps) => {
   };
 
   const handleAdd = async () => {
-    if (!newKey || !newValue) {
-      toast.error("Provide a key and value");
+    if (!newKey || !newValue || isSubmitting) {
+      if (!newKey || !newValue) {
+        toast.error("Provide a key and value");
+      }
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const response = await fetch("/api/deploy/netlify/env-vars", {
         method: "POST",
@@ -63,10 +67,17 @@ export const EnvVarsDialog = ({ siteId }: EnvVarsDialogProps) => {
       toast.success("Env var saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to set env var");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (key: string) => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const response = await fetch(
         `/api/deploy/netlify/env-vars?siteId=${siteId}&key=${encodeURIComponent(key)}`,
@@ -80,15 +91,13 @@ export const EnvVarsDialog = ({ siteId }: EnvVarsDialogProps) => {
       toast.success("Env var deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete env var");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    void loadEnvVars();
-  }, [siteId]);
-
   return (
-    <Dialog>
+    <Dialog onOpenChange={(open) => open && loadEnvVars()}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">Env Vars</Button>
       </DialogTrigger>
@@ -103,13 +112,15 @@ export const EnvVarsDialog = ({ siteId }: EnvVarsDialogProps) => {
               placeholder="KEY"
               value={newKey}
               onChange={(event) => setNewKey(event.target.value)}
+              disabled={isSubmitting}
             />
             <Input
               placeholder="VALUE"
               value={newValue}
               onChange={(event) => setNewValue(event.target.value)}
+              disabled={isSubmitting}
             />
-            <Button onClick={handleAdd} disabled={isLoading}>
+            <Button onClick={handleAdd} disabled={isLoading || isSubmitting}>
               Save
             </Button>
           </div>
@@ -124,6 +135,7 @@ export const EnvVarsDialog = ({ siteId }: EnvVarsDialogProps) => {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleDelete(envVar.key)}
+                  disabled={isLoading || isSubmitting}
                 >
                   Remove
                 </Button>

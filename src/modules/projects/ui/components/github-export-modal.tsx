@@ -130,11 +130,14 @@ export const GitHubExportModal = ({
       return;
     }
 
+    const controller = new AbortController();
     const loadRepositories = async () => {
       setIsLoadingRepos(true);
       setError(null);
       try {
-        const response = await fetch("/api/github/repositories");
+        const response = await fetch("/api/github/repositories", {
+          signal: controller.signal,
+        });
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.error || "Failed to load repositories");
@@ -155,6 +158,10 @@ export const GitHubExportModal = ({
     };
 
     void loadRepositories();
+
+    return () => {
+      controller.abort();
+    };
   }, [open]);
 
   useEffect(() => {

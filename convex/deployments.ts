@@ -30,14 +30,28 @@ export const createDeployment = mutation({
       throw new Error("Unauthorized");
     }
 
-    const latest = await ctx.db
-      .query("deployments")
-      .withIndex("by_projectId_deployNumber", (q) => q.eq("projectId", args.projectId))
-      .order("desc")
+    const counter = await ctx.db
+      .query("projectDeploymentCounters")
+      .withIndex("by_projectId", (q) => q.eq("projectId", args.projectId))
       .first();
 
-    const nextDeployNumber = (latest?.deployNumber ?? 0) + 1;
     const now = Date.now();
+    let nextDeployNumber: number;
+
+    if (counter) {
+      nextDeployNumber = counter.deployNumber + 1;
+      await ctx.db.patch(counter._id, {
+        deployNumber: nextDeployNumber,
+        updatedAt: now,
+      });
+    } else {
+      nextDeployNumber = 1;
+      await ctx.db.insert("projectDeploymentCounters", {
+        projectId: args.projectId,
+        deployNumber: nextDeployNumber,
+        updatedAt: now,
+      });
+    }
 
     return await ctx.db.insert("deployments", {
       projectId: args.projectId,
@@ -76,11 +90,11 @@ export const updateDeployment = mutation({
     }
 
     await ctx.db.patch(args.deploymentId, {
-      ...(args.status ? { status: args.status } : {}),
-      ...(args.deployId ? { deployId: args.deployId } : {}),
-      ...(args.error ? { error: args.error } : {}),
-      ...(args.buildLog ? { buildLog: args.buildLog } : {}),
-      ...(args.buildTime ? { buildTime: args.buildTime } : {}),
+      ...(args.status !== undefined ? { status: args.status } : {}),
+      ...(args.deployId !== undefined ? { deployId: args.deployId } : {}),
+      ...(args.error !== undefined ? { error: args.error } : {}),
+      ...(args.buildLog !== undefined ? { buildLog: args.buildLog } : {}),
+      ...(args.buildTime !== undefined ? { buildTime: args.buildTime } : {}),
       updatedAt: Date.now(),
     });
 

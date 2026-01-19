@@ -24,7 +24,15 @@ export const GitHubExportButton = ({ projectId }: GitHubExportButtonProps) => {
   const connection = useQuery(api.oauth.getConnection, { provider: "github" });
   const [open, setOpen] = useState(false);
 
-  if (!connection) {
+  if (connection === undefined) {
+    return (
+      <Button size="sm" variant="outline" disabled>
+        Loading...
+      </Button>
+    );
+  }
+
+  if (connection === null) {
     return (
       <Dialog>
         <DialogTrigger asChild>

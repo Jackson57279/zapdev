@@ -281,7 +281,11 @@ export const exportToGitHub = action({
       );
 
       const treeEntries = buildTreeEntries(files);
-      const accessToken = await ctx.runQuery(api.oauth.getGithubAccessToken, {});
+import { internal } from "./_generated/api";
+// ...
+      const accessToken = await ctx.runQuery(internal.oauth.getGithubAccessToken, {
+        userId: identity.subject,
+      });
       if (!accessToken) {
         throw new Error("GitHub connection not found. Please connect GitHub.");
       }

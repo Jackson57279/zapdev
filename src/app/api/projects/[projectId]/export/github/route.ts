@@ -38,9 +38,12 @@ export async function POST(
 
     const { projectId } = await params;
     const body = exportRequestSchema.parse(await request.json());
-    const accessToken = await fetchQuery(api.oauth.getGithubAccessToken, {});
+    
+    // We don't need the access token here anymore since the export action handles it
+    // But we still need to check if the connection exists
+    const connection = await fetchQuery(api.oauth.getConnection, { provider: "github" }, { token: (await getToken()) ?? undefined });
 
-    if (!accessToken) {
+    if (!connection) {
       return NextResponse.json(
         { error: "GitHub connection not found. Please connect GitHub." },
         { status: 400 },
@@ -110,10 +113,9 @@ export async function GET(
       return NextResponse.json({ error: "Missing exportId" }, { status: 400 });
     }
 
-    const exportsList = await fetchQuery(api.githubExports.list, {
-      projectId: projectId as Id<"projects">,
+    const record = await fetchQuery(api.githubExports.get, {
+      exportId: exportId as Id<"githubExports">,
     });
-    const record = exportsList.find((item) => item._id === exportId);
 
     if (!record) {
       return NextResponse.json({ error: "Export not found" }, { status: 404 });

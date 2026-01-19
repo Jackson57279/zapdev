@@ -42,9 +42,9 @@ const formatEnvBlock = (env?: Record<string, string>) => {
 
 export const getNetlifyToml = (framework: FrameworkKey) => {
   const config = frameworkConfigMap[framework];
-  const pluginsBlock = config.plugins?.length
-    ? `\n[[plugins]]\n  package = "${config.plugins[0]}"\n`
-    : "";
+  const pluginsBlock = (config.plugins ?? [])
+    .map((plugin) => `[[plugins]]\n  package = "${plugin}"`)
+    .join("\n\n");
   const envBlock = formatEnvBlock(config.env);
 
   return [

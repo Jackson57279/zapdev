@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
+import crypto from "crypto";
 
 const NETLIFY_CLIENT_ID = process.env.NETLIFY_CLIENT_ID;
+const NETLIFY_OAUTH_STATE_SECRET = process.env.NETLIFY_OAUTH_STATE_SECRET || "fallback-secret-change-me";
 const NETLIFY_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/deploy/netlify/callback`;
 
 export async function GET() {
@@ -17,8 +19,14 @@ export async function GET() {
     );
   }
 
+  const payload = JSON.stringify({ userId: user.id, timestamp: Date.now() });
+  const signature = crypto
+    .createHmac("sha256", NETLIFY_OAUTH_STATE_SECRET)
+    .update(payload)
+    .digest("hex");
+
   const state = Buffer.from(
-    JSON.stringify({ userId: user.id, timestamp: Date.now() })
+    JSON.stringify({ payload, signature })
   ).toString("base64");
 
   const params = new URLSearchParams({

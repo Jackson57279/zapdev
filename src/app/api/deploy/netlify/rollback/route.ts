@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import { getUser } from "@/lib/auth-server";
+import { getUser, getToken } from "@/lib/auth-server";
 import { createNetlifyClient } from "@/lib/netlify-client";
 
 type NetlifyConnection = {
@@ -13,9 +13,10 @@ type RollbackPayload = {
 };
 
 const getNetlifyAccessToken = async (): Promise<string> => {
+  const token = await getToken();
   const connection = await fetchQuery(api.oauth.getConnection, {
     provider: "netlify",
-  }) as NetlifyConnection | null;
+  }, { token: token ?? undefined }) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found.");

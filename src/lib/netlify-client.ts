@@ -169,7 +169,7 @@ export const createNetlifyClient = (accessToken: string) => {
     },
 
     async updateEnvVar(siteId: string, key: string, value: string, context = "all"): Promise<NetlifyEnvVar> {
-      return request<NetlifyEnvVar>(`/sites/${siteId}/env/${key}`, {
+      return request<NetlifyEnvVar>(`/sites/${siteId}/env/${encodeURIComponent(key)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -179,7 +179,7 @@ export const createNetlifyClient = (accessToken: string) => {
     },
 
     async deleteEnvVar(siteId: string, key: string): Promise<void> {
-      await request<void>(`/sites/${siteId}/env/${key}`, { method: "DELETE" });
+      await request<void>(`/sites/${siteId}/env/${encodeURIComponent(key)}`, { method: "DELETE" });
     },
 
     async setBulkEnvVars(siteId: string, vars: Array<{ key: string; value: string; context?: string }>): Promise<NetlifyEnvVar[]> {

@@ -113,10 +113,31 @@ export class AutumnStripeProvider implements PaymentProvider {
   async getSubscription(
     input: SubscriptionLookup
   ): Promise<SubscriptionSummary | null> {
-    return this.request<SubscriptionSummary | null>(
-      `/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`,
-      { method: "GET" }
-    );
+    const url = `${this.baseUrl}/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Autumn API request failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    return (await response.json()) as SubscriptionSummary;
   }
 
   async updateSubscription(
@@ -203,7 +224,7 @@ export class AutumnStripeProvider implements PaymentProvider {
     }
 
     if (response.status === 204) {
-      return undefined as T;
+      return null as T;
     }
 
     return (await response.json()) as T;

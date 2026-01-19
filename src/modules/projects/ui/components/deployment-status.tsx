@@ -2,10 +2,11 @@ import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 
 type DeploymentStatusProps = {
-  projectId: string;
+  projectId: Id<"projects">;
 };
 
 type NetlifyStatusResponse = {
@@ -56,13 +57,13 @@ export const DeploymentStatus = ({ projectId }: DeploymentStatusProps) => {
     };
 
     const interval = setInterval(pollStatus, 10000);
-    pollStatus();
+    void pollStatus();
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [deployment, shouldPoll, updateDeployment]);
+  }, [deployment?._id, deployment?.deployId, shouldPoll, updateDeployment]);
 
   if (!deployment) {
     return null;

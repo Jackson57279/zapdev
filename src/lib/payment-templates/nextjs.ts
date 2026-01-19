@@ -135,6 +135,24 @@ type CancelRequest = {
   cancelAtPeriodEnd?: boolean;
 };
 
+const isUpdateRequest = (value: unknown): value is UpdateRequest => {
+  if (!value || typeof value !== "object") return false;
+  const data = value as Record<string, unknown>;
+  return (
+    typeof data.subscriptionId === "string" &&
+    typeof data.productId === "string"
+  );
+};
+
+const isCancelRequest = (value: unknown): value is CancelRequest => {
+  if (!value || typeof value !== "object") return false;
+  const data = value as Record<string, unknown>;
+  return (
+    typeof data.subscriptionId === "string" &&
+    (data.cancelAtPeriodEnd === undefined || typeof data.cancelAtPeriodEnd === "boolean")
+  );
+};
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const subscriptionId = searchParams.get("subscriptionId");
@@ -152,8 +170,8 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const body = (await req.json()) as UpdateRequest;
-  if (!body.subscriptionId || !body.productId) {
+  const body = (await req.json()) as unknown;
+  if (!isUpdateRequest(body)) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
@@ -169,8 +187,8 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const body = (await req.json()) as CancelRequest;
-  if (!body.subscriptionId) {
+  const body = (await req.json()) as unknown;
+  if (!isCancelRequest(body)) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
@@ -347,10 +365,16 @@ export function CheckoutButton({
           cancelUrl,
         }),
       });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Checkout failed");
+      }
       const data = (await response.json()) as { url?: string };
       if (data.url) {
         window.location.href = data.url;
       }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Checkout failed");
     } finally {
       setLoading(false);
     }
@@ -392,11 +416,15 @@ interface UsagePayload {
 }
 
 export async function trackUsage(payload: UsagePayload): Promise<void> {
-  await fetch("/api/billing/usage", {
+  const response = await fetch("/api/billing/usage", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || "Failed to track usage");
+  }
 }
 `,
     "app/billing/success/page.tsx": `

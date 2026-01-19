@@ -321,4 +321,11 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_state", ["state"])
     .index("by_sandboxId", ["sandboxId"]),
+
+  projectDeploymentCounters: defineTable({
+    projectId: v.id("projects"),
+    deployNumber: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"]),
 });

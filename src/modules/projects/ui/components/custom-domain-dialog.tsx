@@ -28,6 +28,7 @@ export const CustomDomainDialog = ({ siteId }: CustomDomainDialogProps) => {
   const [domains, setDomains] = useState<NetlifyDomain[]>([]);
   const [domainInput, setDomainInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadDomains = async () => {
     setIsLoading(true);
@@ -46,11 +47,14 @@ export const CustomDomainDialog = ({ siteId }: CustomDomainDialogProps) => {
   };
 
   const handleAdd = async () => {
-    if (!domainInput) {
-      toast.error("Enter a domain");
+    if (!domainInput || isSubmitting) {
+      if (!domainInput) {
+        toast.error("Enter a domain");
+      }
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const response = await fetch("/api/deploy/netlify/domains", {
         method: "POST",
@@ -66,10 +70,17 @@ export const CustomDomainDialog = ({ siteId }: CustomDomainDialogProps) => {
       toast.success("Domain added");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add domain");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (domainId: string) => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const response = await fetch(
         `/api/deploy/netlify/domains?siteId=${siteId}&domainId=${domainId}`,
@@ -83,6 +94,8 @@ export const CustomDomainDialog = ({ siteId }: CustomDomainDialogProps) => {
       toast.success("Domain removed");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove domain");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -106,8 +119,9 @@ export const CustomDomainDialog = ({ siteId }: CustomDomainDialogProps) => {
               placeholder="yourdomain.com"
               value={domainInput}
               onChange={(event) => setDomainInput(event.target.value)}
+              disabled={isSubmitting}
             />
-            <Button onClick={handleAdd} disabled={isLoading}>
+            <Button onClick={handleAdd} disabled={isLoading || isSubmitting}>
               Add Domain
             </Button>
           </div>
@@ -127,6 +141,7 @@ export const CustomDomainDialog = ({ siteId }: CustomDomainDialogProps) => {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleDelete(domain.id)}
+                  disabled={isSubmitting}
                 >
                   Remove
                 </Button>
