@@ -1,7 +1,7 @@
 import { getModel, getClientForModel, isCerebrasModel } from '../src/agents/client';
 import { withGatewayFallbackGenerator } from '../src/agents/rate-limit';
 
-describe('Vercel AI Gateway Fallback', () => {
+describe('OpenRouter Fallback', () => {
   describe('Client Functions', () => {
     it('should identify Cerebras models correctly', () => {
       expect(isCerebrasModel('zai-glm-4.7')).toBe(true);
@@ -15,21 +15,21 @@ describe('Vercel AI Gateway Fallback', () => {
       expect(model).not.toBeNull();
     });
 
-    it('should return Vercel AI Gateway client when useGatewayFallback is true for Cerebras models', () => {
+    it('should return OpenRouter client when useGatewayFallback is true for Cerebras models', () => {
       const model = getModel('zai-glm-4.7', { useGatewayFallback: true });
       expect(model).toBeDefined();
       expect(model).not.toBeNull();
     });
 
-    it('should not use gateway for non-Cerebras models', () => {
+    it('should not use fallback for non-Cerebras models', () => {
       expect(isCerebrasModel('anthropic/claude-haiku-4.5')).toBe(false);
       
       const directClient = getModel('anthropic/claude-haiku-4.5');
-      const gatewayClient = getModel('anthropic/claude-haiku-4.5', { useGatewayFallback: true });
+      const fallbackClient = getModel('anthropic/claude-haiku-4.5', { useGatewayFallback: true });
 
       // Both should use the same openrouter provider since non-Cerebras models
       // don't use gateway fallback - this verifies the stated behavior
-      expect(directClient.provider).toBe(gatewayClient.provider);
+      expect(directClient.provider).toBe(fallbackClient.provider);
     });
 
     it('should return chat function from getClientForModel', () => {
@@ -39,7 +39,7 @@ describe('Vercel AI Gateway Fallback', () => {
     });
   });
 
-  describe('Gateway Fallback Generator', () => {
+  describe('Fallback Generator', () => {
     it('should yield values from successful generator', async () => {
       const mockGenerator = async function* () {
         yield 'value1';
@@ -62,8 +62,7 @@ describe('Vercel AI Gateway Fallback', () => {
       const mockGenerator = async function* () {
         attemptCount++;
         if (attemptCount === 1) {
-          const error = new Error('Rate limit exceeded');
-          (error as any).status = 429;
+          const error = Object.assign(new Error('Rate limit exceeded'), { status: 429 });
           throw error;
         }
         yield 'success';
@@ -81,15 +80,13 @@ describe('Vercel AI Gateway Fallback', () => {
       expect(attemptCount).toBe(2);
     });
 
-    it('should switch to gateway on rate limit error', async () => {
-      let useGatewayFlag = false;
+    it('should switch to OpenRouter on rate limit error', async () => {
       const mockGenerator = async function* (useGateway: boolean) {
         if (!useGateway) {
-          const error = new Error('Rate limit exceeded');
-          (error as any).status = 429;
+          const error = Object.assign(new Error('Rate limit exceeded'), { status: 429 });
           throw error;
         }
-        yield 'gateway-success';
+        yield 'openrouter-success';
       };
 
       const values: string[] = [];
@@ -100,7 +97,7 @@ describe('Vercel AI Gateway Fallback', () => {
         values.push(value);
       }
 
-      expect(values).toEqual(['gateway-success']);
+      expect(values).toEqual(['openrouter-success']);
     });
 
     it('should throw after max attempts', async () => {
@@ -126,7 +123,7 @@ describe('Vercel AI Gateway Fallback', () => {
       }
 
       expect(errorThrown).toBe(true);
-      expect(attemptCount).toBe(2); // Direct + Gateway attempts
+      expect(attemptCount).toBe(2); // Direct + fallback attempts
     }, 10000); // Increase timeout to 10s for safety
   });
 

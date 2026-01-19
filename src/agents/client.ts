@@ -1,6 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createCerebras } from "@ai-sdk/cerebras";
-import { createGateway } from "ai";
 
 export const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY!,
@@ -9,10 +8,6 @@ export const openrouter = createOpenAI({
 
 export const cerebras = createCerebras({
   apiKey: process.env.CEREBRAS_API_KEY || "",
-});
-
-export const gateway = createGateway({
-  apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY || "",
 });
 
 // Cerebras model IDs
@@ -31,7 +26,7 @@ export function getModel(
   options?: ClientOptions
 ) {
   if (isCerebrasModel(modelId) && options?.useGatewayFallback) {
-    return gateway(modelId);
+    return openrouter(modelId);
   }
   if (isCerebrasModel(modelId)) {
     return cerebras(modelId);
@@ -45,7 +40,7 @@ export function getClientForModel(
 ) {
   if (isCerebrasModel(modelId) && options?.useGatewayFallback) {
     return {
-      chat: (_modelId: string) => gateway(modelId),
+      chat: (_modelId: string) => openrouter(modelId),
     };
   }
   if (isCerebrasModel(modelId)) {

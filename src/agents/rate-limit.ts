@@ -211,14 +211,14 @@ export async function* withGatewayFallbackGenerator<T>(
       const lastError = error instanceof Error ? error : new Error(String(error));
 
       if (isRateLimitError(error) && !triedGateway) {
-        console.log(`[GATEWAY-FALLBACK] ${context}: Rate limit hit for ${modelId}. Switching to Vercel AI Gateway with Cerebras provider...`);
+        console.log(`[GATEWAY-FALLBACK] ${context}: Rate limit hit for ${modelId}. Switching to OpenRouter with Cerebras provider...`);
         triedGateway = true;
         continue;
       }
 
       if (isRateLimitError(error) && triedGateway) {
         const waitMs = RATE_LIMIT_WAIT_MS;
-        console.log(`[GATEWAY-FALLBACK] ${context}: Gateway rate limit hit. Waiting ${waitMs / 1000}s...`);
+        console.log(`[GATEWAY-FALLBACK] ${context}: OpenRouter rate limit hit. Waiting ${waitMs / 1000}s...`);
         await new Promise(resolve => setTimeout(resolve, waitMs));
         // We've tried both direct and gateway, throw the actual rate limit error
         throw lastError;

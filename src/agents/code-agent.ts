@@ -566,9 +566,14 @@ export async function* runCodeAgent(
         const result = streamText({
           model: client.chat(selectedModel),
           providerOptions: useGatewayFallbackForStream ? {
-            gateway: {
-              only: ['cerebras'],
-            }
+            openai: {
+              extraBody: {
+                provider: {
+                  order: ["cerebras"],
+                  allow_fallbacks: false,
+                },
+              },
+            },
           } : undefined,
           system: frameworkPrompt,
           messages,
@@ -618,7 +623,7 @@ export async function* runCodeAgent(
         const canRetry = isRateLimit || isServer;
 
         if (!useGatewayFallbackForStream && isRateLimit) {
-          console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
+          console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to OpenRouter with Cerebras provider...`);
           useGatewayFallbackForStream = true;
           continue;
         }
@@ -681,9 +686,14 @@ export async function* runCodeAgent(
           followUpResult = await generateText({
             model: client.chat(selectedModel),
             providerOptions: summaryUseGatewayFallback ? {
-              gateway: {
-                only: ['cerebras'],
-              }
+              openai: {
+                extraBody: {
+                  provider: {
+                    order: ["cerebras"],
+                    allow_fallbacks: false,
+                  },
+                },
+              },
             } : undefined,
             system: frameworkPrompt,
             messages: [
@@ -714,11 +724,11 @@ export async function* runCodeAgent(
           }
 
           if (isRateLimitError(error) && !summaryUseGatewayFallback) {
-            console.log(`[GATEWAY-FALLBACK] Rate limit hit for summary. Switching to Vercel AI Gateway...`);
+            console.log(`[GATEWAY-FALLBACK] Rate limit hit for summary. Switching to OpenRouter...`);
             summaryUseGatewayFallback = true;
           } else if (isRateLimitError(error)) {
             const waitMs = 60_000;
-            console.log(`[GATEWAY-FALLBACK] Gateway rate limit for summary. Waiting ${waitMs / 1000}s...`);
+            console.log(`[GATEWAY-FALLBACK] OpenRouter rate limit for summary. Waiting ${waitMs / 1000}s...`);
             await new Promise(resolve => setTimeout(resolve, waitMs));
           } else {
             const backoffMs = 1000 * Math.pow(2, summaryRetries - 1);
