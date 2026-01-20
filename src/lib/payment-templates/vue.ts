@@ -242,10 +242,10 @@ import billingRoutes from "./routes/billing";
 import webhookRoutes from "./routes/webhooks";
 
 const app = express();
-app.use(express.json());
 
-app.use("/api/billing", billingRoutes);
 app.use("/api/webhooks", webhookRoutes);
+app.use(express.json());
+app.use("/api/billing", billingRoutes);
 
 const port = Number(process.env.PORT ?? 4000);
 app.listen(port, () => {

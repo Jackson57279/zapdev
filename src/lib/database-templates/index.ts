@@ -52,5 +52,5 @@ export function isDatabaseSupported(
   framework: DatabaseFramework
 ): boolean {
   const key: TemplateKey = `${provider}-${framework}`;
-  return key in templates;
+  return templates[key] !== undefined && templates[key] !== null;
 }

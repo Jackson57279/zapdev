@@ -49,9 +49,13 @@ export function ColorThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
-    const stored = localStorage.getItem(COLOR_THEME_STORAGE_KEY);
-    if (stored && COLOR_THEMES.some((t) => t.id === stored)) {
-      setColorThemeId(stored);
+    try {
+      const stored = localStorage.getItem(COLOR_THEME_STORAGE_KEY);
+      if (stored && COLOR_THEMES.some((t) => t.id === stored)) {
+        setColorThemeId(stored);
+      }
+    } catch {
+      // localStorage unavailable (e.g., Safari private browsing)
     }
   }, []);
 
@@ -67,7 +71,11 @@ export function ColorThemeProvider({ children }: { children: ReactNode }) {
   const setColorTheme = useCallback((id: string) => {
     const theme = getColorTheme(id);
     setColorThemeId(theme.id);
-    localStorage.setItem(COLOR_THEME_STORAGE_KEY, theme.id);
+    try {
+      localStorage.setItem(COLOR_THEME_STORAGE_KEY, theme.id);
+    } catch {
+      // localStorage unavailable or quota exceeded
+    }
   }, []);
 
   const value: ColorThemeContextType = {

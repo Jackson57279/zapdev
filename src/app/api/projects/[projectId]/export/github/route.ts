@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { getConvexClientWithAuth, getUser } from "@/lib/auth-server";
+import { getConvexClientWithAuth, getUser, getToken } from "@/lib/auth-server";
 import {
   createRepository,
   getRepository,
@@ -39,13 +39,22 @@ export async function POST(
     const { projectId } = await params;
     const body = exportRequestSchema.parse(await request.json());
     
-    // We don't need the access token here anymore since the export action handles it
-    // But we still need to check if the connection exists
-    const connection = await fetchQuery(api.oauth.getConnection, { provider: "github" }, { token: (await getToken()) ?? undefined });
+    const token = (await getToken()) ?? undefined;
+    const connection = await fetchQuery(api.oauth.getConnection, { provider: "github" }, { token });
 
     if (!connection) {
       return NextResponse.json(
         { error: "GitHub connection not found. Please connect GitHub." },
+        { status: 400 },
+      );
+    }
+
+    const convex = await getConvexClientWithAuth();
+    const accessToken = await convex.action(api.oauth.getGithubAccessTokenForCurrentUser, {});
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "GitHub access token not available. Please reconnect GitHub." },
         { status: 400 },
       );
     }
@@ -78,8 +87,6 @@ export async function POST(
       repositoryFullName: repository.full_name,
       branch,
     });
-
-    const convex = await getConvexClientWithAuth();
     const result = await convex.action(api.githubExports.exportToGitHub, {
       exportId,
       branch,

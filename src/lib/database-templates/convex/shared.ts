@@ -83,6 +83,31 @@ export const authClient = createAuthClient({
 export const { signIn, signOut, signUp, useSession, getSession } = authClient;
 `;
 
+export const convexAuthHandler = `import { createAuth } from "./auth";
+import { ConvexHttpClient } from "convex/browser";
+import type { GenericCtx } from "@convex-dev/better-auth";
+import type { DataModel } from "./_generated/dataModel";
+
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+if (!convexUrl) {
+  throw new Error(
+    "NEXT_PUBLIC_CONVEX_URL environment variable is required. Please set it in your .env.local file."
+  );
+}
+
+const convex = new ConvexHttpClient(convexUrl);
+
+const ctx: GenericCtx<DataModel> = {
+  runQuery: convex.query.bind(convex),
+  runMutation: convex.mutation.bind(convex),
+  runAction: convex.action.bind(convex),
+};
+
+const auth = createAuth(ctx);
+
+export const authHandler = auth.handler;
+`;
+
 export const convexProvider = `"use client";
 
 import { ConvexReactClient } from "convex/react";

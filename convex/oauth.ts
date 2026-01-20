@@ -1,10 +1,14 @@
-import { mutation, query, internalQuery } from "./_generated/server";
+import { action, mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { oauthProviderEnum } from "./schema";
 import { requireAuth } from "./helpers";
+import { internal } from "./_generated/api";
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.OAUTH_ENCRYPTION_KEY || "fallback-key-change-me-in-production";
+const ENCRYPTION_KEY = process.env.OAUTH_ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY || ENCRYPTION_KEY.trim().length === 0) {
+  throw new Error("OAUTH_ENCRYPTION_KEY environment variable is required");
+}
 const ALGORITHM = "aes-256-gcm";
 
 function encryptToken(token: string): string {
@@ -116,6 +120,20 @@ export const getGithubAccessToken = internalQuery({
     } catch {
       return null;
     }
+  },
+});
+
+export const getGithubAccessTokenForCurrentUser = action({
+  args: {},
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      return null;
+    }
+    return await ctx.runQuery(internal.oauth.getGithubAccessToken, {
+      userId: identity.subject,
+    });
   },
 });
 

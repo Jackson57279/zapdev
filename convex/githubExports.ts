@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { requireAuth } from "./helpers";
 import { githubExportStatusEnum } from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   buildTreeEntries,
@@ -281,8 +281,6 @@ export const exportToGitHub = action({
       );
 
       const treeEntries = buildTreeEntries(files);
-import { internal } from "./_generated/api";
-// ...
       const accessToken = await ctx.runQuery(internal.oauth.getGithubAccessToken, {
         userId: identity.subject,
       });

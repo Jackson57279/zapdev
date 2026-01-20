@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as EnvVarPayload;
-    if (!body.siteId || !body.key || body.value === undefined) {
+    if (!body.siteId || !body.key || body.value == null) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -91,7 +91,7 @@ export async function PUT(request: Request) {
     }
 
     const body = (await request.json()) as EnvVarPayload;
-    if (!body.siteId || !body.key || body.value === undefined) {
+    if (!body.siteId || !body.key || body.value == null) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 

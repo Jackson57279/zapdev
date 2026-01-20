@@ -68,7 +68,7 @@ All major frameworks supported with dedicated E2B templates and prompts:
 - **Modern UI**: Shadcn/ui components with Tailwind CSS
 - **Dark Mode**: System-aware theme support
 - **Responsive Design**: Mobile-first approach
-- **SEO Optimization**: Structured data, meta tags, OpenGraph
+- **SEO**: Structured data, meta tags, OpenGraph
 - **Error Handling**: Error boundaries and fallback UI states
 
 ---

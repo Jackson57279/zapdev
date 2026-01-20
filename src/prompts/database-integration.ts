@@ -32,8 +32,8 @@ Environment Variables Required:
 - NEXT_PUBLIC_APP_URL - Public app URL
 
 Commands to Run After Setup:
-- npm install drizzle-orm @neondatabase/serverless better-auth
-- npm install -D drizzle-kit
+- npm install --yes drizzle-orm @neondatabase/serverless better-auth
+- npm install -D --yes drizzle-kit
 - npx drizzle-kit push (to create database tables)
 `;
 

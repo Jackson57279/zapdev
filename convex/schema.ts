@@ -332,6 +332,7 @@ export default defineSchema({
   projectDeploymentCounters: defineTable({
     projectId: v.id("projects"),
     deployNumber: v.number(),
+    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_projectId", ["projectId"]),

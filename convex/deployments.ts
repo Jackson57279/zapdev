@@ -49,6 +49,7 @@ export const createDeployment = mutation({
       await ctx.db.insert("projectDeploymentCounters", {
         projectId: args.projectId,
         deployNumber: nextDeployNumber,
+        createdAt: now,
         updatedAt: now,
       });
     }

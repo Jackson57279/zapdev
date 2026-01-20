@@ -149,6 +149,9 @@ export const GitHubExportModal = ({
           setError("No repositories found in this GitHub account.");
         }
       } catch (loadError) {
+        if (loadError instanceof Error && loadError.name === "AbortError") {
+          return;
+        }
         const message =
           loadError instanceof Error ? loadError.message : "Failed to load repositories";
         setError(message);

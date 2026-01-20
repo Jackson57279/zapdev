@@ -4,6 +4,7 @@ import {
   convexConfig,
   convexAuthConfig,
   convexAuth,
+  convexAuthHandler,
   convexAuthClient,
   convexProvider,
 } from "./shared";
@@ -37,24 +38,20 @@ export const convexNextjsTemplate: DatabaseTemplateBundle = {
     "convex/convex.config.ts": convexConfig,
     "convex/auth.config.ts": convexAuthConfig,
     "convex/auth.ts": convexAuth,
+    "convex/auth-handler.ts": convexAuthHandler,
     "src/lib/auth-client.ts": convexAuthClient,
     "src/components/convex-provider.tsx": convexProvider,
 
-    "src/app/api/auth/[...all]/route.ts": `import { createAuth } from "@/convex/auth";
-import { toNextJsHandler } from "better-auth/next-js";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "@/convex/_generated/api";
+    "src/app/api/auth/[...all]/route.ts": `import { authHandler } from "@/convex/auth-handler";
+import { NextRequest } from "next/server";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+export async function GET(request: NextRequest) {
+  return authHandler(request);
+}
 
-export const { GET, POST } = toNextJsHandler(async (request) => {
-  const auth = createAuth({
-    runQuery: convex.query.bind(convex),
-    runMutation: convex.mutation.bind(convex),
-    runAction: convex.action.bind(convex),
-  } as Parameters<typeof createAuth>[0]);
-  return auth;
-});
+export async function POST(request: NextRequest) {
+  return authHandler(request);
+}
 `,
 
     "src/components/auth/sign-in-form.tsx": `"use client";

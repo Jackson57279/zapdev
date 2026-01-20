@@ -6,7 +6,7 @@ import crypto from "crypto";
 
 const NETLIFY_CLIENT_ID = process.env.NETLIFY_CLIENT_ID;
 const NETLIFY_CLIENT_SECRET = process.env.NETLIFY_CLIENT_SECRET;
-const NETLIFY_OAUTH_STATE_SECRET = process.env.NETLIFY_OAUTH_STATE_SECRET || "fallback-secret-change-me";
+const NETLIFY_OAUTH_STATE_SECRET = process.env.NETLIFY_OAUTH_STATE_SECRET;
 const NETLIFY_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/deploy/netlify/callback`;
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -54,6 +54,13 @@ export async function GET(request: Request) {
   const user = await getUser();
   if (!user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!NETLIFY_OAUTH_STATE_SECRET) {
+    return NextResponse.json(
+      { error: "OAuth state secret not configured" },
+      { status: 500 }
+    );
   }
 
   const { searchParams } = new URL(request.url);

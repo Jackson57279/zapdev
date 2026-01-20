@@ -27,6 +27,7 @@ export function ColorThemePicker() {
             <Tooltip key={theme.id}>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   onClick={() => setColorTheme(theme.id)}
                   className={cn(
                     "relative size-7 rounded-full transition-all",

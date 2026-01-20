@@ -20,7 +20,10 @@ const deployRequestSchema = z.object({
 type DeployRequest = z.infer<typeof deployRequestSchema>;
 
 function normalizeDeploymentStatus(status: string): "pending" | "building" | "ready" | "error" {
-  const normalized = status.toLowerCase();
+  const normalized = status.toLowerCase().trim();
+  if (normalized === "pending") {
+    return "pending";
+  }
   if (normalized === "idle" || normalized === "created") {
     return "pending";
   }
@@ -113,6 +116,10 @@ export async function POST(request: Request) {
     const projectId = body.projectId as Id<"projects">;
     const convex = await getConvexClientWithAuth();
     const project = await convex.query(api.projects.get, { projectId });
+
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
 
     const { files, framework } = await getLatestFragmentFiles(projectId, token);
     const netlifyToml = getNetlifyToml(framework);

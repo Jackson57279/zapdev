@@ -85,7 +85,7 @@ export const config = {
 
 import { useState } from "react";
 import { signIn } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function SignInForm() {
   const [email, setEmail] = useState("");
@@ -93,6 +93,8 @@ export function SignInForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,13 +105,13 @@ export function SignInForm() {
       const result = await signIn.email({
         email,
         password,
-        callbackURL: "/dashboard",
+        callbackURL: redirectTo,
       });
 
       if (result.error) {
         setError(result.error.message || "Sign in failed");
       } else {
-        router.push("/dashboard");
+        router.push(redirectTo);
         router.refresh();
       }
     } catch {
@@ -314,6 +316,11 @@ export function UserButton() {
 
     "src/app/sign-in/page.tsx": `import { SignInForm } from "@/components/auth/sign-in-form";
 import Link from "next/link";
+import { Suspense } from "react";
+
+function SignInFormWrapper() {
+  return <SignInForm />;
+}
 
 export default function SignInPage() {
   return (
@@ -323,7 +330,9 @@ export default function SignInPage() {
           <h1 className="text-2xl font-bold">Welcome back</h1>
           <p className="text-sm text-gray-600">Sign in to your account</p>
         </div>
-        <SignInForm />
+        <Suspense fallback={<div>Loading...</div>}>
+          <SignInFormWrapper />
+        </Suspense>
         <p className="text-center text-sm text-gray-600">
           Don&apos;t have an account?{" "}
           <Link href="/sign-up" className="font-medium underline">

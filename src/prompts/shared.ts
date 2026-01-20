@@ -220,8 +220,8 @@ Instructions:
 10. Use backticks (\`) for all strings to support embedded quotes safely
 11. Do not assume existing file contents — use readFiles if unsure
 12. Do not include any commentary, explanation, or markdown — use only tool outputs
-13. When users request database-backed features, use the databaseTemplates tool to get the appropriate templates. Default to Drizzle ORM + Neon PostgreSQL for traditional apps, or Convex for real-time apps.
-14. When users request authentication capabilities, Better Auth is included with database templates. Use the auth components and patterns from the databaseTemplates tool output.
+13. When users request database-backed features, use the databaseTemplates tool to get the appropriate templates. Default to Drizzle ORM + Neon PostgreSQL for traditional apps, or Convex for real-time apps. NOTE: Database templates are currently only available for Next.js framework. For other frameworks (React, Vue, Angular, Svelte), implement database and auth manually or use framework-specific patterns.
+14. When users request authentication capabilities, Better Auth is included with database templates for Next.js. Use the auth components and patterns from the databaseTemplates tool output. For non-Next.js frameworks, implement authentication using framework-appropriate libraries.
 15. Always build full, real-world features or screens — not demos, stubs, or isolated widgets
 16. Unless explicitly asked otherwise, always assume the task requires a full page layout — including all structural elements
 17. Always implement realistic behavior and interactivity — not just static UI
