@@ -46,7 +46,8 @@ export const importSourceEnum = v.union(
 export const oauthProviderEnum = v.union(
   v.literal("figma"),
   v.literal("github"),
-  v.literal("netlify")
+  v.literal("netlify"),
+  v.literal("anthropic")
 );
 
 export const importStatusEnum = v.union(

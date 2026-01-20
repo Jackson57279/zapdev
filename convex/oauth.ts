@@ -198,3 +198,56 @@ export const updateMetadata = mutation({
     });
   },
 });
+
+export const getAnthropicAccessToken = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const connection = await ctx.db
+      .query("oauthConnections")
+      .withIndex("by_userId_provider", (q) =>
+        q.eq("userId", args.userId).eq("provider", "anthropic"),
+      )
+      .first();
+
+    if (!connection?.accessToken) {
+      return null;
+    }
+
+    try {
+      return decryptToken(connection.accessToken);
+    } catch {
+      return null;
+    }
+  },
+});
+
+export const getAnthropicAccessTokenForCurrentUser = action({
+  args: {},
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      return null;
+    }
+    return await ctx.runQuery(internal.oauth.getAnthropicAccessToken, {
+      userId: identity.subject,
+    });
+  },
+});
+
+export const hasAnthropicConnection = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const userId = await requireAuth(ctx);
+    
+    const connection = await ctx.db
+      .query("oauthConnections")
+      .withIndex("by_userId_provider", (q) =>
+        q.eq("userId", userId).eq("provider", "anthropic")
+      )
+      .first();
+    
+    return !!connection?.accessToken;
+  },
+});

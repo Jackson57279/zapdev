@@ -12,8 +12,10 @@
     "convex:deploy": "bunx convex deploy"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.15",
     "@ai-sdk/cerebras": "^2.0.5",
     "@ai-sdk/openai": "^3.0.2",
+    "@anthropic-ai/sdk": "^0.71.2",
     "@clerk/backend": "^2.29.0",
     "@clerk/nextjs": "^6.36.5",
     "@databuddy/sdk": "^2.3.2",
@@ -73,7 +75,6 @@
     "e2b": "^2.9.0",
     "embla-carousel-react": "^8.6.0",
     "eslint-config-next": "^16.1.1",
-
     "firecrawl": "^4.10.0",
     "input-otp": "^1.4.2",
     "jest": "^30.2.0",
