@@ -13,6 +13,7 @@ export default function robots(): MetadataRoute.Robots {
           '/projects/',
           '/_next/',
           '/admin/',
+          '/.well-known/',
           '*.json',
           '/monitoring',
         ],
@@ -28,6 +29,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/projects/'],
       },
     ],
-    sitemap: `${baseUrl}/sitemap.xml`,
+    sitemap: [`${baseUrl}/sitemap.xml`, `${baseUrl}/rss.xml`],
   };
 }

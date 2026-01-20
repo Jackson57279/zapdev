@@ -68,11 +68,14 @@ export default function FrameworksPage() {
       <div className="container mx-auto px-4 py-16 max-w-7xl">
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">
-            Choose Your Framework
+            Which framework should you build with?
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Build production-ready applications with AI assistance across all major JavaScript frameworks. 
-            Select your preferred technology and start creating.
+            Zapdev lets you build production-ready applications with AI across React, Vue, Angular, Svelte, and Next.js.
+            Compare frameworks, see what each is best for, and start building in minutes.
+          </p>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto mt-4">
+            Want outcomes instead of tools? Explore <Link href="/solutions" className="underline underline-offset-4">AI development solutions</Link> or see the <Link href="/showcase" className="underline underline-offset-4">project showcase</Link>.
           </p>
         </div>
 
@@ -154,7 +157,7 @@ export default function FrameworksPage() {
         </section>
 
         <section>
-          <h2 className="text-3xl font-bold mb-6">Framework Comparison</h2>
+          <h2 className="text-3xl font-bold mb-6">How do these frameworks compare?</h2>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>

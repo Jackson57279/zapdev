@@ -56,11 +56,14 @@ export default function SolutionsPage() {
       <div className="container mx-auto px-4 py-16 max-w-7xl">
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">
-            AI Development Solutions
+            Which AI development solution fits your project?
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Transform your development process with our AI-powered solutions. 
-            Build faster, ship sooner, and scale with confidence.
+            Zapdev provides AI-powered solutions for code generation, rapid prototyping, and enterprise development.
+            Pick a solution based on your goal, then build faster and ship with confidence.
+          </p>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto mt-4">
+            Prefer to start with a framework? Browse <Link href="/frameworks" className="underline underline-offset-4">frameworks</Link> or get inspiration from the <Link href="/showcase" className="underline underline-offset-4">project showcase</Link>.
           </p>
         </div>
 

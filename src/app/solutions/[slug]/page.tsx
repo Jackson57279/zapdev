@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSolution, getAllSolutions } from '@/lib/solutions';
 import { generateMetadata as generateSEOMetadata, generateStructuredData, generateFAQStructuredData } from '@/lib/seo';
@@ -136,6 +137,9 @@ export default async function SolutionPage({ params }: PageProps) {
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8">
             {solution.description}
           </p>
+          <p className="text-base text-muted-foreground max-w-3xl mx-auto mb-6">
+            Zapdev uses AI to turn your requirements into production-ready code, with fast iteration, framework support, and deployment built in.
+          </p>
           <div className="flex gap-4 justify-center">
             <Button size="lg" className="gap-2">
               <Sparkles className="h-5 w-5" />
@@ -145,6 +149,9 @@ export default async function SolutionPage({ params }: PageProps) {
               Watch Demo
             </Button>
           </div>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto mt-4">
+            Prefer to choose a stack first? Browse <Link href="/frameworks" className="underline underline-offset-4">frameworks</Link> or explore the <Link href="/showcase" className="underline underline-offset-4">project showcase</Link>.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
@@ -163,7 +170,7 @@ export default async function SolutionPage({ params }: PageProps) {
 
         <div className="grid lg:grid-cols-2 gap-12 mb-16">
           <div>
-            <h2 className="text-3xl font-bold mb-6">Key Benefits</h2>
+            <h2 className="text-3xl font-bold mb-6">What benefits do you get?</h2>
             <div className="space-y-4">
               {solution.benefits.map((benefit, index) => (
                 <div key={index} className="flex items-start gap-3">
@@ -175,7 +182,7 @@ export default async function SolutionPage({ params }: PageProps) {
           </div>
 
           <div>
-            <h2 className="text-3xl font-bold mb-6">Use Cases</h2>
+            <h2 className="text-3xl font-bold mb-6">Which use cases fit best?</h2>
             <div className="space-y-6">
               {solution.useCases.map((useCase, index) => (
                 <div key={index}>
@@ -188,7 +195,7 @@ export default async function SolutionPage({ params }: PageProps) {
         </div>
 
         <section className="mb-16">
-          <h2 className="text-3xl font-bold mb-8">How It Works</h2>
+          <h2 className="text-3xl font-bold mb-8">How does it work?</h2>
           <div className="grid md:grid-cols-4 gap-6">
             {[
               { step: '1', title: 'Describe', desc: 'Tell us what you want to build' },

@@ -141,6 +141,9 @@ export default async function FrameworkPage({ params }: PageProps) {
                 <p className="text-xl text-muted-foreground">
                   {framework.description}
                 </p>
+                <p className="text-base text-muted-foreground mt-4">
+                  Zapdev helps you build {framework.name} apps faster with AI-generated, production-ready code, best-practice defaults, and one-click deployment.
+                </p>
               </div>
             </div>
 
@@ -163,7 +166,7 @@ export default async function FrameworkPage({ params }: PageProps) {
               </TabsList>
               
               <TabsContent value="features" className="mt-6">
-                <h2 className="text-2xl font-bold mb-4">Key Features</h2>
+                <h2 className="text-2xl font-bold mb-4">What features help you build faster?</h2>
                 <div className="grid gap-4">
                   {framework.features.map((feature) => (
                     <div key={feature} className="flex items-start gap-3">
@@ -180,7 +183,7 @@ export default async function FrameworkPage({ params }: PageProps) {
               </TabsContent>
               
               <TabsContent value="use-cases" className="mt-6">
-                <h2 className="text-2xl font-bold mb-4">Perfect For</h2>
+                <h2 className="text-2xl font-bold mb-4">What projects fit {framework.name} best?</h2>
                 <div className="grid md:grid-cols-2 gap-4">
                   {framework.useCases.map((useCase) => (
                     <Card key={useCase}>
@@ -219,7 +222,7 @@ export default async function FrameworkPage({ params }: PageProps) {
           <div className="lg:col-span-1">
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle>Quick Start</CardTitle>
+                <CardTitle>How do you get started?</CardTitle>
                 <CardDescription>
                   Get started with {framework.name} in seconds
                 </CardDescription>
@@ -233,13 +236,16 @@ export default async function FrameworkPage({ params }: PageProps) {
                   <Button className="w-full mt-4">
                     Start Free <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Explore <Link href="/solutions" className="underline underline-offset-4">AI solutions</Link> or see real apps in the <Link href="/showcase" className="underline underline-offset-4">showcase</Link>.
+                  </p>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle>Ecosystem</CardTitle>
+                <CardTitle>Which tools are popular in the ecosystem?</CardTitle>
                 <CardDescription>
                   Popular tools and libraries for {framework.name}
                 </CardDescription>
@@ -264,7 +270,7 @@ export default async function FrameworkPage({ params }: PageProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Related Frameworks</CardTitle>
+                <CardTitle>Which related frameworks should you consider?</CardTitle>
                 <CardDescription>
                   Explore other popular frameworks
                 </CardDescription>

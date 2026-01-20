@@ -5,34 +5,29 @@ AI-powered development platform that lets you create web applications by chattin
 ## Features
 
 - 🤖 AI-powered code generation with AI agents
-- 💻 Real-time Next.js application development in E2B sandboxes
+- 💻 Real-time multi-framework application development in E2B sandboxes (Next.js, React, Vue, Angular, Svelte)
 - 🔄 Live preview & code preview with split-pane interface
 - 📁 File explorer with syntax highlighting and code theme
 - 💬 Conversational project development with message history
 - 🎯 Smart usage tracking and rate limiting
-- 💳 Subscription management with pro features
+- 💳 Subscription management with Polar.sh
 - 🔐 Authentication with Clerk
-- ⚙️ Background job processing with Inngest
-- 🗃️ Project management and persistence
-- 💰 Generated app billing templates (Stripe via Autumn)
+- 🗃️ Real-time project management and persistence with Convex
+- 💰 Generated app billing templates with Polar.sh
 
 ## Tech Stack
 
-- Next.js 15
-- React 19
-- TypeScript
-- Tailwind CSS v4
-- Shadcn/ui
-- tRPC
-- Prisma ORM
-- PostgreSQL
-- Vercel AI Gateway (supports OpenAI, Anthropic, Grok, and more)
-- E2B Code Interpreter
-- Clerk Authentication
-- Inngest
-- Prisma
-- Radix UI
-- Lucide React
+- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
+- **UI Components**: Shadcn/ui (Radix UI primitives), Lucide React
+- **Backend**: tRPC for type-safe APIs
+- **Database**: Convex (real-time database)
+- **Authentication**: Clerk with JWT
+- **AI**: Vercel AI SDK with OpenRouter (supports OpenAI, Anthropic, Grok, Cerebras, and more)
+- **Code Execution**: E2B Code Interpreter (sandboxed environments)
+- **AI Agents**: Custom agent orchestration (replaces Inngest)
+- **Payments**: Polar.sh (subscription management)
+- **Monitoring**: Sentry (error tracking)
+- **Package Manager**: Bun
 
 ## Building E2B Template (REQUIRED)
 
@@ -57,10 +52,10 @@ cd sandbox-templates/nextjs
 e2b template build --name your-template-name --cmd "/compile_page.sh"
 ```
 
-After building the template, update the template name in `src/inngest/functions.ts`:
+After building the template, update the template name in `src/agents/code-agent.ts`:
 
 ```typescript
-// Replace "zapdev" with your template name (line 22)
+// Replace "your-template-name" with your actual template name
 const sandbox = await Sandbox.create("your-template-name");
 ```
 
@@ -68,92 +63,72 @@ const sandbox = await Sandbox.create("your-template-name");
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Set up environment variables
 cp env.example .env
-# Fill in your API keys and database URL
+# Fill in your API keys and configuration
 
-# Set up database
-npx prisma migrate dev # Enter name "init" for migration
+# Start Convex development server (Terminal 1)
+bun run convex:dev
 
-# Start development server
-npm run dev
+# Start Next.js development server (Terminal 2)
+bun run dev
 ```
 
-### Setting Up Inngest for AI Code Generation
+### Setting Up Convex Database
 
-You have two options for running Inngest:
+1. **Create a Convex Account**: Go to [Convex](https://convex.dev) and sign up
+2. **Create a Project**: Create a new project in the Convex dashboard
+3. **Get Your URL**: Copy your Convex deployment URL
+4. **Set Environment Variables**: Add `NEXT_PUBLIC_CONVEX_URL` to your `.env` file
+5. **Deploy Schema**: Run `bun run convex:dev` to sync your schema
 
-#### Option 1: Inngest Cloud (Recommended for Vercel Deployment)
-1. Create an account at [Inngest Cloud](https://app.inngest.com)
-2. Create a new app and get your Event Key and Signing Key
-3. Add these to your `.env` file:
-   ```bash
-   INNGEST_EVENT_KEY="your-event-key"
-   INNGEST_SIGNING_KEY="your-signing-key"
-   ```
-4. For local development with cloud, use ngrok/localtunnel:
-   ```bash
-   npx localtunnel --port 3000
-   # Then sync your tunnel URL with Inngest Cloud
-   ```
+### Setting Up AI Providers
 
-#### Option 2: Local Inngest Dev Server (Development Only)
-```bash
-# In a second terminal:
-npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
-```
-- Inngest Dev UI will be available at `http://localhost:8288`
-- Note: This won't work for Vercel deployments
+The application supports multiple AI providers via OpenRouter:
 
-## Setting Up Vercel AI Gateway
+1. **OpenRouter** (Primary): Get API key from [OpenRouter](https://openrouter.ai)
+2. **Cerebras** (Optional): Ultra-fast inference for GLM 4.7 model
+3. **Vercel AI Gateway** (Optional): Fallback for rate limits
 
-1. **Create a Vercel Account**: Go to [Vercel](https://vercel.com) and sign up or log in
-2. **Navigate to AI Gateway**: Go to the [AI Gateway Dashboard](https://vercel.com/dashboard/ai-gateway)
-3. **Create API Key**: Generate a new API key from the dashboard
-4. **Choose Your Model**: The configuration uses OpenAI models by default, but you can switch to other providers like Anthropic, xAI, etc.
-
-### Migrating from Direct OpenAI
-
-If you're upgrading from a previous version that used OpenAI directly:
-1. Remove `OPENAI_API_KEY` from your `.env.local`
-2. Add `OPENROUTER_API_KEY` and `OPENROUTER_BASE_URL` as shown below
-3. The application now routes all AI requests through Vercel AI Gateway for better monitoring and reliability
-
-### Testing the Connection
-
-Run the included test script to verify your Vercel AI Gateway setup:
-```bash
-node test-vercel-ai-gateway.js
-```
+The system automatically selects the best model based on task requirements.
 
 ## Environment Variables
 
-Create a `.env` file with the following variables:
+Create a `.env` file with the following variables (see `env.example` for complete list):
 
 ```bash
-DATABASE_URL=""
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
-# Vercel AI Gateway (replaces OpenAI)
-OPENROUTER_API_KEY=""
-OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+# Convex Database
+NEXT_PUBLIC_CONVEX_URL=""
+NEXT_PUBLIC_CONVEX_SITE_URL=""
 
-# E2B
-E2B_API_KEY=""
-
-# Clerk
+# Clerk Authentication
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=""
 CLERK_SECRET_KEY=""
-NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in"
-NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up"
-NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL="/"
-NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL="/"
+CLERK_JWT_ISSUER_DOMAIN=""
+CLERK_JWT_TEMPLATE_NAME="convex"
 
-# Inngest (for background job processing)
-INNGEST_EVENT_KEY=""
-INNGEST_SIGNING_KEY=""
+# AI Providers
+OPENROUTER_API_KEY=""
+OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+CEREBRAS_API_KEY=""  # Optional: for GLM 4.7 model
+VERCEL_AI_GATEWAY_API_KEY=""  # Optional: fallback gateway
+
+# E2B Sandboxes
+E2B_API_KEY=""
+
+# Polar.sh Payments
+POLAR_ACCESS_TOKEN=""
+POLAR_WEBHOOK_SECRET=""
+NEXT_PUBLIC_POLAR_ORGANIZATION_ID=""
+NEXT_PUBLIC_POLAR_PRO_PRODUCT_ID=""
+NEXT_PUBLIC_POLAR_PRO_PRICE_ID=""
+
+# Monitoring
+NEXT_PUBLIC_SENTRY_DSN=""  # Optional: error tracking
 ```
 
 ## Deployment to Vercel
@@ -161,24 +136,24 @@ INNGEST_SIGNING_KEY=""
 For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 Quick overview:
-1. Set up Inngest Cloud account and get your keys
-2. Deploy to Vercel with all required environment variables
-3. Sync your app with Inngest Cloud (`https://your-app.vercel.app/api/inngest`)
-4. Run database migrations on your production database
+1. Set up Convex project and get your deployment URL
+2. Configure Clerk authentication and get JWT issuer domain
+3. Deploy to Vercel with all required environment variables
+4. Deploy Convex schema: `bun run convex:deploy`
+5. Configure Polar.sh webhooks for subscription management
 
 ## Additional Commands
 
 ```bash
-# Database
-npm run postinstall        # Generate Prisma client
-npx prisma studio          # Open database studio
-npx prisma migrate dev     # Migrate schema changes
-npx prisma migrate reset   # Reset database (Only for development)
+# Convex Database
+bun run convex:dev     # Start Convex dev server
+bun run convex:deploy  # Deploy Convex schema to production
 
-# Build
-npm run build          # Build for production
-npm run start          # Start production server
-npm run lint           # Run ESLint
+# Build & Development
+bun run build          # Build for production
+bun run start          # Start production server
+bun run lint           # Run ESLint
+bun run dev            # Start Next.js dev server (Turbopack)
 ```
 
 ## Project Structure
@@ -186,25 +161,26 @@ npm run lint           # Run ESLint
 - `src/app/` - Next.js app router pages and layouts
 - `src/components/` - Reusable UI components and file explorer
 - `src/modules/` - Feature-specific modules (projects, messages, usage)
-- `src/inngest/` - Background job functions and AI agent logic
-- `src/lib/` - Utilities and database client
+- `src/agents/` - AI agent orchestration and code generation logic
+- `src/prompts/` - Framework-specific LLM prompts
+- `src/lib/` - Utilities and helpers
 - `src/trpc/` - tRPC router and client setup
-- `prisma/` - Database schema and migrations
-- `sandbox-templates/` - E2B sandbox configuration
+- `convex/` - Convex database schema, queries, and mutations
+- `sandbox-templates/` - E2B sandbox configurations (nextjs, react, vue, angular, svelte)
 
 ## How It Works
 
 1. **Project Creation**: Users create projects and describe what they want to build
-2. **AI Processing**: Messages are sent to GPT-4 agents via Inngest background jobs
-3. **Code Generation**: AI agents use E2B sandboxes to generate and test Next.js applications
-4. **Real-time Updates**: Generated code and previews are displayed in split-pane interface
-5. **File Management**: Users can browse generated files with syntax highlighting
-6. **Iteration**: Conversational development allows for refinements and additions
+2. **Framework Detection**: AI automatically detects or selects the appropriate framework (Next.js, React, Vue, Angular, Svelte)
+3. **AI Processing**: Messages are processed by custom AI agents using OpenRouter (supports multiple models)
+4. **Code Generation**: AI agents use E2B sandboxes to generate and test applications in isolated environments
+5. **Real-time Updates**: Generated code and previews are streamed and displayed in split-pane interface
+6. **File Management**: Users can browse generated files with syntax highlighting
+7. **Iteration**: Conversational development allows for refinements and additions
+8. **Persistence**: All code and messages are stored in Convex for real-time synchronization
 
 ## Generated App Payments
 
-ZapDev can generate payment-ready apps using Stripe through Autumn. Templates live in `src/lib/payment-templates/` and include checkout flows, billing portal endpoints, feature gates, and usage tracking helpers. Configure with environment variables from `paymentEnvExample` in the same folder.
+ZapDev can generate payment-ready apps using Polar.sh. The platform includes subscription management, usage tracking, and billing portal integration. Configure with Polar.sh environment variables from `env.example`.
 
----
 
-Created by [CodeWithAntonio](https://codewithantonio.com)
