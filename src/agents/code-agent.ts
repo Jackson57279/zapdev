@@ -694,6 +694,8 @@ export async function* runCodeAgent(
     let useGatewayFallbackForStream = false;
     let retryCount = 0;
     const MAX_STREAM_RETRIES = 3;
+    let streamCompletedSuccessfully = false;
+    let lastStreamError: Error | null = null;
 
     while (retryCount < MAX_STREAM_RETRIES) {
       try {
@@ -749,10 +751,15 @@ export async function* runCodeAgent(
           }
         }
 
+        streamCompletedSuccessfully = true;
         break;
       } catch (streamError) {
         retryCount++;
-        const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+        lastStreamError =
+          streamError instanceof Error
+            ? streamError
+            : new Error(String(streamError));
+        const errorMessage = lastStreamError.message;
         const isRateLimit = isRateLimitError(streamError);
         const isServer = isServerError(streamError);
         const isModelNotFound = isModelNotFoundError(streamError);
@@ -801,6 +808,10 @@ export async function* runCodeAgent(
         console.log(`[RETRY] Stream: Retrying stream (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...`);
         yield { type: "status", data: `Retrying AI generation (attempt ${retryCount + 1}/${MAX_STREAM_RETRIES})...` };
       }
+    }
+
+    if (!streamCompletedSuccessfully) {
+      throw lastStreamError || new Error("AI stream failed after retries");
     }
 
     console.log("[INFO] AI generation complete:", {

@@ -7,6 +7,10 @@ import Anthropic from "@anthropic-ai/sdk";
 export const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY!,
   baseURL: "https://openrouter.ai/api/v1",
+  headers: {
+    "HTTP-Referer": "https://zapdev.link",
+    "X-Title": "ZapDev",
+  },
 });
 
 export const cerebras = createCerebras({
@@ -115,5 +119,7 @@ export function getClientForModel(
       chat: (_modelId: string) => cerebras(modelId),
     };
   }
-  return openrouter;
+  return {
+    chat: (modelId: string) => openrouter(modelId),
+  };
 }
