@@ -12,6 +12,17 @@ Sitemap: https://zapdev.link/rss.xml
 
 # Block common non-content paths
 Disallow: /api/
+Disallow: /projects/
 Disallow: /_next/
 Disallow: /admin/
+Disallow: /monitoring
 Disallow: /.well-known/
+Disallow: *.json
+
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /projects/User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /projects/
