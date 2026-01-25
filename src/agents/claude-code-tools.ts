@@ -1,7 +1,41 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { getSandbox, writeFilesBatch, readFileFast, runCodeCommand } from "./sandbox-utils";
+import { getSandbox, writeFilesBatch, readFileFast, runCodeCommand, isValidFilePath } from "./sandbox-utils";
 import type { AgentState } from "./types";
+import * as path from "path";
+
+const SANDBOX_ROOT = "/home/user";
+
+function validateAndSanitizePath(inputPath: string): string | null {
+  if (!inputPath || typeof inputPath !== "string") return null;
+  
+  const trimmed = inputPath.trim();
+  if (trimmed.length === 0 || trimmed.length > 4096) return null;
+  
+  if (trimmed.includes("..") || trimmed.includes("\0") || trimmed.includes("\n") || trimmed.includes("\r")) {
+    return null;
+  }
+  
+  if (!isValidFilePath(trimmed)) return null;
+  
+  const resolved = path.resolve(SANDBOX_ROOT, trimmed);
+  if (!resolved.startsWith(SANDBOX_ROOT)) {
+    return null;
+  }
+  
+  return resolved;
+}
+
+function escapeShellArg(arg: string): string {
+  if (!arg || typeof arg !== "string") return "''";
+  return `'${arg.replace(/'/g, "'\"'\"'")}'`;
+}
+
+function validateWorkingDirectory(workingDir: string): string | null {
+  const validated = validateAndSanitizePath(workingDir);
+  if (!validated) return null;
+  return validated;
+}
 
 export interface ClaudeCodeToolContext {
   sandboxId: string;
@@ -28,9 +62,20 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
-          const fullCommand = workingDirectory 
-            ? `cd ${workingDirectory} && ${command}`
-            : command;
+          
+          let fullCommand: string;
+          if (workingDirectory) {
+            const validatedDir = validateWorkingDirectory(workingDirectory);
+            if (!validatedDir) {
+              return JSON.stringify({ 
+                error: "Invalid working directory path", 
+                exitCode: 1 
+              });
+            }
+            fullCommand = `cd ${escapeShellArg(validatedDir)} && ${command}`;
+          } else {
+            fullCommand = command;
+          }
           
           const result = await runCodeCommand(sandbox, fullCommand);
           
@@ -147,14 +192,23 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
+          
+          const validatedDir = validateAndSanitizePath(directory);
+          if (!validatedDir) {
+            return JSON.stringify({ error: "Invalid directory path", matches: [], count: 0 });
+          }
+          
           let command: string;
-
+          
           if (textSearch) {
-            command = `grep -rl "${textSearch}" ${directory} --include="${pattern || '*'}" 2>/dev/null | head -50`;
+            const safePattern = pattern ? escapeShellArg(pattern) : "'*'";
+            const safeTextSearch = escapeShellArg(textSearch);
+            command = `grep -rl ${safeTextSearch} ${escapeShellArg(validatedDir)} --include=${safePattern} 2>/dev/null | head -50`;
           } else if (pattern) {
-            command = `find ${directory} -name "${pattern}" -type f 2>/dev/null | head -50`;
+            const safePattern = escapeShellArg(pattern);
+            command = `find ${escapeShellArg(validatedDir)} -name ${safePattern} -type f 2>/dev/null | head -50`;
           } else {
-            command = `find ${directory} -type f 2>/dev/null | head -50`;
+            command = `find ${escapeShellArg(validatedDir)} -type f 2>/dev/null | head -50`;
           }
 
           const result = await runCodeCommand(sandbox, command);
@@ -185,9 +239,16 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
+          
+          const validatedPath = validateAndSanitizePath(path);
+          if (!validatedPath) {
+            return JSON.stringify({ error: "Invalid directory path" });
+          }
+          
+          const safePath = escapeShellArg(validatedPath);
           const command = recursive 
-            ? `find ${path} -type f 2>/dev/null | head -100`
-            : `ls -la ${path} 2>/dev/null`;
+            ? `find ${safePath} -type f 2>/dev/null | head -100`
+            : `ls -la ${safePath} 2>/dev/null`;
 
           const result = await runCodeCommand(sandbox, command);
 
@@ -217,8 +278,37 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
+          
+          const validatedPaths: string[] = [];
+          for (const inputPath of paths) {
+            if (!inputPath || inputPath.trim() === "" || inputPath === "/" || inputPath === ".") {
+              continue;
+            }
+            
+            const validated = validateAndSanitizePath(inputPath);
+            if (!validated) {
+              console.warn(`[CLAUDE-CODE] Skipping invalid delete path: ${inputPath}`);
+              continue;
+            }
+            
+            if (validated === SANDBOX_ROOT || validated.startsWith(`${SANDBOX_ROOT}/`) === false) {
+              console.warn(`[CLAUDE-CODE] Skipping unsafe delete path: ${inputPath}`);
+              continue;
+            }
+            
+            validatedPaths.push(validated);
+          }
+          
+          if (validatedPaths.length === 0) {
+            return JSON.stringify({ 
+              error: "No valid paths to delete", 
+              success: false 
+            });
+          }
+          
           const flag = recursive ? "-rf" : "-f";
-          const command = `rm ${flag} ${paths.map(p => `"${p}"`).join(' ')}`;
+          const safePaths = validatedPaths.map(p => escapeShellArg(p)).join(' ');
+          const command = `rm ${flag} ${safePaths}`;
 
           const result = await runCodeCommand(sandbox, command);
           
@@ -230,7 +320,7 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
           return JSON.stringify({
             success: result.exitCode === 0,
-            deleted: paths,
+            deleted: validatedPaths,
           });
         } catch (e) {
           const errorMessage = e instanceof Error ? e.message : String(e);
@@ -251,10 +341,17 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
-          const result = await runCodeCommand(sandbox, `stat "${path}" 2>/dev/null`);
+          
+          const validatedPath = validateAndSanitizePath(path);
+          if (!validatedPath) {
+            return JSON.stringify({ error: "Invalid file path", path });
+          }
+          
+          const safePath = escapeShellArg(validatedPath);
+          const result = await runCodeCommand(sandbox, `stat ${safePath} 2>/dev/null`);
 
           if (result.exitCode !== 0) {
-            return JSON.stringify({ error: "File not found", path });
+            return JSON.stringify({ error: "File not found", path: validatedPath });
           }
 
           return JSON.stringify({ info: result.stdout });

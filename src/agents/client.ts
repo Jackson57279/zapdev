@@ -21,8 +21,17 @@ export const gateway = createGateway({
   apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY || "",
 });
 
+// Creates an Anthropic client using an OAuth Bearer token
+// The token is passed as an Authorization header instead of apiKey
 export function createClaudeCodeClientWithToken(accessToken: string): Anthropic {
-  return new Anthropic({ apiKey: accessToken });
+  return new Anthropic({ 
+    // For OAuth tokens, we use defaultHeaders to set Authorization: Bearer
+    // The apiKey field is still required by the SDK but the Authorization header takes precedence
+    apiKey: accessToken,
+    defaultHeaders: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 }
 
 export function createAnthropicProviderWithToken(accessToken: string) {
@@ -47,10 +56,11 @@ const CLAUDE_CODE_MODELS = [
 ];
 
 // Claude model mapping for Anthropic API
+// Using valid Anthropic model identifiers
 const CLAUDE_CODE_MODEL_MAP: Record<string, string> = {
-  "claude-code": "claude-sonnet-4-20250514",
-  "claude-code-sonnet": "claude-sonnet-4-20250514",
-  "claude-code-opus": "claude-opus-4-20250514",
+  "claude-code": "claude-3-5-haiku-20241022",
+  "claude-code-sonnet": "claude-3-5-sonnet-20241022",
+  "claude-code-opus": "claude-3-opus-20240229",
 };
 
 const getGatewayModelId = (modelId: string): string =>
@@ -65,7 +75,7 @@ export function isClaudeCodeModel(modelId: string): boolean {
 }
 
 export function getClaudeCodeModelId(modelId: string): string {
-  return CLAUDE_CODE_MODEL_MAP[modelId] ?? "claude-sonnet-4-20250514";
+  return CLAUDE_CODE_MODEL_MAP[modelId] ?? "claude-3-5-haiku-20241022";
 }
 
 export interface ClientOptions {

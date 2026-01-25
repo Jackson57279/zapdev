@@ -388,20 +388,10 @@ export async function* runCodeAgent(
 
     yield { type: "status", data: "Setting up environment..." };
 
-    console.log("[DEBUG] Creating sandbox...");
-    const [detectedFramework, detectedDatabase, sandbox] = await Promise.all([
-      needsFrameworkDetection
-        ? detectFramework(value)
-        : Promise.resolve(selectedFramework),
-      needsDatabaseDetection
-        ? detectDatabaseProvider(value)
-        : Promise.resolve(selectedDatabase),
-      createSandbox(selectedFramework),
-    ]);
-
-    console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
-
+    let detectedFramework: Framework = selectedFramework;
     if (needsFrameworkDetection) {
+      console.log("[DEBUG] Detecting framework...");
+      detectedFramework = await detectFramework(value);
       selectedFramework = detectedFramework;
       console.log("[INFO] Detected framework:", selectedFramework);
 
@@ -416,6 +406,16 @@ export async function* runCodeAgent(
         console.warn("[WARN] Failed to save framework to project:", error);
       }
     }
+
+    console.log("[DEBUG] Creating sandbox with framework:", detectedFramework);
+    const [detectedDatabase, sandbox] = await Promise.all([
+      needsDatabaseDetection
+        ? detectDatabaseProvider(value)
+        : Promise.resolve(selectedDatabase),
+      createSandbox(detectedFramework),
+    ]);
+
+    console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
 
     if (needsDatabaseDetection) {
       selectedDatabase = detectedDatabase;

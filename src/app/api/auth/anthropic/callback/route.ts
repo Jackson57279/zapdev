@@ -36,6 +36,14 @@ export async function GET(request: Request) {
     );
   }
 
+  if (!ANTHROPIC_CLIENT_ID || !ANTHROPIC_CLIENT_SECRET) {
+    console.error("Anthropic OAuth credentials not configured");
+    return NextResponse.json(
+      { error: "OAuth configuration missing" },
+      { status: 500 }
+    );
+  }
+
   try {
     const decodedState = JSON.parse(Buffer.from(state, "base64").toString());
     if (decodedState.userId !== userId) {
@@ -51,8 +59,8 @@ export async function GET(request: Request) {
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
-          client_id: ANTHROPIC_CLIENT_ID || "",
-          client_secret: ANTHROPIC_CLIENT_SECRET || "",
+          client_id: ANTHROPIC_CLIENT_ID,
+          client_secret: ANTHROPIC_CLIENT_SECRET,
           redirect_uri: ANTHROPIC_REDIRECT_URI,
           code,
         }),

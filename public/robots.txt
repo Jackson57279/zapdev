@@ -17,10 +17,14 @@ Disallow: /_next/
 Disallow: /admin/
 Disallow: /monitoring
 Disallow: /.well-known/
-Disallow: *.jsonUser-agent: GPTBot
+Disallow: *.json
+
+User-agent: GPTBot
 Allow: /
 Disallow: /api/
-Disallow: /projects/User-agent: ChatGPT-User
+Disallow: /projects/
+
+User-agent: ChatGPT-User
 Allow: /
 Disallow: /api/
 Disallow: /projects/
