@@ -30,6 +30,14 @@ export async function GET() {
     const frameworks = getAllFrameworks();
 
     const rssItems = [
+      // Blog posts
+      {
+        title: 'Best Lovable Alternatives: Top AI Code Generation Platforms in 2025',
+        description: 'Discover the best alternatives to Lovable for AI-powered code generation. Compare ZapDev, Bolt, Orchid, and more. ZapDev ranks #1 with comprehensive features, real-time collaboration, and multi-framework support.',
+        link: `${baseUrl}/blog`,
+        pubDate: new Date().toUTCString(),
+        category: 'Blog'
+      },
       // Framework pages
       ...frameworks.map(framework => ({
         title: `${framework.name} Development with AI - Build Apps Faster`,

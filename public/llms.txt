@@ -14,6 +14,7 @@ It generates code for React, Vue, Angular, Svelte, and Next.js, with instant pre
 - https://zapdev.link/frameworks
 - https://zapdev.link/solutions
 - https://zapdev.link/showcase
+- https://zapdev.link/blog
 - https://zapdev.link/home/pricing
 - https://zapdev.link/import
 - https://zapdev.link/privacy

@@ -19,12 +19,60 @@ Disallow: /monitoring
 Disallow: /.well-known/
 Disallow: *.json
 
+# OpenAI Agents
 User-agent: GPTBot
 Allow: /
 Disallow: /api/
 Disallow: /projects/
 
 User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Anthropic/Claude Agents
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Google/Gemini Agents
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Common Crawl
+User-agent: CCBot
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Apple
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Microsoft/Bing
+User-agent: BingBot
+Allow: /
+Disallow: /api/
+Disallow: /projects/
+
+# Meta/Facebook
+User-agent: FacebookBot
 Allow: /
 Disallow: /api/
 Disallow: /projects/
