@@ -4,7 +4,17 @@ import { getSandbox, writeFilesBatch, readFileFast, runCodeCommand, isValidFileP
 import type { AgentState } from "./types";
 import * as path from "path";
 
-const SANDBOX_ROOT = "/home/user";
+const SANDBOX_ROOT = (() => {
+  const envRoot = process.env.SANDBOX_ROOT;
+  if (envRoot) {
+    if (!path.isAbsolute(envRoot)) {
+      console.warn("[CLAUDE-CODE] SANDBOX_ROOT must be an absolute path, using default");
+      return "/home/user";
+    }
+    return path.normalize(envRoot);
+  }
+  return "/home/user";
+})();
 
 function validateAndSanitizePath(inputPath: string): string | null {
   if (!inputPath || typeof inputPath !== "string") return null;
@@ -19,7 +29,10 @@ function validateAndSanitizePath(inputPath: string): string | null {
   if (!isValidFilePath(trimmed)) return null;
   
   const resolved = path.resolve(SANDBOX_ROOT, trimmed);
-  if (!resolved.startsWith(SANDBOX_ROOT)) {
+  const rootWithSep = path.normalize(SANDBOX_ROOT) + path.sep;
+  const normalizedResolved = path.normalize(resolved);
+  
+  if (!normalizedResolved.startsWith(rootWithSep) && normalizedResolved !== path.normalize(SANDBOX_ROOT)) {
     return null;
   }
   
@@ -115,26 +128,53 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
+          
+          const validFiles: Array<{ path: string; content: string }> = [];
+          const invalidPaths: string[] = [];
+          
+          for (const file of files) {
+            if (!isValidFilePath(file.path)) {
+              invalidPaths.push(file.path);
+              continue;
+            }
+            validFiles.push(file);
+          }
+          
+          if (invalidPaths.length > 0) {
+            return JSON.stringify({
+              error: "Invalid file paths",
+              invalidPaths,
+              success: false,
+            });
+          }
+          
+          if (validFiles.length === 0) {
+            return JSON.stringify({
+              error: "No valid files to write",
+              success: false,
+            });
+          }
+          
           const updatedFiles = { ...state.files };
           const filesToWrite: Record<string, string> = {};
 
-          for (const file of files) {
+          for (const file of validFiles) {
             filesToWrite[file.path] = file.content;
             updatedFiles[file.path] = file.content;
           }
 
           await writeFilesBatch(sandbox, filesToWrite);
 
-          for (const file of files) {
+          for (const file of validFiles) {
             onFileCreated?.(file.path, file.content);
           }
 
           updateFiles(updatedFiles);
-          console.log("[CLAUDE-CODE] Successfully wrote", files.length, "files");
+          console.log("[CLAUDE-CODE] Successfully wrote", validFiles.length, "files");
           
           return JSON.stringify({
             success: true,
-            filesWritten: files.map(f => f.path),
+            filesWritten: validFiles.map(f => f.path),
           });
         } catch (e) {
           const errorMessage = e instanceof Error ? e.message : String(e);
@@ -280,6 +320,8 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
           const sandbox = await getSandbox(sandboxId);
           
           const validatedPaths: string[] = [];
+          const pathMapping: Array<{ validated: string; original: string }> = [];
+          
           for (const inputPath of paths) {
             if (!inputPath || inputPath.trim() === "" || inputPath === "/" || inputPath === ".") {
               continue;
@@ -291,12 +333,16 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
               continue;
             }
             
-            if (validated === SANDBOX_ROOT || validated.startsWith(`${SANDBOX_ROOT}/`) === false) {
+            const rootWithSep = path.normalize(SANDBOX_ROOT) + path.sep;
+            const normalizedValidated = path.normalize(validated);
+            
+            if (normalizedValidated === path.normalize(SANDBOX_ROOT) || !normalizedValidated.startsWith(rootWithSep)) {
               console.warn(`[CLAUDE-CODE] Skipping unsafe delete path: ${inputPath}`);
               continue;
             }
             
             validatedPaths.push(validated);
+            pathMapping.push({ validated, original: inputPath });
           }
           
           if (validatedPaths.length === 0) {
@@ -313,8 +359,8 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
           const result = await runCodeCommand(sandbox, command);
           
           const updatedFiles = { ...state.files };
-          for (const path of paths) {
-            delete updatedFiles[path];
+          for (const { original } of pathMapping) {
+            delete updatedFiles[original];
           }
           updateFiles(updatedFiles);
 

@@ -38,9 +38,8 @@ export async function GET(request: Request) {
 
   if (!ANTHROPIC_CLIENT_ID || !ANTHROPIC_CLIENT_SECRET) {
     console.error("Anthropic OAuth credentials not configured");
-    return NextResponse.json(
-      { error: "OAuth configuration missing" },
-      { status: 500 }
+    return NextResponse.redirect(
+      new URL("/settings?tab=connections&error=OAuth+configuration+missing", request.url)
     );
   }
 
