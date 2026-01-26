@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = generateSEOMetadata({
-  title: 'AI Development Solutions - Build Faster, Ship Sooner | Zapdev',
-  description: 'Explore our AI-powered development solutions. From code generation to rapid prototyping, find the perfect solution for your development needs.',
+  title: 'What AI development solutions are available? Code Generation & More | Zapdev',
+  description: 'AI development solutions: Code generation (10x faster), rapid prototyping (MVP in minutes), no-code development, and enterprise AI. Choose the solution that fits your needs.',
   keywords: [
     'AI development solutions',
     'code generation platform',
@@ -16,12 +16,14 @@ export const metadata: Metadata = generateSEOMetadata({
     'no-code development',
     'enterprise AI',
     'development automation',
-    'AI programming tools'
+    'AI programming tools',
+    'what is AI code generation',
+    'AI development tools'
   ],
   canonical: '/solutions',
   openGraph: {
-    title: 'Zapdev Solutions - AI-Powered Development for Everyone',
-    description: 'Discover how AI can transform your development workflow',
+    title: 'AI Development Solutions: What options are available?',
+    description: 'Explore AI code generation, rapid prototyping, no-code development, and enterprise AI solutions. Find the right solution for your project.',
     type: 'website'
   }
 });

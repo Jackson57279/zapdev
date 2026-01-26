@@ -9,8 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = generateSEOMetadata({
-  title: 'AI-Powered Development for All Frameworks | Zapdev',
-  description: 'Build applications with React, Vue, Angular, Svelte, and Next.js using AI assistance. Compare frameworks and choose the best for your project.',
+  title: 'Which framework should I use? React vs Vue vs Angular Comparison | Zapdev',
+  description: 'Compare React (40.6% usage), Vue.js, Angular, Svelte, and Next.js frameworks. Learn which framework is best for your project. Build with AI assistance across all major JavaScript frameworks.',
   keywords: [
     'React development',
     'Vue.js development', 
@@ -20,12 +20,15 @@ export const metadata: Metadata = generateSEOMetadata({
     'framework comparison',
     'JavaScript frameworks',
     'web development frameworks',
-    'AI code generation'
+    'AI code generation',
+    'React vs Vue',
+    'which framework to use',
+    'best JavaScript framework'
   ],
   canonical: '/frameworks',
   openGraph: {
-    title: 'Choose Your Framework - AI-Powered Development',
-    description: 'Build faster with AI assistance for React, Vue, Angular, Svelte, and Next.js',
+    title: 'Framework Comparison: React vs Vue vs Angular - Which to Choose?',
+    description: 'Compare React, Vue, Angular, Svelte, and Next.js. Learn which framework fits your project best. Build with AI assistance.',
     type: 'website'
   }
 });

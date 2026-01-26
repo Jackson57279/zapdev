@@ -6,8 +6,8 @@ import { PricingPageContent } from "./page-content";
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = generateSEOMetadata({
-  title: 'Pricing - Affordable AI Development Plans | Zapdev',
-  description: 'Choose the perfect plan for your development needs. Start free with Zapdev and scale as you grow. Transparent pricing for individuals and teams.',
+  title: 'How much does Zapdev cost? Pricing Plans for AI Development | Zapdev',
+  description: 'Zapdev pricing starts at $0 with a free tier (5 projects/day). Pro plan is $29/month (100 projects/day). Unlimited plan is $150/month. Compare plans and choose the best option for your development needs.',
   keywords: [
     'Zapdev pricing',
     'AI development pricing',
@@ -15,12 +15,14 @@ export const metadata: Metadata = generateSEOMetadata({
     'code generation pricing',
     'free tier',
     'developer tools pricing',
-    'subscription plans'
+    'subscription plans',
+    'how much does Zapdev cost',
+    'Zapdev free vs paid'
   ],
   canonical: '/pricing',
   openGraph: {
-    title: 'Zapdev Pricing - Start Building for Free',
-    description: 'Transparent pricing for AI-powered development. Free tier available.',
+    title: 'Zapdev Pricing - How much does AI development cost?',
+    description: 'Zapdev pricing: Free tier available (5 projects/day), Pro at $29/month (100 projects/day), Unlimited at $150/month. Transparent pricing for AI-powered development.',
     type: 'website'
   }
 });
