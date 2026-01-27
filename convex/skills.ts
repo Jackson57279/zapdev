@@ -595,3 +595,55 @@ export const seedCoreSkills = internalMutation({
     return ids as any;
   },
 });
+
+/**
+ * Get installed skill contents for a project/user.
+ * Returns name, slug, and content for each active installed skill.
+ */
+export const getInstalledSkillContents = internalQuery({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    userId: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      name: v.string(),
+      slug: v.string(),
+      content: v.string(),
+    })
+  ),
+  handler: async (ctx, args) => {
+    // Find active installations for this user (optionally scoped to project)
+    let installations;
+    if (args.projectId) {
+      installations = await ctx.db
+        .query("skillInstallations")
+        .withIndex("by_projectId", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      // Filter to active installations for this user
+      installations = installations.filter(
+        (i) => i.isActive && i.userId === args.userId
+      );
+    } else {
+      installations = await ctx.db
+        .query("skillInstallations")
+        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+        .collect();
+      installations = installations.filter((i) => i.isActive);
+    }
+
+    const results: Array<{ name: string; slug: string; content: string }> = [];
+    for (const installation of installations) {
+      const skill = await ctx.db.get(installation.skillId);
+      if (skill) {
+        results.push({
+          name: skill.name,
+          slug: skill.slug,
+          content: skill.content,
+        });
+      }
+    }
+
+    return results;
+  },
+});
