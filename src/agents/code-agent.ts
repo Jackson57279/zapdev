@@ -57,6 +57,8 @@ import {
   type SubagentResponse 
 } from "./subagent";
 import { loadSkillsForAgent } from "./skill-loader";
+import { createSandboxAdapter, E2BSandboxAdapter } from "@/lib/sandbox-adapter";
+import type { ISandboxAdapter } from "@/lib/sandbox-adapter";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -410,15 +412,15 @@ export async function* runCodeAgent(
     }
 
     console.log("[DEBUG] Creating sandbox with framework:", detectedFramework);
-    const [detectedDatabase, sandbox, skillContent] = await Promise.all([
+    const [detectedDatabase, adapter, skillContent] = await Promise.all([
       needsDatabaseDetection
         ? detectDatabaseProvider(value)
         : Promise.resolve(selectedDatabase),
-      createSandbox(detectedFramework),
+      createSandboxAdapter(detectedFramework),
       loadSkillsForAgent(projectId, project.userId),
     ]);
 
-    console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
+    console.log("[DEBUG] Sandbox adapter created:", adapter.id);
 
     if (needsDatabaseDetection) {
       selectedDatabase = detectedDatabase;
@@ -432,7 +434,7 @@ export async function* runCodeAgent(
     }
     yield { type: "skills-loaded", data: { skillCount } };
 
-    const sandboxId = sandbox.sandboxId;
+    const sandboxId = adapter.id;
 
     const modelPref = project?.modelPreference;
     const isValidModel = (m: string | undefined): m is ModelId =>
@@ -612,6 +614,7 @@ export async function* runCodeAgent(
 
     console.log("[DEBUG] Creating agent tools...");
     const baseTools = createAgentTools({
+      adapter,
       sandboxId,
       state,
       updateFiles: (files) => {
@@ -923,10 +926,13 @@ export async function* runCodeAgent(
       yield { type: "status", data: "Validating build..." };
       console.log("[INFO] Running build validation...");
 
-      await cleanNextDirectory(sandbox);
-      console.log("[DEBUG] Cleaned .next directory");
+      // Clean .next directory (E2B-specific, skip for WebContainer)
+      if (adapter instanceof E2BSandboxAdapter) {
+        await cleanNextDirectory(adapter.getSandbox());
+        console.log("[DEBUG] Cleaned .next directory");
+      }
 
-      const buildErrors = await runBuildCheck(sandbox);
+      const buildErrors = await adapter.runBuildCheck();
       validationErrors = buildErrors || "";
 
       if (validationErrors) {
@@ -1000,7 +1006,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       }
 
       console.log("[DEBUG] Re-running build check...");
-      const newBuildErrors = await runBuildCheck(sandbox);
+      const newBuildErrors = await adapter.runBuildCheck();
       validationErrors = newBuildErrors || "";
 
       if (!validationErrors) {
@@ -1078,8 +1084,9 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
     yield { type: "status", data: "Reading sandbox files..." };
     console.log("[DEBUG] Reading sandbox files...");
 
+    // Read files from sandbox — use adapter for command, E2B-specific batch read for efficiency
     const findCommand = getFindCommand(selectedFramework);
-    const findResult = await sandbox.commands.run(findCommand);
+    const findResult = await adapter.runCommand(findCommand);
     const filePaths = findResult.stdout
       .split("\n")
       .map((line) => line.trim())
@@ -1088,7 +1095,20 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
     console.log("[DEBUG] Found", filePaths.length, "files in sandbox");
 
-    const sandboxFiles = await readFilesInBatches(sandbox, filePaths);
+    let sandboxFiles: Record<string, string>;
+    if (adapter instanceof E2BSandboxAdapter) {
+      // E2B: use optimised batch read
+      sandboxFiles = await readFilesInBatches(adapter.getSandbox(), filePaths);
+    } else {
+      // WebContainer or other adapter: read files individually
+      const entries = await Promise.all(
+        filePaths.slice(0, 500).map(async (fp) => {
+          const content = await adapter.readFile(fp);
+          return [fp, content] as const;
+        })
+      );
+      sandboxFiles = Object.fromEntries(entries.filter(([, c]) => c !== null)) as Record<string, string>;
+    }
     console.log("[DEBUG] Read", Object.keys(sandboxFiles).length, "files from sandbox");
 
     const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
@@ -1110,7 +1130,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
     const [sandboxUrl, { title: fragmentTitle, response: responseContent }] =
       await Promise.all([
-        startDevServer(sandbox, selectedFramework),
+        adapter.startDevServer(selectedFramework),
         generateFragmentMetadata(summaryText),
       ]);
 

@@ -5,7 +5,7 @@
 **Branch**: main
 
 ## OVERVIEW
-AI-powered web app development platform using Next.js 15, Convex (real-time DB), tRPC, and E2B sandboxes for isolated code generation.
+AI-powered web app development platform using Next.js 15, Convex (real-time DB), tRPC, and E2B sandboxes for isolated code generation. Includes a skills.sh-compatible skill system for prompt augmentation and a WebContainer-based client-side preview engine (feature-flagged).
 
 ## STRUCTURE
 ```
@@ -16,7 +16,8 @@ AI-powered web app development platform using Next.js 15, Convex (real-time DB),
 │   ├── agents/           # AI agent orchestration (migrated from Inngest)
 │   ├── prompts/          # Framework-specific LLM prompts
 │   ├── components/ui/    # Shadcn/ui components
-│   ├── lib/              # Utilities, framework config
+│   ├── lib/              # Utilities, framework config, sandbox adapter
+│   ├── data/             # Static data (core skills, PrebuiltUI components)
 │   └── trpc/             # Type-safe API client/server
 ├── convex/               # Real-time database (schema, queries, mutations)
 ├── sandbox-templates/    # E2B sandbox configs (nextjs, angular, react, vue, svelte)
@@ -36,6 +37,9 @@ AI-powered web app development platform using Next.js 15, Convex (real-time DB),
 | tRPC API | `src/trpc/routers/` | Type-safe procedures |
 | UI components | `src/components/ui/` | Shadcn/ui (copy/paste, not library) |
 | Utilities | `src/lib/` | Framework config, Convex helpers |
+| Skill system | `src/agents/skill-loader.ts`, `convex/skills.ts` | Skill loading and storage |
+| Sandbox adapter | `src/lib/sandbox-adapter.ts` | E2B/WebContainer abstraction |
+| WebContainer | `src/lib/webcontainer*.ts` | Browser-side preview engine |
 | Tests | `tests/` | Jest with dependency mocks |
 
 ## CODE MAP
@@ -44,6 +48,8 @@ AI-powered web app development platform using Next.js 15, Convex (real-time DB),
 |--------|------|----------|------|
 | schema.ts | Module | convex/schema.ts | Database tables, indexes |
 | code-agent.ts | Module | src/agents/code-agent.ts | Main AI generation loop |
+| sandbox-adapter.ts | Module | src/lib/sandbox-adapter.ts | ISandboxAdapter interface + E2B/WC implementations |
+| skill-loader.ts | Module | src/agents/skill-loader.ts | Skill content loading with token budgets |
 | functions.ts | Module | convex/* | DB operations (queries/mutations) |
 | _app.ts | Module | src/trpc/routers/_app.ts | Root tRPC router |
 
@@ -67,6 +73,45 @@ bun run build        # Production build
 - React 18 (Vite, Chakra UI)
 - Vue 3 (Vuetify)
 - SvelteKit (DaisyUI)
+
+## SKILL SYSTEM
+
+**Overview**: Skills are prompt augmentation — markdown instructions injected into agent system prompts. Compatible with [skills.sh](https://skills.sh) format.
+
+**Core Skills** (always injected):
+- `context7` — Documentation lookup via Context7 API
+- `frontend-design` — UI/UX design guidelines
+
+**Architecture**:
+- `convex/skills.ts` — Skill CRUD (Convex queries/mutations)
+- `src/agents/skill-loader.ts` — Loads skills for agent prompt injection
+- `src/data/core-skills/` — Static fallback when Convex is unavailable
+- Token budget: 4000 tokens/skill, 12000 tokens total
+
+**See**: `explanations/SKILL_SYSTEM.md` for full documentation.
+
+## SANDBOX ADAPTER (E2B / WebContainer)
+
+**Overview**: `ISandboxAdapter` abstracts over E2B sandboxes (server-side, default) and WebContainers (browser-side, feature-flagged).
+
+**Feature Flag**: `NEXT_PUBLIC_USE_WEBCONTAINERS=true|false` (default: `false`)
+
+**Architecture**:
+- `src/lib/sandbox-adapter.ts` — Interface + factory + both implementations
+- `src/lib/webcontainer.ts` — Singleton WebContainer boot
+- `src/lib/webcontainer-sync.ts` — File mounting (flat path → FileSystemTree)
+- `src/lib/webcontainer-process.ts` — npm install, dev server spawning
+- `src/lib/webcontainer-build.ts` — Client-side build/lint validation
+
+**Usage in Agent**:
+```typescript
+// code-agent.ts creates the adapter via factory
+const adapter = await createSandboxAdapter(framework);
+// tools.ts receives adapter via ToolContext
+const tools = createAgentTools({ adapter, sandboxId: adapter.id, state, ... });
+```
+
+**COOP/COEP Headers**: Scoped to `/preview/*` routes only (see `next.config.mjs`). Do NOT apply globally — breaks Clerk auth popups.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
@@ -120,8 +165,8 @@ e2b template build --name your-template-name --cmd "/compile_page.sh"
 
 **Framework Detection**: AI chooses based on user request, defaults to Next.js. See `src/prompts/framework-selector.ts` for priority logic.
 
-**Auto-Fix Retry**: AI agents retry build/lint failures up to 2 times with error context.
+**Auto-Fix Retry**: AI agents retry build/lint failures up to 1 time with error context.
 
 **Security**: All user inputs validated (Zod), OAuth tokens encrypted in Convex, file paths sanitized.
 
-**Documentation**: All guides live in `explanations/` — `CONVEX_QUICKSTART.md`, `DEBUGGING_GUIDE.md`, etc.
+**Documentation**: All guides live in `explanations/` — `CONVEX_QUICKSTART.md`, `DEBUGGING_GUIDE.md`, `SKILL_SYSTEM.md`, etc.
