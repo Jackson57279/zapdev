@@ -2,6 +2,8 @@ import { ConvexHttpClient } from "convex/browser";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cache } from "@/lib/cache";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 // ---------------------------------------------------------------------------
 // Convex client — lazy singleton via proxy (matches code-agent.ts pattern)
@@ -63,6 +65,60 @@ interface SkillContent {
 }
 
 // ---------------------------------------------------------------------------
+// Static fallback — baked-in core skill content
+// ---------------------------------------------------------------------------
+
+/**
+ * Core skill definitions with their static file paths.
+ * These are manually refreshed and serve as a fallback when Convex is
+ * unreachable or the skills table hasn't been seeded yet.
+ */
+const CORE_SKILL_STATIC_FILES: Array<{
+  name: string;
+  slug: string;
+  filename: string;
+}> = [
+  { name: "context7", slug: "context7", filename: "context7.md" },
+  {
+    name: "frontend-design",
+    slug: "frontend-design",
+    filename: "frontend-design.md",
+  },
+];
+
+/**
+ * Load core skill content from static markdown files baked into the source.
+ * Used as a fallback when Convex is unavailable or returns no core skills.
+ */
+export function loadStaticCoreSkills(): SkillContent[] {
+  const skills: SkillContent[] = [];
+
+  for (const def of CORE_SKILL_STATIC_FILES) {
+    try {
+      const filePath = join(
+        process.cwd(),
+        "src",
+        "data",
+        "core-skills",
+        def.filename,
+      );
+      const content = readFileSync(filePath, "utf-8");
+      if (content.trim().length > 0) {
+        skills.push({
+          name: def.name,
+          slug: def.slug,
+          content,
+        });
+      }
+    } catch {
+      // Static file missing or unreadable — skip silently
+    }
+  }
+
+  return skills;
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -70,6 +126,8 @@ interface SkillContent {
  * Load skill content for agent prompt injection.
  *
  * 1. Always loads core skills (context7, frontend-design, etc.)
+ *    - Primary: Convex (getCoreSkillContents)
+ *    - Fallback: Static markdown files in src/data/core-skills/
  * 2. Loads project-installed skills when available
  * 3. Enforces per-skill (4 000 token) and total (12 000 token) budgets
  * 4. Caches results for 30 minutes
@@ -85,11 +143,21 @@ export async function loadSkillsForAgent(
     return await cache.getOrCompute(
       cacheKey,
       async () => {
-        // 1. Fetch core skills (always included)
-        const coreSkills: SkillContent[] = await convex.query(
-          internal.skills.getCoreSkillContents,
-          {},
-        );
+        // 1. Fetch core skills — Convex primary, static fallback
+        let coreSkills: SkillContent[] = [];
+        try {
+          coreSkills = await convex.query(
+            internal.skills.getCoreSkillContents,
+            {},
+          );
+        } catch {
+          // Convex unavailable — will fall through to static fallback
+        }
+
+        // Fallback: if Convex returned nothing, load from static files
+        if (coreSkills.length === 0) {
+          coreSkills = loadStaticCoreSkills();
+        }
 
         // 2. Fetch project-installed skills (if any)
         let installedSkills: SkillContent[] = [];
