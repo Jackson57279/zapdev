@@ -56,6 +56,7 @@ import {
   type SubagentRequest,
   type SubagentResponse 
 } from "./subagent";
+import { loadSkillsForAgent } from "./skill-loader";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -296,6 +297,7 @@ export interface StreamEvent {
     | "research-start"
     | "research-complete"
     | "time-budget"
+    | "skills-loaded"
     | "error"
     | "complete";
   data: unknown;
@@ -408,11 +410,12 @@ export async function* runCodeAgent(
     }
 
     console.log("[DEBUG] Creating sandbox with framework:", detectedFramework);
-    const [detectedDatabase, sandbox] = await Promise.all([
+    const [detectedDatabase, sandbox, skillContent] = await Promise.all([
       needsDatabaseDetection
         ? detectDatabaseProvider(value)
         : Promise.resolve(selectedDatabase),
       createSandbox(detectedFramework),
+      loadSkillsForAgent(projectId, project.userId),
     ]);
 
     console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
@@ -421,6 +424,13 @@ export async function* runCodeAgent(
       selectedDatabase = detectedDatabase;
       console.log("[INFO] Detected database provider:", selectedDatabase);
     }
+
+    // Emit skills-loaded event
+    const skillCount = skillContent ? skillContent.split("## Skill:").length - 1 : 0;
+    if (skillCount > 0) {
+      console.log(`[INFO] Loaded ${skillCount} skill(s) for prompt injection`);
+    }
+    yield { type: "skills-loaded", data: { skillCount } };
 
     const sandboxId = sandbox.sandboxId;
 
@@ -646,9 +656,9 @@ export async function* runCodeAgent(
       selectedDatabase === "none"
         ? ""
         : getDatabaseIntegrationRules(selectedDatabase);
-    const systemPrompt = databaseIntegrationRules
-      ? `${frameworkPrompt}\n${databaseIntegrationRules}`
-      : frameworkPrompt;
+    const systemPrompt = [frameworkPrompt, databaseIntegrationRules, skillContent]
+      .filter(Boolean)
+      .join("\n\n");
     const modelConfig = MODEL_CONFIGS[selectedModel];
 
     timeoutManager.startStage("codeGeneration");
