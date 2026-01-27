@@ -90,6 +90,18 @@ export const subscriptionIntervalEnum = v.union(
   v.literal("yearly")
 );
 
+export const skillSourceEnum = v.union(
+  v.literal("github"),
+  v.literal("prebuiltui"),
+  v.literal("custom")
+);
+
+export const skillStatusEnum = v.union(
+  v.literal("active"),
+  v.literal("disabled"),
+  v.literal("draft")
+);
+
 const polarCustomers = defineTable({
   userId: v.string(),
   polarCustomerId: v.string(),
@@ -337,4 +349,42 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_projectId", ["projectId"]),
+
+  skills: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    description: v.string(),
+    content: v.string(),
+    source: skillSourceEnum,
+    sourceRepo: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    category: v.optional(v.string()),
+    framework: v.optional(frameworkEnum),
+    isGlobal: v.boolean(),
+    isCore: v.boolean(),
+    userId: v.optional(v.string()),
+    version: v.optional(v.string()),
+    tokenCount: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_source", ["source"])
+    .index("by_userId", ["userId"])
+    .index("by_isGlobal", ["isGlobal"])
+    .index("by_isCore", ["isCore"])
+    .index("by_category", ["category"])
+    .index("by_name", ["name"]),
+
+  skillInstallations: defineTable({
+    skillId: v.id("skills"),
+    projectId: v.optional(v.id("projects")),
+    userId: v.string(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_projectId", ["projectId"])
+    .index("by_skillId_userId", ["skillId", "userId"]),
 });
