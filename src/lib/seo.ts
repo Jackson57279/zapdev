@@ -1,5 +1,19 @@
 import { Metadata } from 'next';
 
+const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://zapdev.link';
+const ORGANIZATION_SAME_AS: Array<string> = [
+  'https://twitter.com/zapdev',
+  'https://linkedin.com/company/zapdev',
+  'https://github.com/zapdev'
+];
+const ORGANIZATION_DATA: Record<string, unknown> = {
+  '@type': 'Organization',
+  name: 'Zapdev',
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo.png`,
+  sameAs: ORGANIZATION_SAME_AS
+};
+
 export interface SEOConfig {
   title: string;
   description: string;
@@ -72,7 +86,7 @@ export const DEFAULT_SEO_CONFIG: SEOConfig = {
 
 export function generateMetadata(config: Partial<SEOConfig> = {}): Metadata {
   const merged = { ...DEFAULT_SEO_CONFIG, ...config };
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://zapdev.link';
+  const baseUrl = SITE_URL;
 
   return {
     title: merged.title,
@@ -116,7 +130,7 @@ export function generateMetadata(config: Partial<SEOConfig> = {}): Metadata {
   };
 }
 
-export function generateStructuredData(type: 'Organization' | 'WebApplication' | 'SoftwareApplication' | 'Article' | 'Service', data: Record<string, unknown>) {
+export function generateStructuredData(type: 'Organization' | 'WebApplication' | 'SoftwareApplication' | 'Article' | 'Service' | 'WebSite' | 'WebPage', data: Record<string, unknown>) {
   const baseData = {
     '@context': 'https://schema.org',
     '@type': type,
@@ -126,9 +140,7 @@ export function generateStructuredData(type: 'Organization' | 'WebApplication' |
     case 'Organization':
       return {
         ...baseData,
-        name: 'Zapdev',
-        url: 'https://zapdev.link',
-        logo: 'https://zapdev.link/logo.png',
+        ...ORGANIZATION_DATA,
         description: DEFAULT_SEO_CONFIG.description,
         contactPoint: {
           '@type': 'ContactPoint',
@@ -136,13 +148,41 @@ export function generateStructuredData(type: 'Organization' | 'WebApplication' |
           availableLanguage: ['English'],
           email: 'support@zapdev.link'
         },
-        sameAs: [
-          'https://twitter.com/zapdev',
-          'https://linkedin.com/company/zapdev',
-          'https://github.com/zapdev'
-        ],
         ...data
       };
+
+    case 'WebSite':
+      return {
+        ...baseData,
+        name: 'Zapdev',
+        url: SITE_URL,
+        description: DEFAULT_SEO_CONFIG.description,
+        publisher: ORGANIZATION_DATA,
+        inLanguage: 'en-US',
+        ...data
+      };
+
+    case 'WebPage': {
+      const pageName = typeof data.name === 'string' ? data.name : 'Zapdev';
+      const pageDescription = typeof data.description === 'string'
+        ? data.description
+        : DEFAULT_SEO_CONFIG.description;
+      const pageUrl = typeof data.url === 'string' ? data.url : SITE_URL;
+
+      return {
+        ...baseData,
+        name: pageName,
+        description: pageDescription,
+        url: pageUrl,
+        isPartOf: {
+          '@type': 'WebSite',
+          name: 'Zapdev',
+          url: SITE_URL
+        },
+        about: ORGANIZATION_DATA,
+        ...data
+      };
+    }
 
     case 'WebApplication':
       return {
@@ -151,6 +191,7 @@ export function generateStructuredData(type: 'Organization' | 'WebApplication' |
         description: data.description || DEFAULT_SEO_CONFIG.description,
         applicationCategory: 'DeveloperApplication',
         operatingSystem: 'Web Browser',
+        publisher: ORGANIZATION_DATA,
         offers: {
           '@type': 'Offer',
           price: '0',
@@ -164,10 +205,7 @@ export function generateStructuredData(type: 'Organization' | 'WebApplication' |
         ...baseData,
         name: data.name,
         description: data.description,
-        provider: {
-          '@type': 'Organization',
-          name: 'Zapdev'
-        },
+        provider: ORGANIZATION_DATA,
         serviceType: data.serviceType || 'Software Development',
         areaServed: {
           '@type': 'Country',
@@ -192,7 +230,7 @@ export function generateBreadcrumbStructuredData(items: Array<{ name: string; ur
       '@type': 'ListItem',
       position: index + 1,
       name: item.name,
-      item: `https://zapdev.link${item.url}`
+      item: `${SITE_URL}${item.url}`
     }))
   };
 }
@@ -266,7 +304,7 @@ export function generateArticleStructuredData(data: {
     '@type': 'Article',
     headline: data.headline,
     description: data.description,
-    image: data.image || 'https://zapdev.link/og-image.png',
+    image: data.image || `${SITE_URL}/og-image.png`,
     datePublished: data.datePublished || new Date().toISOString(),
     dateModified: data.dateModified || new Date().toISOString(),
     author: {
@@ -278,7 +316,7 @@ export function generateArticleStructuredData(data: {
       name: 'Zapdev',
       logo: {
         '@type': 'ImageObject',
-        url: 'https://zapdev.link/logo.png'
+        url: `${SITE_URL}/logo.png`
       }
     }
   };

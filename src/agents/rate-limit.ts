@@ -10,10 +10,47 @@ const INITIAL_BACKOFF_MS = 1_000;
 /**
  * Checks if an error is a rate limit error based on message patterns
  */
-export function isRateLimitError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+function collectErrors(
+  error: unknown,
+  depth = 0,
+  seen?: Set<unknown>
+): Array<Error> {
+  const visited = seen ?? new Set<unknown>();
+  if (error === null || error === undefined) return [];
+  if (visited.has(error)) return [];
+  visited.add(error);
 
-  const message = error.message.toLowerCase();
+  const collected: Array<Error> = [];
+  if (error instanceof Error) {
+    collected.push(error);
+  }
+
+  if (depth >= 4) {
+    return collected;
+  }
+
+  const errorObj = error as {
+    cause?: unknown;
+    errors?: unknown;
+    lastError?: unknown;
+  };
+
+  if (errorObj.cause) {
+    collected.push(...collectErrors(errorObj.cause, depth + 1, visited));
+  }
+  if (Array.isArray(errorObj.errors)) {
+    for (const entry of errorObj.errors) {
+      collected.push(...collectErrors(entry, depth + 1, visited));
+    }
+  }
+  if (errorObj.lastError) {
+    collected.push(...collectErrors(errorObj.lastError, depth + 1, visited));
+  }
+
+  return collected;
+}
+
+export function isRateLimitError(error: unknown): boolean {
   const rateLimitPatterns = [
     "rate limit",
     "rate_limit",
@@ -25,7 +62,23 @@ export function isRateLimitError(error: unknown): boolean {
     "limit exceeded",
   ];
 
-  return rateLimitPatterns.some(pattern => message.includes(pattern));
+  const candidates = new Set<string>();
+  for (const item of collectErrors(error)) {
+    if (item.message) {
+      candidates.add(item.message.toLowerCase());
+    }
+  }
+  candidates.add(String(error).toLowerCase());
+
+  for (const pattern of rateLimitPatterns) {
+    for (const candidate of candidates) {
+      if (candidate.includes(pattern)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

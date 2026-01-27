@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = generateSEOMetadata({
-  title: 'AI Development Solutions - Build Faster, Ship Sooner | Zapdev',
-  description: 'Explore our AI-powered development solutions. From code generation to rapid prototyping, find the perfect solution for your development needs.',
+  title: 'What AI development solutions are available? Code Generation & More | Zapdev',
+  description: 'AI development solutions: Code generation (10x faster), rapid prototyping (MVP in minutes), no-code development, and enterprise AI. Choose the solution that fits your needs.',
   keywords: [
     'AI development solutions',
     'code generation platform',
@@ -16,12 +16,14 @@ export const metadata: Metadata = generateSEOMetadata({
     'no-code development',
     'enterprise AI',
     'development automation',
-    'AI programming tools'
+    'AI programming tools',
+    'what is AI code generation',
+    'AI development tools'
   ],
   canonical: '/solutions',
   openGraph: {
-    title: 'Zapdev Solutions - AI-Powered Development for Everyone',
-    description: 'Discover how AI can transform your development workflow',
+    title: 'AI Development Solutions: What options are available?',
+    description: 'Explore AI code generation, rapid prototyping, no-code development, and enterprise AI solutions. Find the right solution for your project.',
     type: 'website'
   }
 });
@@ -56,11 +58,14 @@ export default function SolutionsPage() {
       <div className="container mx-auto px-4 py-16 max-w-7xl">
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">
-            AI Development Solutions
+            Which AI development solution fits your project?
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Transform your development process with our AI-powered solutions. 
-            Build faster, ship sooner, and scale with confidence.
+            Zapdev provides AI-powered solutions for code generation, rapid prototyping, and enterprise development.
+            Pick a solution based on your goal, then build faster and ship with confidence.
+          </p>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto mt-4">
+            Prefer to start with a framework? Browse <Link href="/frameworks" className="underline underline-offset-4">frameworks</Link> or get inspiration from the <Link href="/showcase" className="underline underline-offset-4">project showcase</Link>.
           </p>
         </div>
 

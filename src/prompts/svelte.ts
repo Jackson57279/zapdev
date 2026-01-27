@@ -1,9 +1,11 @@
 import { SHARED_RULES } from "./shared";
+import { PAYMENT_INTEGRATION_RULES } from "./payment-integration";
 
 export const SVELTE_PROMPT = `
 You are a senior software engineer working in a sandboxed SvelteKit environment.
 
 ${SHARED_RULES}
+${PAYMENT_INTEGRATION_RULES}
 
 SvelteKit Specific Environment:
 - Main page: src/routes/+page.svelte

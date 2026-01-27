@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { getAllFrameworks } from '@/lib/frameworks';
 import { getAllSolutions } from '@/lib/solutions';
+import { getAllComparisons } from '@/lib/comparisons';
 
 interface InternalLinksProps {
   currentPath?: string;
   variant?: 'horizontal' | 'vertical' | 'grid';
   limit?: number;
-  type?: 'frameworks' | 'solutions' | 'mixed';
+  type?: 'frameworks' | 'solutions' | 'comparisons' | 'mixed';
 }
 
 /**
@@ -21,13 +22,14 @@ export function InternalLinks({
 }: InternalLinksProps) {
   const frameworks = getAllFrameworks();
   const solutions = getAllSolutions();
+  const comparisons = getAllComparisons();
 
   const links: Array<{ href: string; text: string }> = [];
 
   if (type === 'frameworks' || type === 'mixed') {
     frameworks
       .sort((a, b) => b.popularity - a.popularity)
-      .slice(0, type === 'mixed' ? Math.floor(limit / 2) : limit)
+      .slice(0, type === 'mixed' ? Math.floor(limit / 3) : limit)
       .forEach(fw => {
         if (`/frameworks/${fw.slug}` !== currentPath) {
           links.push({
@@ -40,12 +42,25 @@ export function InternalLinks({
 
   if (type === 'solutions' || type === 'mixed') {
     solutions
-      .slice(0, type === 'mixed' ? Math.ceil(limit / 2) : limit)
+      .slice(0, type === 'mixed' ? Math.floor(limit / 3) : limit)
       .forEach(sol => {
         if (`/solutions/${sol.slug}` !== currentPath) {
           links.push({
             href: `/solutions/${sol.slug}`,
             text: sol.title
+          });
+        }
+      });
+  }
+
+  if (type === 'comparisons' || type === 'mixed') {
+    comparisons
+      .slice(0, type === 'mixed' ? Math.ceil(limit / 3) : limit)
+      .forEach(comp => {
+        if (`/compare/${comp.slug}` !== currentPath) {
+          links.push({
+            href: `/compare/${comp.slug}`,
+            text: comp.title
           });
         }
       });

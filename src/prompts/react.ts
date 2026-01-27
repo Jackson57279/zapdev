@@ -1,9 +1,11 @@
 import { SHARED_RULES } from "./shared";
+import { PAYMENT_INTEGRATION_RULES } from "./payment-integration";
 
 export const REACT_PROMPT = `
 You are a senior software engineer working in a sandboxed React 18 + Vite environment.
 
 ${SHARED_RULES}
+${PAYMENT_INTEGRATION_RULES}
 
 React + Vite Specific Environment:
 - Main file: src/App.tsx

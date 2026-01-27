@@ -4,7 +4,8 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-import { getClientForModel, isCerebrasModel } from "./client";
+import { getClientForModel, isCerebrasModel, isClaudeCodeModel, isClaudeCodeFeatureEnabled } from "./client";
+import { internal } from "@/convex/_generated/api";
 import { createAgentTools } from "./tools";
 import { createBraveTools } from "./brave-tools";
 import {
@@ -12,9 +13,11 @@ import {
   type AgentState,
   type AgentRunInput,
   type ModelId,
+  type DatabaseProvider,
   MODEL_CONFIGS,
   selectModelForTask,
   frameworkToConvexEnum,
+  databaseProviderToConvexEnum,
 } from "./types";
 import {
   createSandbox,
@@ -32,11 +35,14 @@ import {
   FRAGMENT_TITLE_PROMPT,
   RESPONSE_PROMPT,
   FRAMEWORK_SELECTOR_PROMPT,
+  DATABASE_SELECTOR_PROMPT,
   NEXTJS_PROMPT,
   ANGULAR_PROMPT,
   REACT_PROMPT,
   VUE_PROMPT,
   SVELTE_PROMPT,
+  getDatabaseIntegrationRules,
+  isValidDatabaseSelection,
 } from "@/prompt";
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
@@ -72,6 +78,7 @@ const convex = new Proxy({} as ConvexHttpClient, {
 const AUTO_FIX_MAX_ATTEMPTS = 1;
 const MAX_AGENT_ITERATIONS = 8;
 const FRAMEWORK_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
+const DATABASE_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
 
 type FragmentMetadata = Record<string, unknown>;
 
@@ -109,6 +116,22 @@ const extractSummaryText = (value: string): string => {
   }
 
   return "";
+};
+
+const normalizeDatabaseProvider = (value?: string): DatabaseProvider => {
+  if (!value) {
+    return "none";
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized === "drizzle_neon" || normalized === "drizzle-neon") {
+    return "drizzle-neon";
+  }
+  if (normalized === "convex") {
+    return "convex";
+  }
+
+  return "none";
 };
 
 const isModelNotFoundError = (error: unknown): boolean => {
@@ -186,6 +209,35 @@ async function detectFramework(prompt: string): Promise<Framework> {
       return "nextjs";
     },
     FRAMEWORK_CACHE_TTL_30_MINUTES
+  );
+}
+
+async function detectDatabaseProvider(prompt: string): Promise<DatabaseProvider> {
+  const cacheKey = `database:${prompt.slice(0, 200)}`;
+
+  return cache.getOrCompute(
+    cacheKey,
+    async () => {
+      const { text } = await withRateLimitRetry(
+        () => generateText({
+          model: getClientForModel("google/gemini-2.5-flash-lite").chat(
+            "google/gemini-2.5-flash-lite"
+          ),
+          system: DATABASE_SELECTOR_PROMPT,
+          prompt,
+          temperature: 0.3,
+        }),
+        { context: "detectDatabaseProvider" }
+      );
+
+      const detectedProvider = text.trim().toLowerCase();
+      if (isValidDatabaseSelection(detectedProvider)) {
+        return detectedProvider;
+      }
+
+      return "none";
+    },
+    DATABASE_CACHE_TTL_30_MINUTES
   );
 }
 
@@ -315,8 +367,12 @@ export async function* runCodeAgent(
 
     let selectedFramework: Framework =
       (project?.framework?.toLowerCase() as Framework) || "nextjs";
+    let selectedDatabase: DatabaseProvider = normalizeDatabaseProvider(
+      project?.databaseProvider
+    );
 
     const needsFrameworkDetection = !project?.framework;
+    const needsDatabaseDetection = !project?.databaseProvider;
 
     if (needsFrameworkDetection) {
       console.log("[INFO] Framework detection required");
@@ -324,17 +380,18 @@ export async function* runCodeAgent(
       console.log("[INFO] Using existing framework:", selectedFramework);
     }
 
+    if (needsDatabaseDetection) {
+      console.log("[INFO] Database provider detection required");
+    } else {
+      console.log("[INFO] Using existing database provider:", selectedDatabase);
+    }
+
     yield { type: "status", data: "Setting up environment..." };
 
-    console.log("[DEBUG] Creating sandbox...");
-    const [detectedFramework, sandbox] = await Promise.all([
-      needsFrameworkDetection ? detectFramework(value) : Promise.resolve(selectedFramework),
-      createSandbox(selectedFramework),
-    ]);
-
-    console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
-
+    let detectedFramework: Framework = selectedFramework;
     if (needsFrameworkDetection) {
+      console.log("[DEBUG] Detecting framework...");
+      detectedFramework = await detectFramework(value);
       selectedFramework = detectedFramework;
       console.log("[INFO] Detected framework:", selectedFramework);
 
@@ -348,6 +405,21 @@ export async function* runCodeAgent(
       } catch (error) {
         console.warn("[WARN] Failed to save framework to project:", error);
       }
+    }
+
+    console.log("[DEBUG] Creating sandbox with framework:", detectedFramework);
+    const [detectedDatabase, sandbox] = await Promise.all([
+      needsDatabaseDetection
+        ? detectDatabaseProvider(value)
+        : Promise.resolve(selectedDatabase),
+      createSandbox(detectedFramework),
+    ]);
+
+    console.log("[DEBUG] Sandbox created:", sandbox.sandboxId);
+
+    if (needsDatabaseDetection) {
+      selectedDatabase = detectedDatabase;
+      console.log("[INFO] Detected database provider:", selectedDatabase);
     }
 
     const sandboxId = sandbox.sandboxId;
@@ -365,15 +437,36 @@ export async function* runCodeAgent(
       validatedModel = "auto";
     }
 
+    const claudeCodeEnabled = isClaudeCodeFeatureEnabled();
     const selectedModel: keyof typeof MODEL_CONFIGS =
       validatedModel === "auto"
-        ? selectModelForTask(value, selectedFramework)
+        ? selectModelForTask(value, selectedFramework, claudeCodeEnabled)
         : (validatedModel as keyof typeof MODEL_CONFIGS);
+
+    let userAnthropicToken: string | undefined;
+    if (isClaudeCodeModel(selectedModel)) {
+      console.log("[INFO] Claude Code model selected, fetching user's Anthropic token...");
+      try {
+        const token = await convex.query(internal.oauth.getAnthropicAccessToken, {
+          userId: project.userId,
+        });
+        if (!token) {
+          console.error("[ERROR] User has no Anthropic OAuth connection");
+          throw new Error("Claude Code requires connecting your Anthropic account. Please connect in Settings > Connections.");
+        }
+        userAnthropicToken = token;
+        console.log("[INFO] User Anthropic token retrieved successfully");
+      } catch (error) {
+        console.error("[ERROR] Failed to fetch Anthropic token:", error);
+        throw new Error("Failed to authenticate with Claude Code. Please reconnect your Anthropic account.");
+      }
+    }
 
     console.log("[INFO] Selected model:", {
       model: selectedModel,
       name: MODEL_CONFIGS[selectedModel].name,
       provider: MODEL_CONFIGS[selectedModel].provider,
+      isClaudeCode: isClaudeCodeModel(selectedModel),
     });
 
     try {
@@ -498,6 +591,7 @@ export async function* runCodeAgent(
       summary: "",
       files: {},
       selectedFramework,
+      selectedDatabase,
       summaryRetryCount: 0,
     };
 
@@ -548,6 +642,13 @@ export async function* runCodeAgent(
     const tools = { ...baseTools, ...braveTools };
 
     const frameworkPrompt = getFrameworkPrompt(selectedFramework);
+    const databaseIntegrationRules =
+      selectedDatabase === "none"
+        ? ""
+        : getDatabaseIntegrationRules(selectedDatabase);
+    const systemPrompt = databaseIntegrationRules
+      ? `${frameworkPrompt}\n${databaseIntegrationRules}`
+      : frameworkPrompt;
     const modelConfig = MODEL_CONFIGS[selectedModel];
 
     timeoutManager.startStage("codeGeneration");
@@ -593,10 +694,15 @@ export async function* runCodeAgent(
     let useGatewayFallbackForStream = false;
     let retryCount = 0;
     const MAX_STREAM_RETRIES = 3;
+    let streamCompletedSuccessfully = false;
+    let lastStreamError: Error | null = null;
 
     while (retryCount < MAX_STREAM_RETRIES) {
       try {
-        const client = getClientForModel(selectedModel, { useGatewayFallback: useGatewayFallbackForStream });
+        const client = getClientForModel(selectedModel, { 
+          useGatewayFallback: useGatewayFallbackForStream,
+          userAnthropicToken,
+        });
         const result = streamText({
           model: client.chat(selectedModel),
           providerOptions: useGatewayFallbackForStream ? {
@@ -604,7 +710,7 @@ export async function* runCodeAgent(
               only: ['cerebras'],
             }
           } : undefined,
-          system: frameworkPrompt,
+          system: systemPrompt,
           messages,
           tools,
           stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
@@ -645,10 +751,15 @@ export async function* runCodeAgent(
           }
         }
 
+        streamCompletedSuccessfully = true;
         break;
       } catch (streamError) {
         retryCount++;
-        const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+        lastStreamError =
+          streamError instanceof Error
+            ? streamError
+            : new Error(String(streamError));
+        const errorMessage = lastStreamError.message;
         const isRateLimit = isRateLimitError(streamError);
         const isServer = isServerError(streamError);
         const isModelNotFound = isModelNotFoundError(streamError);
@@ -699,6 +810,10 @@ export async function* runCodeAgent(
       }
     }
 
+    if (!streamCompletedSuccessfully) {
+      throw lastStreamError || new Error("AI stream failed after retries");
+    }
+
     console.log("[INFO] AI generation complete:", {
       totalChunks: chunkCount,
       totalLength: fullText.length,
@@ -723,7 +838,10 @@ export async function* runCodeAgent(
 
       while (summaryRetries < MAX_SUMMARY_RETRIES) {
         try {
-          const client = getClientForModel(selectedModel, { useGatewayFallback: summaryUseGatewayFallback });
+          const client = getClientForModel(selectedModel, { 
+            useGatewayFallback: summaryUseGatewayFallback,
+            userAnthropicToken,
+          });
           followUpResult = await generateText({
             model: client.chat(selectedModel),
             providerOptions: summaryUseGatewayFallback ? {
@@ -731,7 +849,7 @@ export async function* runCodeAgent(
                 only: ['cerebras'],
               }
             } : undefined,
-            system: frameworkPrompt,
+            system: systemPrompt,
             messages: [
               ...messages,
               {
@@ -848,8 +966,8 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
       const fixResult = await withRateLimitRetry(
         () => generateText({
-          model: getClientForModel(selectedModel).chat(selectedModel),
-          system: frameworkPrompt,
+          model: getClientForModel(selectedModel, { userAnthropicToken }).chat(selectedModel),
+          system: systemPrompt,
           messages: [
             ...messages,
             { role: "assistant" as const, content: resultText },
@@ -1032,6 +1150,24 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       metadata: metadata,
     });
 
+    const databaseProviderEnum =
+      databaseProviderToConvexEnum(selectedDatabase);
+    if (project.databaseProvider !== databaseProviderEnum) {
+      try {
+        await convex.mutation(api.projects.updateForUser, {
+          userId: project.userId,
+          projectId: projectId as Id<"projects">,
+          databaseProvider: databaseProviderEnum,
+        });
+        console.log("[INFO] Database provider saved to project");
+      } catch (error) {
+        console.warn(
+          "[WARN] Failed to save database provider to project:",
+          error
+        );
+      }
+    }
+
     console.log("[INFO] Agent run completed successfully");
 
     yield {
@@ -1131,6 +1267,17 @@ export async function runErrorFix(fragmentId: string): Promise<{
     (fragmentMetadata.model as keyof typeof MODEL_CONFIGS) ||
     "anthropic/claude-haiku-4.5";
 
+  let userAnthropicToken: string | undefined;
+  if (isClaudeCodeModel(fragmentModel)) {
+    const token = await convex.query(internal.oauth.getAnthropicAccessToken, {
+      userId: project.userId,
+    });
+    if (!token) {
+      throw new Error("Claude Code requires connecting your Anthropic account. Please connect in Settings > Connections.");
+    }
+    userAnthropicToken = token;
+  }
+
   // Skip lint check for speed - only run build validation
   const buildErrors = await runBuildCheck(sandbox);
 
@@ -1176,7 +1323,7 @@ REQUIRED ACTIONS:
 
   const result = await withRateLimitRetry(
     () => generateText({
-      model: getClientForModel(fragmentModel).chat(fragmentModel),
+      model: getClientForModel(fragmentModel, { userAnthropicToken }).chat(fragmentModel),
       system: frameworkPrompt,
       messages: [{ role: "user", content: fixPrompt }],
       tools,

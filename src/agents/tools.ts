@@ -1,6 +1,15 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getSandbox, writeFilesBatch, readFileFast } from "./sandbox-utils";
+import {
+  autumnConfigTemplate,
+  getPaymentTemplate,
+  paymentEnvExample,
+} from "@/lib/payment-templates";
+import {
+  getDatabaseTemplate,
+  databaseEnvExamples,
+} from "@/lib/database-templates";
 import type { AgentState } from "./types";
 
 export interface ToolContext {
@@ -136,6 +145,43 @@ export function createAgentTools(context: ToolContext) {
           console.error("[ERROR] readFiles failed:", errorMessage);
           return `Error: ${errorMessage}`;
         }
+      },
+    }),
+    paymentTemplates: tool({
+      description:
+        "Get Stripe + Autumn payment integration templates for a framework",
+      inputSchema: z.object({
+        framework: z.enum(["nextjs", "react", "vue", "angular", "svelte"]),
+      }),
+      execute: async ({ framework }) => {
+        const template = getPaymentTemplate(framework);
+        return JSON.stringify({
+          ...template,
+          autumnConfigTemplate,
+          paymentEnvExample,
+        });
+      },
+    }),
+
+    databaseTemplates: tool({
+      description:
+        "Get database integration templates (Drizzle+Neon or Convex) with Better Auth for a framework",
+      inputSchema: z.object({
+        framework: z.enum(["nextjs", "react", "vue", "angular", "svelte"]),
+        provider: z.enum(["drizzle-neon", "convex"]),
+      }),
+      execute: async ({ framework, provider }) => {
+        const template = getDatabaseTemplate(provider, framework);
+        if (!template) {
+          return JSON.stringify({
+            error: `Database template not available for ${provider} + ${framework}. Currently only Next.js is supported.`,
+            supportedFrameworks: ["nextjs"],
+          });
+        }
+        return JSON.stringify({
+          ...template,
+          envExample: databaseEnvExamples[provider] || "",
+        });
       },
     }),
   };

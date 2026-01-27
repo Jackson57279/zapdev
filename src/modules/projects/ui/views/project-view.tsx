@@ -3,7 +3,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { EyeIcon, CodeIcon, CrownIcon } from "lucide-react";
+import { EyeIcon, CodeIcon, CrownIcon, RocketIcon } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -18,6 +18,7 @@ import {
 
 import { ProjectHeader } from "../components/project-header";
 import { MessagesContainer } from "../components/messages-container";
+import { DeploymentDashboard } from "../components/deployment-dashboard";
 import { ErrorBoundary } from "react-error-boundary";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
@@ -42,7 +43,7 @@ export const ProjectView = ({ projectId }: Props) => {
   const hasProAccess = usage?.planType === "pro";
 
   const [activeFragment, setActiveFragment] = useState<Doc<"fragments"> | null>(null);
-  const [tabState, setTabState] = useState<"preview" | "code">("preview");
+  const [tabState, setTabState] = useState<"preview" | "code" | "deploy">("preview");
   const [streamingFiles, setStreamingFiles] = useState<Record<string, string>>({});
 
   const explorerFiles = useMemo(() => {
@@ -119,7 +120,7 @@ export const ProjectView = ({ projectId }: Props) => {
             className="h-full gap-y-0"
             defaultValue="preview"
             value={tabState}
-            onValueChange={(value) => setTabState(value as "preview" | "code")}
+            onValueChange={(value) => setTabState(value as "preview" | "code" | "deploy")}
           >
             <div className="w-full flex items-center p-2 border-b gap-x-2">
               <TabsList className="h-8 p-0 border rounded-md">
@@ -128,6 +129,9 @@ export const ProjectView = ({ projectId }: Props) => {
                 </TabsTrigger>
                 <TabsTrigger value="code" className="rounded-md">
                   <CodeIcon /> <span>Code</span>
+                </TabsTrigger>
+                <TabsTrigger value="deploy" className="rounded-md">
+                  <RocketIcon /> <span>Deploy</span>
                 </TabsTrigger>
               </TabsList>
               <div className="ml-auto flex items-center gap-x-2">
@@ -148,6 +152,9 @@ export const ProjectView = ({ projectId }: Props) => {
               {activeFragment && (
                 <FileExplorer files={explorerFiles} />
               )}
+            </TabsContent>
+            <TabsContent value="deploy" className="min-h-0 p-4">
+              <DeploymentDashboard projectId={projectId} />
             </TabsContent>
           </Tabs>
         </ResizablePanel>
