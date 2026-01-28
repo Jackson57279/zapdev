@@ -62,6 +62,32 @@ export function isServerError(error: unknown): boolean {
 }
 
 /**
+ * Checks if an error is an invalid request error (400) from API providers.
+ * This includes Novita and OpenRouter invalid request errors.
+ */
+export function isInvalidRequestError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const message = error.message.toLowerCase();
+  const errorString = String(error).toLowerCase();
+  
+  const invalidRequestPatterns = [
+    "invalid_request_error",
+    "invalid request error",
+    "bad request",
+    "statuscode: 400",
+    "status_code\":400",
+    "status_code\": 400",
+    "\"code\":400",
+    "400",
+  ];
+
+  return invalidRequestPatterns.some(pattern => 
+    message.includes(pattern) || errorString.includes(pattern)
+  );
+}
+
+/**
  * Checks if an error is retryable (either rate limit or server error)
  */
 export function isRetryableError(error: unknown): boolean {

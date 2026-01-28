@@ -41,7 +41,7 @@ import {
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { cache } from "@/lib/cache";
-import { withRateLimitRetry, isRateLimitError, isRetryableError, isServerError } from "./rate-limit";
+import { withRateLimitRetry, isRateLimitError, isRetryableError, isServerError, isInvalidRequestError } from "./rate-limit";
 import { TimeoutManager, estimateComplexity } from "./timeout-manager";
 import { 
   detectResearchNeed, 
@@ -591,6 +591,7 @@ export async function* runCodeAgent(
     let fullText = "";
     let chunkCount = 0;
     let useGatewayFallbackForStream = false;
+    let skipProviderOptions = false;
     let retryCount = 0;
     const MAX_STREAM_RETRIES = 3;
 
@@ -600,12 +601,8 @@ export async function* runCodeAgent(
         
         const providerOptions: Record<string, Record<string, unknown>> = {};
         
-        if (useGatewayFallbackForStream) {
+        if (!skipProviderOptions && useGatewayFallbackForStream) {
           providerOptions.gateway = { only: ['cerebras'] };
-        }
-        
-        if (selectedModel.startsWith('moonshotai/')) {
-          providerOptions.openai = { parallelToolCalls: false };
         }
         
         const result = streamText({
@@ -653,19 +650,26 @@ export async function* runCodeAgent(
         }
 
         break;
-      } catch (streamError) {
-        retryCount++;
-        const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
-        const isRateLimit = isRateLimitError(streamError);
-        const isServer = isServerError(streamError);
-        const isModelNotFound = isModelNotFoundError(streamError);
-        const canRetry = isRateLimit || isServer;
+       } catch (streamError) {
+         retryCount++;
+         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+         const isRateLimit = isRateLimitError(streamError);
+         const isServer = isServerError(streamError);
+         const isModelNotFound = isModelNotFoundError(streamError);
+         const isInvalidRequest = isInvalidRequestError(streamError);
+         const canRetry = isRateLimit || isServer || isInvalidRequest;
 
-        if (useGatewayFallbackForStream && isModelNotFound) {
-          console.log(`[GATEWAY-FALLBACK] Model not found in gateway for ${selectedModel}. Switching to direct Cerebras API...`);
-          useGatewayFallbackForStream = false;
-          continue;
-        }
+         if (isInvalidRequest && retryCount === 1) {
+           console.log(`[INVALID-REQUEST] Stream: 400 error on attempt ${retryCount}/${MAX_STREAM_RETRIES}. Retrying without provider options...`);
+           skipProviderOptions = true;
+           continue;
+         }
+
+         if (useGatewayFallbackForStream && isModelNotFound) {
+           console.log(`[GATEWAY-FALLBACK] Model not found in gateway for ${selectedModel}. Switching to direct Cerebras API...`);
+           useGatewayFallbackForStream = false;
+           continue;
+         }
 
         if (
           !useGatewayFallbackForStream &&
@@ -736,10 +740,6 @@ export async function* runCodeAgent(
           
           if (summaryUseGatewayFallback) {
             providerOptions.gateway = { only: ['cerebras'] };
-          }
-          
-          if (selectedModel.startsWith('moonshotai/')) {
-            providerOptions.openai = { parallelToolCalls: false };
           }
           
           followUpResult = await generateText({
@@ -863,9 +863,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       const fixResult = await withRateLimitRetry(
         () => generateText({
           model: getClientForModel(selectedModel).chat(selectedModel),
-          providerOptions: selectedModel.startsWith('moonshotai/') ? ({
-            openai: { parallelToolCalls: false }
-          } as any) : undefined,
+          providerOptions: undefined,
           system: frameworkPrompt,
           messages: [
             ...messages,
@@ -1194,9 +1192,7 @@ REQUIRED ACTIONS:
   const result = await withRateLimitRetry(
     () => generateText({
       model: getClientForModel(fragmentModel).chat(fragmentModel),
-      providerOptions: fragmentModel.startsWith('moonshotai/') ? ({
-        openai: { parallelToolCalls: false }
-      } as any) : undefined,
+      providerOptions: undefined,
       system: frameworkPrompt,
       messages: [{ role: "user", content: fixPrompt }],
       tools,

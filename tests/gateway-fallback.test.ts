@@ -1,5 +1,5 @@
 import { getModel, getClientForModel, isCerebrasModel } from '../src/agents/client';
-import { withGatewayFallbackGenerator } from '../src/agents/rate-limit';
+import { withGatewayFallbackGenerator, isInvalidRequestError } from '../src/agents/rate-limit';
 
 describe('Vercel AI Gateway Fallback', () => {
   describe('Client Functions', () => {
@@ -134,6 +134,60 @@ describe('Vercel AI Gateway Fallback', () => {
     it('provider options should be set correctly in code-agent implementation', () => {
       const client = getClientForModel('zai-glm-4.7', { useGatewayFallback: true });
       expect(client).toBeDefined();
+    });
+  });
+
+  describe('Invalid Request Error Detection', () => {
+    it('returns true for error with "invalid_request_error" message', () => {
+      const error = new Error('invalid_request_error trace_id: 5fb768847b9559b1797c9538039d2c24');
+      expect(isInvalidRequestError(error)).toBe(true);
+    });
+
+    it('returns true for error with "invalid request error" message', () => {
+      const error = new Error('invalid request error from API');
+      expect(isInvalidRequestError(error)).toBe(true);
+    });
+
+    it('returns true for error with "400" or "bad request" message', () => {
+      const error400 = new Error('HTTP 400 Bad Request');
+      const errorBadRequest = new Error('bad request error');
+      expect(isInvalidRequestError(error400)).toBe(true);
+      expect(isInvalidRequestError(errorBadRequest)).toBe(true);
+    });
+
+    it('returns false for rate limit errors (429)', () => {
+      const error = new Error('rate limit exceeded 429');
+      expect(isInvalidRequestError(error)).toBe(false);
+    });
+
+    it('returns false for server errors (500)', () => {
+      const error = new Error('server error 500');
+      expect(isInvalidRequestError(error)).toBe(false);
+    });
+
+    it('returns false for non-Error inputs', () => {
+      expect(isInvalidRequestError(null)).toBe(false);
+      expect(isInvalidRequestError(undefined)).toBe(false);
+      expect(isInvalidRequestError('string error')).toBe(false);
+      expect(isInvalidRequestError({ message: 'invalid_request_error' })).toBe(false);
+    });
+  });
+
+  describe('Moonshot Provider Options', () => {
+    it('correctly identifies moonshot model IDs by startsWith("moonshotai/")', () => {
+      const moonshotModel = 'moonshotai/kimi-k2.5';
+      const nonMoonshotModel = 'anthropic/claude-haiku-4.5';
+      
+      expect(moonshotModel.startsWith('moonshotai/')).toBe(true);
+      expect(nonMoonshotModel.startsWith('moonshotai/')).toBe(false);
+    });
+
+    it('matches both moonshotai/kimi-k2.5 and moonshotai/kimi-k2-0905', () => {
+      const kimi25 = 'moonshotai/kimi-k2.5';
+      const kimi0905 = 'moonshotai/kimi-k2-0905';
+      
+      expect(kimi25.startsWith('moonshotai/')).toBe(true);
+      expect(kimi0905.startsWith('moonshotai/')).toBe(true);
     });
   });
 });

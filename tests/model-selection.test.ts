@@ -47,4 +47,10 @@ describe('Model Selection Logic', () => {
 
     expect(result).toBe(defaultModel);
   });
+
+  it('moonshot config has correct provider field', () => {
+    const moonshotConfig = MODEL_CONFIGS['moonshotai/kimi-k2.5'];
+    expect(moonshotConfig).toBeDefined();
+    expect(moonshotConfig.provider).toBe('moonshot');
+  });
 });
