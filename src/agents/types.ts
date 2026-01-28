@@ -1,12 +1,20 @@
 export const SANDBOX_TIMEOUT = 60_000 * 60;
 
 export type Framework = "nextjs" | "angular" | "react" | "vue" | "svelte";
+export type DatabaseProvider = "none" | "drizzle-neon" | "convex";
 
 export interface AgentState {
   summary: string;
   files: Record<string, string>;
   selectedFramework?: Framework;
+  selectedDatabase?: DatabaseProvider;
   summaryRetryCount: number;
+}
+
+export interface ClaudeCodeOptions {
+  timeout?: number;
+  maxMessages?: number;
+  enableExtendedThinking?: boolean;
 }
 
 export interface AgentRunInput {
@@ -14,6 +22,8 @@ export interface AgentRunInput {
   value: string;
   model?: ModelId;
   userId?: string;
+  provider?: AgentProvider;
+  claudeCodeOptions?: ClaudeCodeOptions;
 }
 
 export interface AgentRunResult {
@@ -23,7 +33,10 @@ export interface AgentRunResult {
   summary: string;
   sandboxId: string;
   framework: Framework;
+  databaseProvider?: DatabaseProvider;
 }
+
+export type AgentProvider = "api" | "claude-code";
 
 export const MODEL_CONFIGS = {
   "anthropic/claude-haiku-4.5": {
@@ -35,6 +48,7 @@ export const MODEL_CONFIGS = {
     frequencyPenalty: 0.5,
     supportsSubagents: false,
     isSpeedOptimized: false,
+    isClaudeCode: false,
     maxTokens: undefined,
   },
   "openai/gpt-5.1-codex": {
@@ -46,6 +60,7 @@ export const MODEL_CONFIGS = {
     frequencyPenalty: 0.5,
     supportsSubagents: false,
     isSpeedOptimized: false,
+    isClaudeCode: false,
     maxTokens: undefined,
   },
   "zai-glm-4.7": {
@@ -56,6 +71,7 @@ export const MODEL_CONFIGS = {
     supportsFrequencyPenalty: false,
     supportsSubagents: true,
     isSpeedOptimized: true,
+    isClaudeCode: false,
     maxTokens: 4096,
   },
   "moonshotai/kimi-k2-0905": {
@@ -67,6 +83,7 @@ export const MODEL_CONFIGS = {
     frequencyPenalty: 0.5,
     supportsSubagents: false,
     isSpeedOptimized: false,
+    isClaudeCode: false,
     maxTokens: undefined,
   },
   "moonshotai/kimi-k2.5": {
@@ -89,6 +106,7 @@ export const MODEL_CONFIGS = {
     supportsFrequencyPenalty: false,
     supportsSubagents: false,
     isSpeedOptimized: false,
+    isClaudeCode: false,
     maxTokens: undefined,
   },
   "morph/morph-v3-large": {
@@ -99,8 +117,42 @@ export const MODEL_CONFIGS = {
     supportsFrequencyPenalty: false,
     supportsSubagents: false,
     isSpeedOptimized: true,
+    isClaudeCode: false,
     maxTokens: 2048,
     isSubagentOnly: true,
+  },
+  "claude-code": {
+    name: "Claude Code (Sonnet 4)",
+    provider: "anthropic",
+    description: "Native Claude Code with integrated tool use - best for complex code generation",
+    temperature: 0.7,
+    supportsFrequencyPenalty: false,
+    supportsSubagents: true,
+    isSpeedOptimized: false,
+    isClaudeCode: true,
+    maxTokens: 8192,
+  },
+  "claude-code-sonnet": {
+    name: "Claude Code Sonnet",
+    provider: "anthropic",
+    description: "Claude Sonnet 4 with Claude Code mode - balanced performance and quality",
+    temperature: 0.7,
+    supportsFrequencyPenalty: false,
+    supportsSubagents: true,
+    isSpeedOptimized: false,
+    isClaudeCode: true,
+    maxTokens: 8192,
+  },
+  "claude-code-opus": {
+    name: "Claude Code Opus",
+    provider: "anthropic",
+    description: "Claude Opus 4 with Claude Code mode - maximum quality for complex tasks",
+    temperature: 0.7,
+    supportsFrequencyPenalty: false,
+    supportsSubagents: true,
+    isSpeedOptimized: false,
+    isClaudeCode: true,
+    maxTokens: 16384,
   },
 } as const;
 
@@ -108,7 +160,8 @@ export type ModelId = keyof typeof MODEL_CONFIGS | "auto";
 
 export function selectModelForTask(
   prompt: string,
-  framework?: Framework
+  framework?: Framework,
+  claudeCodeEnabled?: boolean
 ): keyof typeof MODEL_CONFIGS {
   const promptLength = prompt.length;
   const lowercasePrompt = prompt.toLowerCase();
@@ -126,7 +179,18 @@ export function selectModelForTask(
     "large-scale migration",
   ];
 
+  const claudeCodeTriggerPatterns = [
+    "claude code",
+    "claude-code",
+    "use claude",
+    "with claude",
+  ];
+
   const requiresEnterpriseModel = enterpriseComplexityPatterns.some((pattern) =>
+    lowercasePrompt.includes(pattern)
+  );
+
+  const userExplicitlyRequestsClaudeCode = claudeCodeTriggerPatterns.some((pattern) =>
     lowercasePrompt.includes(pattern)
   );
 
@@ -134,6 +198,18 @@ export function selectModelForTask(
   const userExplicitlyRequestsGPT = lowercasePrompt.includes("gpt-5") || lowercasePrompt.includes("gpt5");
   const userExplicitlyRequestsGemini = lowercasePrompt.includes("gemini");
   const userExplicitlyRequestsKimi = lowercasePrompt.includes("kimi");
+  const userExplicitlyRequestsOpus = lowercasePrompt.includes("opus");
+
+  if (userExplicitlyRequestsClaudeCode && claudeCodeEnabled) {
+    if (userExplicitlyRequestsOpus) {
+      return "claude-code-opus";
+    }
+    return "claude-code";
+  }
+
+  if ((requiresEnterpriseModel || isVeryLongPrompt) && claudeCodeEnabled) {
+    return "claude-code";
+  }
 
   if (requiresEnterpriseModel || isVeryLongPrompt) {
     return "anthropic/claude-haiku-4.5";
@@ -168,4 +244,15 @@ export function frameworkToConvexEnum(
     svelte: "SVELTE",
   };
   return mapping[framework];
+}
+
+export function databaseProviderToConvexEnum(
+  provider: DatabaseProvider
+): "NONE" | "DRIZZLE_NEON" | "CONVEX" {
+  const mapping: Record<DatabaseProvider, "NONE" | "DRIZZLE_NEON" | "CONVEX"> = {
+    none: "NONE",
+    "drizzle-neon": "DRIZZLE_NEON",
+    convex: "CONVEX",
+  };
+  return mapping[provider];
 }

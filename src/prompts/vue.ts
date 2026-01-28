@@ -1,9 +1,11 @@
 import { SHARED_RULES } from "./shared";
+import { PAYMENT_INTEGRATION_RULES } from "./payment-integration";
 
 export const VUE_PROMPT = `
 You are a senior software engineer working in a sandboxed Vue 3 + Vite environment.
 
 ${SHARED_RULES}
+${PAYMENT_INTEGRATION_RULES}
 
 Vue + Vite Specific Environment:
 - Main component: src/App.vue

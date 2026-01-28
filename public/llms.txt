@@ -1,0 +1,25 @@
+# Zapdev
+
+Zapdev is an AI-powered development platform for building production-ready web apps.
+It generates code for React, Vue, Angular, Svelte, and Next.js, with instant preview and deployment.
+
+## What Zapdev does
+- AI code generation and rapid prototyping
+- Multi-framework support for modern web apps
+- Production-ready output with fast deployment
+- Project showcase of real apps built with Zapdev
+
+## Key pages
+- https://zapdev.link/
+- https://zapdev.link/frameworks
+- https://zapdev.link/solutions
+- https://zapdev.link/showcase
+- https://zapdev.link/blog
+- https://zapdev.link/home/pricing
+- https://zapdev.link/import
+- https://zapdev.link/privacy
+- https://zapdev.link/terms
+
+## Feeds and sitemaps
+- https://zapdev.link/sitemap.xml
+- https://zapdev.link/rss.xml

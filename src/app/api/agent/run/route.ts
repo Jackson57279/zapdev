@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCodeAgent, type StreamEvent } from "@/agents/code-agent";
+import { subscribe } from "@inngest/realtime";
+import { inngest, agentChannel } from "@/inngest/client";
+import type { StreamEvent } from "@/agents/code-agent";
 
 const encoder = new TextEncoder();
 
 function formatSSE(event: StreamEvent): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function generateRunId(): string {
+  return `run_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -30,23 +36,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const stream = new TransformStream<StreamEvent, Uint8Array>({
-      transform(event, controller) {
-        controller.enqueue(formatSSE(event));
-      },
-    });
+    const runId = generateRunId();
 
+    const stream = new TransformStream<Uint8Array, Uint8Array>();
     const writer = stream.writable.getWriter();
 
     (async () => {
+      let subscriptionStream: Awaited<ReturnType<typeof subscribe>> | null = null;
+
       try {
-        for await (const event of runCodeAgent({
-          projectId,
-          value,
-          model: model || "auto",
-        })) {
-          await writer.write(event);
-        }
+        await inngest.send({
+          name: "code-agent/run.requested",
+          data: {
+            runId,
+            projectId,
+            value,
+            model: model || "auto",
+          },
+        });
+
+        console.log("[Agent Run] Triggered Inngest event:", { runId, projectId });
+
+        subscriptionStream = await subscribe(
+          {
+            app: inngest,
+            channel: agentChannel(runId),
+            topics: ["event"],
+          },
+          async (message) => {
+            const event = message.data as StreamEvent;
+            await writer.write(formatSSE(event));
+
+            if (event.type === "complete" || event.type === "error") {
+              await subscriptionStream?.cancel();
+            }
+          }
+        );
+
+        await subscriptionStream;
       } catch (error) {
         console.error("[Agent Run] Error during execution:", error);
         const errorEvent: StreamEvent = {
@@ -56,8 +83,9 @@ export async function POST(request: NextRequest) {
               ? error.message
               : "An unexpected error occurred",
         };
-        await writer.write(errorEvent);
+        await writer.write(formatSSE(errorEvent));
       } finally {
+        await subscriptionStream?.cancel();
         await writer.close();
       }
     })();

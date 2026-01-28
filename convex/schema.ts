@@ -9,6 +9,12 @@ export const frameworkEnum = v.union(
   v.literal("SVELTE")
 );
 
+export const databaseProviderEnum = v.union(
+  v.literal("NONE"),
+  v.literal("DRIZZLE_NEON"),
+  v.literal("CONVEX")
+);
+
 export const messageRoleEnum = v.union(
   v.literal("USER"),
   v.literal("ASSISTANT")
@@ -39,7 +45,9 @@ export const importSourceEnum = v.union(
 
 export const oauthProviderEnum = v.union(
   v.literal("figma"),
-  v.literal("github")
+  v.literal("github"),
+  v.literal("netlify"),
+  v.literal("anthropic")
 );
 
 export const importStatusEnum = v.union(
@@ -47,6 +55,13 @@ export const importStatusEnum = v.union(
   v.literal("PROCESSING"),
   v.literal("COMPLETE"),
   v.literal("FAILED")
+);
+
+export const githubExportStatusEnum = v.union(
+  v.literal("pending"),
+  v.literal("processing"),
+  v.literal("complete"),
+  v.literal("failed")
 );
 
 export const sandboxStateEnum = v.union(
@@ -75,6 +90,18 @@ export const subscriptionIntervalEnum = v.union(
   v.literal("yearly")
 );
 
+export const skillSourceEnum = v.union(
+  v.literal("github"),
+  v.literal("prebuiltui"),
+  v.literal("custom")
+);
+
+export const skillStatusEnum = v.union(
+  v.literal("active"),
+  v.literal("disabled"),
+  v.literal("draft")
+);
+
 const polarCustomers = defineTable({
   userId: v.string(),
   polarCustomerId: v.string(),
@@ -88,6 +115,7 @@ export default defineSchema({
     name: v.string(),
     userId: v.string(),
     framework: frameworkEnum,
+    databaseProvider: v.optional(databaseProviderEnum),
     modelPreference: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
@@ -159,6 +187,35 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_provider", ["userId", "provider"]),
 
+  deployments: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    platform: v.literal("netlify"),
+    siteId: v.string(),
+    siteUrl: v.string(),
+    deployId: v.optional(v.string()),
+    deployNumber: v.optional(v.number()),
+    commitRef: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    isPreview: v.optional(v.boolean()),
+    buildLog: v.optional(v.string()),
+    buildTime: v.optional(v.number()),
+    previousDeployId: v.optional(v.id("deployments")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("building"),
+      v.literal("ready"),
+      v.literal("error")
+    ),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_deployNumber", ["projectId", "deployNumber"])
+    .index("by_userId", ["userId"])
+    .index("by_siteId", ["siteId"]),
+
   imports: defineTable({
     userId: v.string(),
     projectId: v.id("projects"),
@@ -175,6 +232,24 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_projectId", ["projectId"])
+    .index("by_status", ["status"]),
+
+  githubExports: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    repositoryName: v.string(),
+    repositoryUrl: v.string(),
+    repositoryFullName: v.string(),
+    branch: v.optional(v.string()),
+    commitSha: v.optional(v.string()),
+    status: githubExportStatusEnum,
+    error: v.optional(v.string()),
+    fileCount: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_userId", ["userId"])
     .index("by_status", ["status"]),
 
   usage: defineTable({
@@ -266,4 +341,50 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_state", ["state"])
     .index("by_sandboxId", ["sandboxId"]),
+
+  projectDeploymentCounters: defineTable({
+    projectId: v.id("projects"),
+    deployNumber: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"]),
+
+  skills: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    description: v.string(),
+    content: v.string(),
+    source: skillSourceEnum,
+    sourceRepo: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    category: v.optional(v.string()),
+    framework: v.optional(frameworkEnum),
+    isGlobal: v.boolean(),
+    isCore: v.boolean(),
+    userId: v.optional(v.string()),
+    version: v.optional(v.string()),
+    tokenCount: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_source", ["source"])
+    .index("by_userId", ["userId"])
+    .index("by_isGlobal", ["isGlobal"])
+    .index("by_isCore", ["isCore"])
+    .index("by_category", ["category"])
+    .index("by_name", ["name"]),
+
+  skillInstallations: defineTable({
+    skillId: v.id("skills"),
+    projectId: v.optional(v.id("projects")),
+    userId: v.string(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_projectId", ["projectId"])
+    .index("by_skillId_userId", ["skillId", "userId"]),
 });

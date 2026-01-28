@@ -41,6 +41,22 @@ const nextConfig = {
           },
         ]
       },
+      // WebContainer COOP/COEP headers — scoped to preview routes only.
+      // Required for SharedArrayBuffer. Do NOT apply globally (breaks Clerk auth popups).
+      // @see https://webcontainers.io/guides/configuring-headers
+      {
+        source: '/preview/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'require-corp'
+          },
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin'
+          },
+        ]
+      },
       {
         source: '/:path*',
         headers: [

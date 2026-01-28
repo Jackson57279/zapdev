@@ -21,7 +21,7 @@ export interface FrameworkData {
   keywords: string[];
 }
 
-export const frameworks: Record<string, FrameworkData> = {
+export const frameworks = {
   react: {
     slug: 'react',
     name: 'React',
@@ -342,7 +342,7 @@ export const frameworks: Record<string, FrameworkData> = {
       'production React'
     ]
   }
-};
+} satisfies Record<string, FrameworkData>;
 
 export const getFramework = memoize(
   (slug: string): FrameworkData | undefined => {

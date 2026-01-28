@@ -100,10 +100,14 @@ export default async function ShowcasePage() {
       <div className="container mx-auto px-4 py-16 max-w-7xl">
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">
-            Project Showcase
+            What can you build with Zapdev?
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8">
-            Explore amazing applications built by our community using Zapdev&apos;s AI-powered development platform
+            This showcase is a gallery of real applications built with Zapdev across React, Vue, Angular, Svelte, and Next.js.
+            Use it to find inspiration, validate ideas, and start building faster with AI.
+          </p>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto mb-8">
+            Ready to build? Explore <Link href="/solutions" className="underline underline-offset-4">solutions</Link> or pick a stack in <Link href="/frameworks" className="underline underline-offset-4">frameworks</Link>.
           </p>
           
           <div className="flex justify-center gap-8 mb-8">
@@ -207,7 +211,7 @@ export default async function ShowcasePage() {
 
         <section className="bg-muted/50 rounded-lg p-8 mb-16">
           <h2 className="text-3xl font-bold mb-6 text-center">
-            Why Developers Love Building with Zapdev
+            Why do developers love building with Zapdev?
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
             <div className="text-center">

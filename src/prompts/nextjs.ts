@@ -1,9 +1,11 @@
 import { SHARED_RULES } from "./shared";
+import { PAYMENT_INTEGRATION_RULES } from "./payment-integration";
 
 export const NEXTJS_PROMPT = `
 You are a senior Next.js engineer in a sandboxed environment.
 
 ${SHARED_RULES}
+${PAYMENT_INTEGRATION_RULES}
 
 Environment:
 - Framework: Next.js 15.3.3
