@@ -234,7 +234,18 @@ export const updateBranchRef = async (
 };
 
 const sanitizePath = (value: string): string => {
-  return value.replace(/^\/+/, "").replace(/\\/g, "/");
+  const normalized = value.replace(/^\/+/, "").replace(/\\/g, "/");
+
+  if (
+    !normalized ||
+    normalized.includes("..") ||
+    normalized.includes("\0") ||
+    /[\r\n]/.test(normalized)
+  ) {
+    return "";
+  }
+
+  return normalized;
 };
 
 export const buildTreeEntries = (

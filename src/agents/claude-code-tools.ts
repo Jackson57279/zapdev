@@ -197,15 +197,26 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
           const sandbox = await getSandbox(sandboxId);
           const results: Array<{ path: string; content: string | null; error?: string }> = [];
 
-          for (const path of paths) {
+          for (const inputPath of paths) {
+            const validatedPath = validateAndSanitizePath(inputPath);
+
+            if (!validatedPath) {
+              results.push({
+                path: inputPath,
+                content: null,
+                error: "Invalid file path",
+              });
+              continue;
+            }
+
             try {
-              const content = await readFileFast(sandbox, path);
-              results.push({ path, content });
+              const content = await readFileFast(sandbox, validatedPath);
+              results.push({ path: inputPath, content });
             } catch (e) {
-              results.push({ 
-                path, 
-                content: null, 
-                error: e instanceof Error ? e.message : String(e) 
+              results.push({
+                path: inputPath,
+                content: null,
+                error: e instanceof Error ? e.message : String(e),
               });
             }
           }

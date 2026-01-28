@@ -105,10 +105,14 @@ export async function GET(request: Request) {
       .update(decodedState.payload)
       .digest("hex");
 
-    if (!crypto.timingSafeEqual(
-      Buffer.from(decodedState.signature),
-      Buffer.from(expectedSignature)
-    )) {
+    const providedSigBuffer = Buffer.from(decodedState.signature);
+    const expectedSigBuffer = Buffer.from(expectedSignature);
+
+    if (providedSigBuffer.length !== expectedSigBuffer.length) {
+      throw new Error("State token signature mismatch");
+    }
+
+    if (!crypto.timingSafeEqual(providedSigBuffer, expectedSigBuffer)) {
       throw new Error("State token signature mismatch");
     }
 

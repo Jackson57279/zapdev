@@ -84,9 +84,11 @@ const getLatestFragmentFiles = async (projectId: Id<"projects">, token?: string)
 };
 
 const getNetlifyAccessToken = async (token?: string): Promise<string> => {
-  const connection = await fetchQuery(api.oauth.getConnection, {
-    provider: "netlify",
-  }, { token }) as NetlifyConnection | null;
+  const connection = await fetchQuery(
+    api.oauth.getConnection,
+    { provider: "netlify" },
+    { token },
+  ) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found. Please connect your Netlify account.");
@@ -162,6 +164,15 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Deployment failed";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
+    if (message.includes("No AI-generated files are ready to deploy")) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

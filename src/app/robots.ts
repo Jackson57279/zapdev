@@ -3,56 +3,66 @@ import { MetadataRoute } from 'next';
 export default function robots(): MetadataRoute.Robots {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://zapdev.link';
 
+  const disallowPaths = [
+    '/api/',
+    '/projects/',
+    '/_next/',
+    '/admin/',
+    '/.well-known/',
+    '*.json',
+    '/monitoring',
+  ];
+
   const aiCrawlerRules = [
     {
       userAgent: 'GPTBot',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'ChatGPT-User',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'ClaudeBot',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'anthropic-ai',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'Google-Extended',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'CCBot',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'PerplexityBot',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'Applebot-Extended',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'BingBot',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
     {
       userAgent: 'FacebookBot',
       allow: ['/'],
-      disallow: ['/api/', '/projects/'],
+      disallow: disallowPaths,
     },
   ];
 
@@ -61,15 +71,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: [
-          '/api/',
-          '/projects/',
-          '/_next/',
-          '/admin/',
-          '/.well-known/',
-          '*.json',
-          '/monitoring',
-        ],
+        disallow: disallowPaths,
       },
       ...aiCrawlerRules,
     ],

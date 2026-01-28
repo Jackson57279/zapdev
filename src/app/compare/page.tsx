@@ -127,10 +127,11 @@ export default function ComparePage() {
           <p className="text-xl text-muted-foreground mb-6 max-w-2xl mx-auto">
             Experience why ZapDev ranks #1 in comprehensive comparisons. Start building for free today.
           </p>
-          <Link href="/">
-            <button className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-              Get Started Free
-            </button>
+          <Link
+            href="/"
+            className="inline-flex px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Get Started Free
           </Link>
         </section>
       </div>

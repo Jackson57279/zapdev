@@ -301,16 +301,29 @@ export class BillingService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customerId, featureId }),
     });
+
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      const message = data?.error || "Feature check failed";
+      throw new Error(message);
+    }
+
     const data = (await response.json()) as { allowed?: boolean };
     return data.allowed === true;
   }
 
   async trackUsage(customerId: string, meterId: string, quantity: number): Promise<void> {
-    await fetch("/api/billing/usage", {
+    const response = await fetch("/api/billing/usage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customerId, meterId, quantity }),
     });
+
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      const message = data?.error || "Usage tracking failed";
+      throw new Error(message);
+    }
   }
 }
 `,

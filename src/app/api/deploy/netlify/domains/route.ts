@@ -15,9 +15,11 @@ type DomainPayload = {
 
 const getNetlifyAccessToken = async (): Promise<string> => {
   const token = await getToken();
-  const connection = await fetchQuery(api.oauth.getConnection, {
-    provider: "netlify",
-  }, { token: token ?? undefined }) as NetlifyConnection | null;
+  const connection = await fetchQuery(
+    api.oauth.getConnection,
+    { provider: "netlify" },
+    { token: token ?? undefined },
+  ) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found.");
@@ -50,6 +52,11 @@ export async function GET(request: Request) {
     return NextResponse.json(domains);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch domains";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -61,7 +68,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as DomainPayload;
+    const parsedBody = await request.json();
+    if (!parsedBody || typeof parsedBody !== "object") {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const body = parsedBody as DomainPayload;
     if (!body.siteId || !body.domain) {
       return NextResponse.json({ error: "Missing siteId or domain" }, { status: 400 });
     }
@@ -72,6 +84,11 @@ export async function POST(request: Request) {
     return NextResponse.json(domain);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to add domain";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -96,6 +113,11 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete domain";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

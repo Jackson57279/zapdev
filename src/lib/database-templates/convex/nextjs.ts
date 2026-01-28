@@ -349,16 +349,12 @@ export default function DashboardPage() {
     }
   }, [session, isPending, router]);
 
-  if (isPending) {
+  if (isPending || !session) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-gray-500">Loading...</div>
       </div>
     );
-  }
-
-  if (!session) {
-    return null;
   }
 
   return (

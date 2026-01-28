@@ -150,6 +150,7 @@ export const getDeployment = query({
 export const listDeployments = query({
   args: {
     projectId: v.id("projects"),
+    limit: v.optional(v.number()),
   },
   returns: v.array(
     v.object({
@@ -182,10 +183,57 @@ export const listDeployments = query({
       throw new Error("Unauthorized");
     }
 
-    return await ctx.db
+    const queryBuilder = ctx.db
       .query("deployments")
       .withIndex("by_projectId_deployNumber", (q) => q.eq("projectId", args.projectId))
-      .order("desc")
-      .collect();
+      .order("desc");
+
+    const limit = args.limit && args.limit > 0 ? args.limit : 50;
+
+    return await queryBuilder.take(limit);
+  },
+});
+
+export const getDeploymentByDeployId = query({
+  args: {
+    deployId: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      _id: v.id("deployments"),
+      _creationTime: v.number(),
+      projectId: v.id("projects"),
+      userId: v.string(),
+      platform: v.literal("netlify"),
+      siteId: v.string(),
+      siteUrl: v.string(),
+      deployId: v.optional(v.string()),
+      deployNumber: v.optional(v.number()),
+      commitRef: v.optional(v.string()),
+      branch: v.optional(v.string()),
+      isPreview: v.optional(v.boolean()),
+      buildLog: v.optional(v.string()),
+      buildTime: v.optional(v.number()),
+      previousDeployId: v.optional(v.id("deployments")),
+      status: deploymentStatusEnum,
+      error: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
+
+    const deployment = await ctx.db
+      .query("deployments")
+      .withIndex("by_deployId", (q) => q.eq("deployId", args.deployId))
+      .first();
+
+    if (!deployment || deployment.userId !== userId) {
+      return null;
+    }
+
+    return deployment;
   },
 });

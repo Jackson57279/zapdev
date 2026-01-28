@@ -1,3 +1,5 @@
+ "use node";
+
 import { action, mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { oauthProviderEnum } from "./schema";
@@ -9,11 +11,21 @@ const ENCRYPTION_KEY = process.env.OAUTH_ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY || ENCRYPTION_KEY.trim().length === 0) {
   throw new Error("OAUTH_ENCRYPTION_KEY environment variable is required");
 }
+
+const keyBuffer = Buffer.from(ENCRYPTION_KEY, "utf8");
+if (keyBuffer.length < 32) {
+  throw new Error("OAUTH_ENCRYPTION_KEY must be at least 32 bytes long");
+}
+
 const ALGORITHM = "aes-256-gcm";
 
 function encryptToken(token: string): string {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY.slice(0, 32), "utf8"), iv);
+  const cipher = crypto.createCipheriv(
+    ALGORITHM,
+    keyBuffer.subarray(0, 32),
+    iv
+  );
   let encrypted = cipher.update(token, "utf8", "hex");
   encrypted += cipher.final("hex");
   const authTag = cipher.getAuthTag();
@@ -24,7 +36,11 @@ function decryptToken(encryptedToken: string): string {
   const [ivHex, authTagHex, encrypted] = encryptedToken.split(":");
   const iv = Buffer.from(ivHex, "hex");
   const authTag = Buffer.from(authTagHex, "hex");
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY.slice(0, 32), "utf8"), iv);
+  const decipher = crypto.createDecipheriv(
+    ALGORITHM,
+    keyBuffer.subarray(0, 32),
+    iv
+  );
   decipher.setAuthTag(authTag);
   let decrypted = decipher.update(encrypted, "hex", "utf8");
   decrypted += decipher.final("utf8");

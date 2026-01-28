@@ -52,12 +52,7 @@ cd sandbox-templates/nextjs
 e2b template build --name your-template-name --cmd "/compile_page.sh"
 ```
 
-After building the template, update the template name in `src/agents/code-agent.ts`:
-
-```typescript
-// Replace "your-template-name" with your actual template name
-const sandbox = await Sandbox.create("your-template-name");
-```
+After building the template, update the template name mapping in `src/agents/sandbox-utils.ts` inside the `getE2BTemplate` function.
 
 ## Development
 

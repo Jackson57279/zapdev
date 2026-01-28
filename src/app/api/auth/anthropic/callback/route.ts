@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
+import crypto from "crypto";
 
 const ANTHROPIC_CLIENT_ID = process.env.ANTHROPIC_CLIENT_ID;
 const ANTHROPIC_CLIENT_SECRET = process.env.ANTHROPIC_CLIENT_SECRET;
+const ANTHROPIC_CLIENT_STATE_SECRET = process.env.ANTHROPIC_OAUTH_STATE_SECRET;
 const ANTHROPIC_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/anthropic/callback`;
+const STATE_TTL_MS = 10 * 60 * 1000;
 
 export async function GET(request: Request) {
   const user = await getUser();
@@ -36,7 +39,7 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!ANTHROPIC_CLIENT_ID || !ANTHROPIC_CLIENT_SECRET) {
+  if (!ANTHROPIC_CLIENT_ID || !ANTHROPIC_CLIENT_SECRET || !ANTHROPIC_CLIENT_STATE_SECRET) {
     console.error("Anthropic OAuth credentials not configured");
     return NextResponse.redirect(
       new URL("/settings?tab=connections&error=OAuth+configuration+missing", request.url)
@@ -44,9 +47,47 @@ export async function GET(request: Request) {
   }
 
   try {
-    const decodedState = JSON.parse(Buffer.from(state, "base64").toString());
-    if (decodedState.userId !== userId) {
+    const decodedStateStr = Buffer.from(state, "base64").toString();
+    let decodedState: { payload?: string; signature?: string };
+
+    try {
+      decodedState = JSON.parse(decodedStateStr);
+    } catch {
+      throw new Error("Invalid state token format");
+    }
+
+    if (!decodedState.payload || !decodedState.signature) {
+      throw new Error("Invalid state token structure");
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", ANTHROPIC_CLIENT_STATE_SECRET)
+      .update(decodedState.payload)
+      .digest("hex");
+
+    const providedSigBuffer = Buffer.from(decodedState.signature);
+    const expectedSigBuffer = Buffer.from(expectedSignature);
+
+    if (providedSigBuffer.length !== expectedSigBuffer.length) {
       throw new Error("State token mismatch");
+    }
+
+    if (!crypto.timingSafeEqual(providedSigBuffer, expectedSigBuffer)) {
+      throw new Error("State token mismatch");
+    }
+
+    const payload = JSON.parse(decodedState.payload) as { userId?: string; timestamp?: number };
+    if (!payload.userId || !payload.timestamp) {
+      throw new Error("Invalid state token payload");
+    }
+
+    if (payload.userId !== userId) {
+      throw new Error("State token mismatch");
+    }
+
+    const age = Date.now() - payload.timestamp;
+    if (age > STATE_TTL_MS || age < 0) {
+      throw new Error("State token expired");
     }
 
     const tokenResponse = await fetch(

@@ -3,7 +3,7 @@ import { getUser } from "@/lib/auth-server";
 import crypto from "crypto";
 
 const NETLIFY_CLIENT_ID = process.env.NETLIFY_CLIENT_ID;
-const NETLIFY_OAUTH_STATE_SECRET = process.env.NETLIFY_OAUTH_STATE_SECRET || "fallback-secret-change-me";
+const NETLIFY_OAUTH_STATE_SECRET = process.env.NETLIFY_OAUTH_STATE_SECRET;
 const NETLIFY_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/deploy/netlify/callback`;
 
 export async function GET() {
@@ -12,7 +12,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!NETLIFY_CLIENT_ID) {
+  if (!NETLIFY_CLIENT_ID || !NETLIFY_OAUTH_STATE_SECRET) {
     return NextResponse.json(
       { error: "Netlify OAuth not configured" },
       { status: 500 }

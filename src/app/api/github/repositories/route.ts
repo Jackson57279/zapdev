@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchQuery } from "convex/nextjs";
+import { fetchAction } from "convex/nextjs";
 
 import { api } from "@/convex/_generated/api";
 import { getUser } from "@/lib/auth-server";
@@ -12,7 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const accessToken = await fetchQuery(api.oauth.getGithubAccessToken, {});
+    const accessToken = await fetchAction(api.oauth.getGithubAccessTokenForCurrentUser, {});
     if (!accessToken) {
       return NextResponse.json(
         { error: "GitHub connection not found. Please connect GitHub." },

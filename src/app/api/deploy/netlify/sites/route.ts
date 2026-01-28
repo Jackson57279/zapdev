@@ -10,9 +10,11 @@ type NetlifyConnection = {
 
 const getNetlifyAccessToken = async (): Promise<string> => {
   const token = await getToken();
-  const connection = await fetchQuery(api.oauth.getConnection, {
-    provider: "netlify",
-  }, { token: token ?? undefined }) as NetlifyConnection | null;
+  const connection = await fetchQuery(
+    api.oauth.getConnection,
+    { provider: "netlify" },
+    { token: token ?? undefined },
+  ) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found.");
@@ -34,6 +36,11 @@ export async function GET() {
     return NextResponse.json(sites);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch sites";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

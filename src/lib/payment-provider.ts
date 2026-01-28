@@ -224,7 +224,9 @@ export class AutumnStripeProvider implements PaymentProvider {
     }
 
     if (response.status === 204) {
-      return null as T;
+      throw new Error(
+        `Autumn API request to ${path} returned an unexpected empty response (204)`
+      );
     }
 
     return (await response.json()) as T;

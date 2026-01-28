@@ -66,8 +66,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isProtectedRoute && !sessionCookie) {
+    const encodedPath = encodeURIComponent(pathname);
     return NextResponse.redirect(
-      new URL(\`/sign-in?redirectTo=\${pathname}\`, request.url)
+      new URL(\`/sign-in?redirectTo=\${encodedPath}\`, request.url)
     );
   }
 

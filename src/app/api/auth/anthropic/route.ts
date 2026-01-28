@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
+import crypto from "crypto";
 
 const ANTHROPIC_CLIENT_ID = process.env.ANTHROPIC_CLIENT_ID;
+const ANTHROPIC_CLIENT_STATE_SECRET = process.env.ANTHROPIC_OAUTH_STATE_SECRET;
 const ANTHROPIC_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/anthropic/callback`;
 
 export async function GET() {
@@ -12,15 +14,21 @@ export async function GET() {
 
   const userId = user.id;
 
-  if (!ANTHROPIC_CLIENT_ID) {
+  if (!ANTHROPIC_CLIENT_ID || !ANTHROPIC_CLIENT_STATE_SECRET) {
     return NextResponse.json(
       { error: "Anthropic OAuth not configured" },
       { status: 500 }
     );
   }
 
+  const payload = JSON.stringify({ userId, timestamp: Date.now() });
+  const signature = crypto
+    .createHmac("sha256", ANTHROPIC_CLIENT_STATE_SECRET)
+    .update(payload)
+    .digest("hex");
+
   const state = Buffer.from(
-    JSON.stringify({ userId, timestamp: Date.now() })
+    JSON.stringify({ payload, signature })
   ).toString("base64");
 
   const params = new URLSearchParams({

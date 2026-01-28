@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import { useTheme } from "next-themes";
@@ -77,13 +78,15 @@ export function ColorThemeProvider({ children }: { children: ReactNode }) {
       // localStorage unavailable or quota exceeded
     }
   }, []);
-
-  const value: ColorThemeContextType = {
-    colorTheme,
-    colorThemeId,
-    setColorTheme,
-    availableThemes: COLOR_THEMES,
-  };
+  const value: ColorThemeContextType = useMemo(
+    () => ({
+      colorTheme,
+      colorThemeId,
+      setColorTheme,
+      availableThemes: COLOR_THEMES,
+    }),
+    [colorTheme, colorThemeId, setColorTheme]
+  );
 
   return (
     <ColorThemeContext.Provider value={value}>

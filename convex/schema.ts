@@ -214,7 +214,8 @@ export default defineSchema({
     .index("by_projectId", ["projectId"])
     .index("by_projectId_deployNumber", ["projectId", "deployNumber"])
     .index("by_userId", ["userId"])
-    .index("by_siteId", ["siteId"]),
+    .index("by_siteId", ["siteId"])
+    .index("by_deployId", ["deployId"]),
 
   imports: defineTable({
     userId: v.string(),

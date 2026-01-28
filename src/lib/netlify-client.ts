@@ -73,6 +73,10 @@ export const createNetlifyClient = (accessToken: string) => {
       await handleApiError(response);
     }
 
+    if (response.status === 204) {
+      return {} as T;
+    }
+
     return parseJson<T>(response);
   };
 

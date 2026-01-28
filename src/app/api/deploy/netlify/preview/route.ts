@@ -10,9 +10,11 @@ type NetlifyConnection = {
 
 const getNetlifyAccessToken = async (): Promise<string> => {
   const token = await getToken();
-  const connection = await fetchQuery(api.oauth.getConnection, {
-    provider: "netlify",
-  }, { token: token ?? undefined }) as NetlifyConnection | null;
+  const connection = await fetchQuery(
+    api.oauth.getConnection,
+    { provider: "netlify" },
+    { token: token ?? undefined },
+  ) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found.");
@@ -28,10 +30,21 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const token = (await getToken()) ?? undefined;
     const { searchParams } = new URL(request.url);
     const deployId = searchParams.get("deployId");
     if (!deployId) {
       return NextResponse.json({ error: "Missing deployId" }, { status: 400 });
+    }
+
+    const deployment = await fetchQuery(
+      api.deployments.getDeploymentByDeployId,
+      { deployId },
+      { token },
+    );
+
+    if (!deployment) {
+      return NextResponse.json({ error: "Deployment not found" }, { status: 404 });
     }
 
     const netlifyClient = createNetlifyClient(await getNetlifyAccessToken());
@@ -40,6 +53,11 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete preview";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

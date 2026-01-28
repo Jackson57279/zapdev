@@ -6,7 +6,7 @@ export const runCodeAgentFunction = inngest.createFunction(
   {
     id: "code-agent-run",
     name: "Code Agent Run",
-    retries: 3,
+    retries: 0,
     concurrency: { limit: 10 },
   },
   { event: "code-agent/run.requested" },

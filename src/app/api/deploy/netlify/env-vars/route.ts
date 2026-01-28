@@ -17,9 +17,11 @@ type EnvVarPayload = {
 
 const getNetlifyAccessToken = async (): Promise<string> => {
   const token = await getToken();
-  const connection = await fetchQuery(api.oauth.getConnection, {
-    provider: "netlify",
-  }, { token: token ?? undefined }) as NetlifyConnection | null;
+  const connection = await fetchQuery(
+    api.oauth.getConnection,
+    { provider: "netlify" },
+    { token: token ?? undefined },
+  ) as NetlifyConnection | null;
 
   if (!connection?.accessToken) {
     throw new Error("Netlify connection not found.");
@@ -52,6 +54,11 @@ export async function GET(request: Request) {
     return NextResponse.json(sanitizedEnvVars);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch env vars";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -64,7 +71,12 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as EnvVarPayload;
-    if (!body.siteId || !body.key || body.value == null) {
+    if (
+      !body.siteId ||
+      !body.key ||
+      typeof body.value !== "string" ||
+      body.value.length === 0
+    ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -79,6 +91,11 @@ export async function POST(request: Request) {
     return NextResponse.json(envVar);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to set env var";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -91,7 +108,12 @@ export async function PUT(request: Request) {
     }
 
     const body = (await request.json()) as EnvVarPayload;
-    if (!body.siteId || !body.key || body.value == null) {
+    if (
+      !body.siteId ||
+      !body.key ||
+      typeof body.value !== "string" ||
+      body.value.length === 0
+    ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -106,6 +128,11 @@ export async function PUT(request: Request) {
     return NextResponse.json(envVar);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update env var";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -130,6 +157,11 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete env var";
+
+    if (message.includes("Netlify connection not found")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
