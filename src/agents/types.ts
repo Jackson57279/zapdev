@@ -33,6 +33,9 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: false,
+    maxTokens: undefined,
   },
   "openai/gpt-5.1-codex": {
     name: "GPT-5.1 Codex",
@@ -41,13 +44,19 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: false,
+    maxTokens: undefined,
   },
   "zai-glm-4.7": {
     name: "Z-AI GLM 4.7",
     provider: "cerebras",
-    description: "Ultra-fast inference for speed-critical tasks via Cerebras",
+    description: "Ultra-fast inference with subagent research capabilities via Cerebras",
     temperature: 0.7,
     supportsFrequencyPenalty: false,
+    supportsSubagents: true,
+    isSpeedOptimized: true,
+    maxTokens: 4096,
   },
   "moonshotai/kimi-k2-0905": {
     name: "Kimi K2",
@@ -56,6 +65,9 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: false,
+    maxTokens: undefined,
   },
   "moonshotai/kimi-k2.5": {
     name: "Kimi K2.5",
@@ -72,6 +84,20 @@ export const MODEL_CONFIGS = {
       "Google's most intelligent model with state-of-the-art reasoning",
     temperature: 0.7,
     supportsFrequencyPenalty: false,
+    supportsSubagents: false,
+    isSpeedOptimized: false,
+    maxTokens: undefined,
+  },
+  "morph/morph-v3-large": {
+    name: "Morph V3 Large",
+    provider: "openrouter",
+    description: "Fast research subagent for documentation lookup and web search",
+    temperature: 0.5,
+    supportsFrequencyPenalty: false,
+    supportsSubagents: false,
+    isSpeedOptimized: true,
+    maxTokens: 2048,
+    isSubagentOnly: true,
   },
 } as const;
 
@@ -83,67 +109,46 @@ export function selectModelForTask(
 ): keyof typeof MODEL_CONFIGS {
   const promptLength = prompt.length;
   const lowercasePrompt = prompt.toLowerCase();
-  let chosenModel: keyof typeof MODEL_CONFIGS = "anthropic/claude-haiku-4.5";
+  
+  const defaultModel: keyof typeof MODEL_CONFIGS = "zai-glm-4.7";
 
-  const complexityIndicators = [
-    "advanced",
-    "complex",
-    "sophisticated",
-    "enterprise",
-    "architecture",
-    "performance",
-    "optimization",
-    "scalability",
-    "authentication",
-    "authorization",
-    "database",
-    "api",
-    "integration",
-    "deployment",
-    "security",
-    "testing",
+  const enterpriseComplexityPatterns = [
+    "enterprise architecture",
+    "multi-tenant",
+    "distributed system",
+    "microservices",
+    "kubernetes",
+    "advanced authentication",
+    "complex authorization",
+    "large-scale migration",
   ];
 
-  const hasComplexityIndicators = complexityIndicators.some((indicator) =>
-    lowercasePrompt.includes(indicator)
+  const requiresEnterpriseModel = enterpriseComplexityPatterns.some((pattern) =>
+    lowercasePrompt.includes(pattern)
   );
 
-  const isLongPrompt = promptLength > 500;
-  const isVeryLongPrompt = promptLength > 1000;
+  const isVeryLongPrompt = promptLength > 2000;
+  const userExplicitlyRequestsGPT = lowercasePrompt.includes("gpt-5") || lowercasePrompt.includes("gpt5");
+  const userExplicitlyRequestsGemini = lowercasePrompt.includes("gemini");
+  const userExplicitlyRequestsKimi = lowercasePrompt.includes("kimi");
 
-  if (framework === "angular" && (hasComplexityIndicators || isLongPrompt)) {
-    return chosenModel;
+  if (requiresEnterpriseModel || isVeryLongPrompt) {
+    return "anthropic/claude-haiku-4.5";
   }
 
-  const codingIndicators = [
-    "refactor",
-    "optimize",
-    "debug",
-    "fix bug",
-    "improve code",
-  ];
-  const hasCodingFocus = codingIndicators.some((indicator) =>
-    lowercasePrompt.includes(indicator)
-  );
-
-  if (hasCodingFocus && !isVeryLongPrompt) {
-    chosenModel = "moonshotai/kimi-k2-0905";
+  if (userExplicitlyRequestsGPT) {
+    return "openai/gpt-5.1-codex";
   }
 
-  const speedIndicators = ["quick", "fast", "simple", "basic", "prototype"];
-  const needsSpeed = speedIndicators.some((indicator) =>
-    lowercasePrompt.includes(indicator)
-  );
-
-  if (needsSpeed && !hasComplexityIndicators) {
-    chosenModel = "zai-glm-4.7";
+  if (userExplicitlyRequestsGemini) {
+    return "google/gemini-3-pro-preview";
   }
 
-  if (hasComplexityIndicators || isVeryLongPrompt) {
-    chosenModel = "anthropic/claude-haiku-4.5";
+  if (userExplicitlyRequestsKimi) {
+    return "moonshotai/kimi-k2-0905";
   }
 
-  return chosenModel;
+  return defaultModel;
 }
 
 export function frameworkToConvexEnum(

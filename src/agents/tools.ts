@@ -8,11 +8,12 @@ export interface ToolContext {
   state: AgentState;
   updateFiles: (files: Record<string, string>) => void;
   onFileCreated?: (path: string, content: string) => void;
+  onToolCall?: (tool: string, args: unknown) => void;
   onToolOutput?: (source: "stdout" | "stderr", chunk: string) => void;
 }
 
 export function createAgentTools(context: ToolContext) {
-  const { sandboxId, state, updateFiles, onFileCreated, onToolOutput } = context;
+  const { sandboxId, state, updateFiles, onFileCreated, onToolCall, onToolOutput } = context;
 
   return {
     terminal: tool({
@@ -23,6 +24,7 @@ export function createAgentTools(context: ToolContext) {
       execute: async ({ command }) => {
         const buffers = { stdout: "", stderr: "" };
         console.log("[DEBUG] Terminal tool called with command:", command);
+        onToolCall?.("terminal", { command });
 
         try {
           const sandbox = await getSandbox(sandboxId);
@@ -60,6 +62,7 @@ export function createAgentTools(context: ToolContext) {
       }),
       execute: async ({ files }) => {
         console.log("[DEBUG] createOrUpdateFiles tool called with", files.length, "files");
+        onToolCall?.("createOrUpdateFiles", { files });
         try {
           const sandbox = await getSandbox(sandboxId);
           const updatedFiles = { ...state.files };
@@ -114,6 +117,7 @@ export function createAgentTools(context: ToolContext) {
       }),
       execute: async ({ files }) => {
         console.log("[DEBUG] readFiles tool called with", files.length, "files");
+        onToolCall?.("readFiles", { files });
         try {
           const sandbox = await getSandbox(sandboxId);
 
