@@ -597,13 +597,20 @@ export async function* runCodeAgent(
     while (retryCount < MAX_STREAM_RETRIES) {
       try {
         const client = getClientForModel(selectedModel, { useGatewayFallback: useGatewayFallbackForStream });
+        
+        const providerOptions: Record<string, Record<string, unknown>> = {};
+        
+        if (useGatewayFallbackForStream) {
+          providerOptions.gateway = { only: ['cerebras'] };
+        }
+        
+        if (selectedModel.startsWith('moonshotai/')) {
+          providerOptions.openai = { parallelToolCalls: false };
+        }
+        
         const result = streamText({
           model: client.chat(selectedModel),
-          providerOptions: useGatewayFallbackForStream ? {
-            gateway: {
-              only: ['cerebras'],
-            }
-          } : undefined,
+          providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions as any : undefined,
           system: frameworkPrompt,
           messages,
           tools,
@@ -724,13 +731,20 @@ export async function* runCodeAgent(
       while (summaryRetries < MAX_SUMMARY_RETRIES) {
         try {
           const client = getClientForModel(selectedModel, { useGatewayFallback: summaryUseGatewayFallback });
+          
+          const providerOptions: Record<string, Record<string, unknown>> = {};
+          
+          if (summaryUseGatewayFallback) {
+            providerOptions.gateway = { only: ['cerebras'] };
+          }
+          
+          if (selectedModel.startsWith('moonshotai/')) {
+            providerOptions.openai = { parallelToolCalls: false };
+          }
+          
           followUpResult = await generateText({
             model: client.chat(selectedModel),
-            providerOptions: summaryUseGatewayFallback ? {
-              gateway: {
-                only: ['cerebras'],
-              }
-            } : undefined,
+            providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions as any : undefined,
             system: frameworkPrompt,
             messages: [
               ...messages,
@@ -849,6 +863,9 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
       const fixResult = await withRateLimitRetry(
         () => generateText({
           model: getClientForModel(selectedModel).chat(selectedModel),
+          providerOptions: selectedModel.startsWith('moonshotai/') ? ({
+            openai: { parallelToolCalls: false }
+          } as any) : undefined,
           system: frameworkPrompt,
           messages: [
             ...messages,
@@ -1177,6 +1194,9 @@ REQUIRED ACTIONS:
   const result = await withRateLimitRetry(
     () => generateText({
       model: getClientForModel(fragmentModel).chat(fragmentModel),
+      providerOptions: fragmentModel.startsWith('moonshotai/') ? ({
+        openai: { parallelToolCalls: false }
+      } as any) : undefined,
       system: frameworkPrompt,
       messages: [{ role: "user", content: fixPrompt }],
       tools,
