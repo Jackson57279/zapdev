@@ -76,6 +76,9 @@ export const MODEL_CONFIGS = {
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: false,
+    maxTokens: undefined,
   },
   "google/gemini-3-pro-preview": {
     name: "Gemini 3 Pro",
