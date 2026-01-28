@@ -43,7 +43,7 @@ describe('GLM 4.7 Model Selection', () => {
     const prompt = 'Use Kimi to refactor this component.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('moonshotai/kimi-k2-0905');
+    expect(result).toBe('moonshotai/kimi-k2.5');
   });
 
   it('GLM 4.7 is the only model with subagent support', () => {

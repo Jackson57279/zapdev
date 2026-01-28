@@ -12,11 +12,11 @@ describe('Model Selection Logic', () => {
     expect(MODEL_CONFIGS[result]).toBeDefined();
   });
 
-  it('prefers Kimi K2 for coding-focused refinements', () => {
+  it('prefers Kimi K2.5 for coding-focused refinements', () => {
     const prompt = 'Please refactor this component to improve readability.';
     const result = selectModelForTask(prompt);
 
-    expect(result).toBe('moonshotai/kimi-k2-0905');
+    expect(result).toBe('moonshotai/kimi-k2.5');
   });
 
   it('prefers GLM 4.7 for clearly speed-focused prompts without complexity', () => {

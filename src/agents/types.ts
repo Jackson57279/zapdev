@@ -148,7 +148,7 @@ export function selectModelForTask(
   }
 
   if (userExplicitlyRequestsKimi) {
-    return "moonshotai/kimi-k2-0905";
+    return "moonshotai/kimi-k2.5";
   }
 
   return defaultModel;
