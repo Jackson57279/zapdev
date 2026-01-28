@@ -57,6 +57,14 @@ export const MODEL_CONFIGS = {
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
   },
+  "moonshotai/kimi-k2.5": {
+    name: "Kimi K2.5",
+    provider: "moonshot",
+    description: "Moonshot's advanced reasoning model for complex development tasks",
+    temperature: 0.7,
+    supportsFrequencyPenalty: true,
+    frequencyPenalty: 0.5,
+  },
   "google/gemini-3-pro-preview": {
     name: "Gemini 3 Pro",
     provider: "google",

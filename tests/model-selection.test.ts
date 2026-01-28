@@ -1,5 +1,5 @@
-import { selectModelForTask, MODEL_CONFIGS } from '../src/inngest/functions';
-import type { Framework } from '../src/inngest/types';
+import { selectModelForTask, MODEL_CONFIGS } from '../src/agents/types';
+import type { Framework } from '../src/agents/types';
 
 describe('Model Selection Logic', () => {
   const defaultModel = 'anthropic/claude-haiku-4.5' as const;
@@ -12,11 +12,11 @@ describe('Model Selection Logic', () => {
     expect(MODEL_CONFIGS[result]).toBeDefined();
   });
 
-  it('prefers Qwen for coding-focused refinements', () => {
+  it('prefers Kimi K2 for coding-focused refinements', () => {
     const prompt = 'Please refactor this component to improve readability.';
     const result = selectModelForTask(prompt);
 
-    expect(result).toBe('alibaba/qwen3-max');
+    expect(result).toBe('moonshotai/kimi-k2-0905');
   });
 
   it('prefers GLM 4.7 for clearly speed-focused prompts without complexity', () => {
