@@ -3,8 +3,21 @@ import { QueryCtx, MutationCtx } from "./_generated/server";
 export async function getCurrentUserId(
   ctx: QueryCtx | MutationCtx
 ): Promise<string | null> {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject || null;
+  try {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      console.warn("No user identity found in context");
+      return null;
+    }
+    if (!identity.subject) {
+      console.warn("User identity found but no subject field");
+      return null;
+    }
+    return identity.subject;
+  } catch (error) {
+    console.error("Error getting user identity:", error);
+    return null;
+  }
 }
 
 export async function requireAuth(
@@ -12,6 +25,11 @@ export async function requireAuth(
 ): Promise<string> {
   const userId = await getCurrentUserId(ctx);
   if (!userId) {
+    console.error("Authentication failed: No user ID found");
+    console.error("Context auth details:", {
+      hasAuth: !!ctx.auth,
+      hasGetUserIdentity: typeof ctx.auth?.getUserIdentity === 'function'
+    });
     throw new Error("Unauthorized");
   }
   return userId;
