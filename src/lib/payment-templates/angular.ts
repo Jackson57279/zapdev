@@ -115,7 +115,7 @@ router.patch("/subscription", async (req: Request, res: Response) => {
       return;
     }
     const updated = await autumn.request<unknown>(
-      `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+      "/v1/subscriptions/" + encodeURIComponent(subscriptionId),
       {
         method: "PATCH",
         body: { productId },
@@ -138,7 +138,7 @@ router.delete("/subscription", async (req: Request, res: Response) => {
       return;
     }
     const canceled = await autumn.request<unknown>(
-      `/v1/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+      "/v1/subscriptions/" + encodeURIComponent(subscriptionId) + "/cancel",
       {
         method: "POST",
         body: { cancelAtPeriodEnd: cancelAtPeriodEnd ?? true },

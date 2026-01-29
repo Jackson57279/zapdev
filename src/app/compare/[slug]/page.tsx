@@ -257,11 +257,11 @@ export default async function ComparisonPage({ params }: PageProps) {
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Experience the difference with ZapDev's AI-powered development platform. Start building for free today.
           </p>
-          <Link href="/">
-            <Button size="lg" className="gap-2">
-              Get Started Free <ArrowRight className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button size="lg" className="gap-2" asChild>
+            <Link href="/">
+              Get Started Free <ArrowRight size={20} />
+            </Link>
+          </Button>
         </section>
 
         <section className="mt-12 pt-8 border-t">

@@ -23,7 +23,7 @@ const frameworkConfigMap: Record<FrameworkKey, NetlifyConfig> = {
   },
   ANGULAR: {
     buildCommand: "bun run build",
-    publishDir: "dist",
+    publishDir: "dist/*/browser",
   },
   SVELTE: {
     buildCommand: "bun run build",

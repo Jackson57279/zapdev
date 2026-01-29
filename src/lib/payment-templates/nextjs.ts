@@ -365,11 +365,10 @@ export function CheckoutButton({
           cancelUrl,
         }),
       });
+      const data = (await response.json()) as { url?: string; error?: string };
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || "Checkout failed");
       }
-      const data = (await response.json()) as { url?: string };
       if (data.url) {
         window.location.href = data.url;
       }

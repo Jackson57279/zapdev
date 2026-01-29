@@ -17,62 +17,92 @@ Disallow: /_next/
 Disallow: /admin/
 Disallow: /monitoring
 Disallow: /.well-known/
-Disallow: *.json
+Disallow: /*?*.json$
 
 # OpenAI Agents
 User-agent: GPTBot
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 User-agent: ChatGPT-User
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Anthropic/Claude Agents
 User-agent: ClaudeBot
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 User-agent: anthropic-ai
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Google/Gemini Agents
 User-agent: Google-Extended
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Common Crawl
 User-agent: CCBot
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Perplexity
 User-agent: PerplexityBot
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Apple
 User-agent: Applebot-Extended
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Microsoft/Bing
 User-agent: BingBot
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/
 
 # Meta/Facebook
 User-agent: FacebookBot
-Allow: /
 Disallow: /api/
 Disallow: /projects/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /monitoring
+Disallow: /.well-known/

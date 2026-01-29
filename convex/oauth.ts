@@ -7,23 +7,26 @@ import { requireAuth } from "./helpers";
 import { internal } from "./_generated/api";
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.OAUTH_ENCRYPTION_KEY;
-if (!ENCRYPTION_KEY || ENCRYPTION_KEY.trim().length === 0) {
-  throw new Error("OAUTH_ENCRYPTION_KEY environment variable is required");
-}
-
-const keyBuffer = Buffer.from(ENCRYPTION_KEY, "utf8");
-if (keyBuffer.length < 32) {
-  throw new Error("OAUTH_ENCRYPTION_KEY must be at least 32 bytes long");
+function getEncryptionKey(): Buffer {
+  const key = process.env.OAUTH_ENCRYPTION_KEY?.trim();
+  if (!key) {
+    throw new Error("OAUTH_ENCRYPTION_KEY environment variable is required");
+  }
+  const keyBuffer = Buffer.from(key, "hex");
+  if (keyBuffer.length !== 32) {
+    throw new Error("OAUTH_ENCRYPTION_KEY must be exactly 32 bytes (64 hex characters)");
+  }
+  return keyBuffer;
 }
 
 const ALGORITHM = "aes-256-gcm";
 
 function encryptToken(token: string): string {
+  const keyBuffer = getEncryptionKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(
     ALGORITHM,
-    keyBuffer.subarray(0, 32),
+    keyBuffer,
     iv
   );
   let encrypted = cipher.update(token, "utf8", "hex");
@@ -33,12 +36,13 @@ function encryptToken(token: string): string {
 }
 
 function decryptToken(encryptedToken: string): string {
+  const keyBuffer = getEncryptionKey();
   const [ivHex, authTagHex, encrypted] = encryptedToken.split(":");
   const iv = Buffer.from(ivHex, "hex");
   const authTag = Buffer.from(authTagHex, "hex");
   const decipher = crypto.createDecipheriv(
     ALGORITHM,
-    keyBuffer.subarray(0, 32),
+    keyBuffer,
     iv
   );
   decipher.setAuthTag(authTag);

@@ -56,11 +56,11 @@ const CLAUDE_CODE_MODELS = [
 ];
 
 // Claude model mapping for Anthropic API
-// Using valid Anthropic model identifiers
+// Using latest model aliases for stability
 const CLAUDE_CODE_MODEL_MAP: Record<string, string> = {
-  "claude-code": "claude-3-5-haiku-20241022",
-  "claude-code-sonnet": "claude-3-5-sonnet-20241022",
-  "claude-code-opus": "claude-3-opus-20240229",
+  "claude-code": "claude-3-5-haiku-latest",
+  "claude-code-sonnet": "claude-3-5-sonnet-latest",
+  "claude-code-opus": "claude-3-opus-latest",
 };
 
 const getGatewayModelId = (modelId: string): string =>

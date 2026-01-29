@@ -105,41 +105,49 @@ router.post("/portal", async (req: Request, res: Response) => {
 });
 
 router.patch("/subscription", async (req: Request, res: Response) => {
-  const { subscriptionId, productId } = req.body as {
-    subscriptionId?: string;
-    productId?: string;
-  };
-  if (!subscriptionId || !productId) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
-  }
-  const updated = await autumn.request<unknown>(
-    \`/v1/subscriptions/\${encodeURIComponent(subscriptionId)}\`,
-    {
-      method: "PATCH",
-      body: { productId },
+  try {
+    const { subscriptionId, productId } = req.body as {
+      subscriptionId?: string;
+      productId?: string;
+    };
+    if (!subscriptionId || !productId) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
     }
-  );
-  res.json(updated);
+    const updated = await autumn.request<unknown>(
+      "/v1/subscriptions/" + encodeURIComponent(subscriptionId),
+      {
+        method: "PATCH",
+        body: { productId },
+      }
+    );
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
 router.delete("/subscription", async (req: Request, res: Response) => {
-  const { subscriptionId, cancelAtPeriodEnd } = req.body as {
-    subscriptionId?: string;
-    cancelAtPeriodEnd?: boolean;
-  };
-  if (!subscriptionId) {
-    res.status(400).json({ error: "Invalid payload" });
-    return;
-  }
-  const canceled = await autumn.request<unknown>(
-    \`/v1/subscriptions/\${encodeURIComponent(subscriptionId)}/cancel\`,
-    {
-      method: "POST",
-      body: { cancelAtPeriodEnd: cancelAtPeriodEnd ?? true },
+  try {
+    const { subscriptionId, cancelAtPeriodEnd } = req.body as {
+      subscriptionId?: string;
+      cancelAtPeriodEnd?: boolean;
+    };
+    if (!subscriptionId) {
+      res.status(400).json({ error: "Invalid payload" });
+      return;
     }
-  );
-  res.json(canceled);
+    const canceled = await autumn.request<unknown>(
+      "/v1/subscriptions/" + encodeURIComponent(subscriptionId) + "/cancel",
+      {
+        method: "POST",
+        body: { cancelAtPeriodEnd: cancelAtPeriodEnd ?? true },
+      }
+    );
+    res.json(canceled);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+  }
 });
 
 router.post("/feature-check", async (req: Request, res: Response) => {

@@ -4,6 +4,7 @@ import { getAllComparisons } from '@/lib/comparisons';
 import { generateMetadata as generateSEOMetadata, generateStructuredData } from '@/lib/seo';
 import { StructuredData } from '@/components/seo/structured-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = generateSEOMetadata({
@@ -127,12 +128,11 @@ export default function ComparePage() {
           <p className="text-xl text-muted-foreground mb-6 max-w-2xl mx-auto">
             Experience why ZapDev ranks #1 in comprehensive comparisons. Start building for free today.
           </p>
-          <Link
-            href="/"
-            className="inline-flex px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            Get Started Free
-          </Link>
+          <Button asChild>
+            <Link href="/">
+              Get Started Free
+            </Link>
+          </Button>
         </section>
       </div>
     </>

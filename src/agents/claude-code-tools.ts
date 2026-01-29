@@ -128,16 +128,17 @@ export function createClaudeCodeTools(context: ClaudeCodeToolContext) {
 
         try {
           const sandbox = await getSandbox(sandboxId);
-          
+
           const validFiles: Array<{ path: string; content: string }> = [];
           const invalidPaths: string[] = [];
-          
+
           for (const file of files) {
-            if (!isValidFilePath(file.path)) {
+            const validatedPath = validateAndSanitizePath(file.path);
+            if (!validatedPath) {
               invalidPaths.push(file.path);
               continue;
             }
-            validFiles.push(file);
+            validFiles.push({ path: validatedPath, content: file.content });
           }
           
           if (invalidPaths.length > 0) {

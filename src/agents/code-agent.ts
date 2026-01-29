@@ -459,9 +459,7 @@ export async function* runCodeAgent(
     if (isClaudeCodeModel(selectedModel)) {
       console.log("[INFO] Claude Code model selected, fetching user's Anthropic token...");
       try {
-        const token = await convex.query(internal.oauth.getAnthropicAccessToken, {
-          userId: project.userId,
-        });
+        const token = await convex.action(api.oauth.getAnthropicAccessTokenForCurrentUser, {});
         if (!token) {
           console.error("[ERROR] User has no Anthropic OAuth connection");
           throw new Error("Claude Code requires connecting your Anthropic account. Please connect in Settings > Connections.");

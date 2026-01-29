@@ -181,7 +181,7 @@ export class AutumnStripeProvider implements PaymentProvider {
   }
 
   async trackUsage(input: UsageEvent): Promise<void> {
-    await this.request<{ ok: boolean }>("/v1/usage", {
+    const result = await this.request<{ ok: boolean }>("/v1/usage", {
       method: "POST",
       body: {
         customerId: input.customerId,
@@ -189,6 +189,9 @@ export class AutumnStripeProvider implements PaymentProvider {
         quantity: input.quantity,
       },
     });
+    if (!result) {
+      return;
+    }
   }
 
   async checkFeature(input: FeatureCheckRequest): Promise<FeatureCheckResult> {
@@ -204,31 +207,43 @@ export class AutumnStripeProvider implements PaymentProvider {
   private async request<T>(
     path: string,
     options: AutumnRequestOptions
-  ): Promise<T> {
+  ): Promise<T | undefined> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-        ...(options.headers ?? {}),
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Autumn API request failed: ${response.status} ${response.statusText} - ${errorText}`
-      );
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+          ...(options.headers ?? {}),
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Autumn API request failed: ${response.status} ${response.statusText} - ${errorText}`
+        );
+      }
+
+      if (response.status === 204) {
+        return undefined;
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Request to ${path} timed out after 10 seconds`);
+      }
+      throw error;
     }
-
-    if (response.status === 204) {
-      throw new Error(
-        `Autumn API request to ${path} returned an unexpected empty response (204)`
-      );
-    }
-
-    return (await response.json()) as T;
   }
 }
