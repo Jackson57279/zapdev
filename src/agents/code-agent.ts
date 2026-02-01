@@ -594,19 +594,21 @@ export async function* runCodeAgent(
     let skipProviderOptions = false;
     let retryCount = 0;
     const MAX_STREAM_RETRIES = 3;
+    const FALLBACK_MODEL: keyof typeof MODEL_CONFIGS = "openai/gpt-5.1-codex";
+    let currentModel: keyof typeof MODEL_CONFIGS = selectedModel;
 
     while (retryCount < MAX_STREAM_RETRIES) {
       try {
-        const client = getClientForModel(selectedModel, { useGatewayFallback: useGatewayFallbackForStream });
-        
+        const client = getClientForModel(currentModel, { useGatewayFallback: useGatewayFallbackForStream });
+
         const providerOptions: Record<string, Record<string, unknown>> = {};
-        
-        if (!skipProviderOptions && useGatewayFallbackForStream) {
+
+        if (!skipProviderOptions && useGatewayFallbackForStream && isCerebrasModel(currentModel)) {
           providerOptions.gateway = { only: ['cerebras'] };
         }
-        
+
         const result = streamText({
-          model: client.chat(selectedModel),
+          model: client.chat(currentModel),
           providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions as any : undefined,
           system: frameworkPrompt,
           messages,
@@ -671,15 +673,27 @@ export async function* runCodeAgent(
            continue;
          }
 
-        if (
-          !useGatewayFallbackForStream &&
-          isRateLimit &&
-          isCerebrasModel(selectedModel)
-        ) {
-          console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${selectedModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
-          useGatewayFallbackForStream = true;
-          continue;
-        }
+         if (
+           !useGatewayFallbackForStream &&
+           isRateLimit &&
+           isCerebrasModel(currentModel)
+         ) {
+           console.log(`[GATEWAY-FALLBACK] Rate limit hit for ${currentModel}. Switching to Vercel AI Gateway with Cerebras-only routing...`);
+           useGatewayFallbackForStream = true;
+           continue;
+         }
+
+         if (
+           useGatewayFallbackForStream &&
+           isRateLimit &&
+           isCerebrasModel(currentModel)
+         ) {
+           console.log(`[MODEL-FALLBACK] Gateway also rate limited. Switching to ${FALLBACK_MODEL}...`);
+           currentModel = FALLBACK_MODEL;
+           useGatewayFallbackForStream = false;
+           skipProviderOptions = false;
+           continue;
+         }
 
         if (isModelNotFound || retryCount >= MAX_STREAM_RETRIES || !canRetry) {
           console.error(`[ERROR] Stream: ${canRetry ? `All ${MAX_STREAM_RETRIES} attempts failed` : "Non-retryable error"}. Error: ${errorMessage}`);
@@ -729,21 +743,22 @@ export async function* runCodeAgent(
 
       let summaryUseGatewayFallback = false;
       let summaryRetries = 0;
-      const MAX_SUMMARY_RETRIES = 2;
+      const MAX_SUMMARY_RETRIES = 3;
       let followUpResult: { text: string } | null = null;
+      let summaryModel: keyof typeof MODEL_CONFIGS = selectedModel;
 
       while (summaryRetries < MAX_SUMMARY_RETRIES) {
         try {
-          const client = getClientForModel(selectedModel, { useGatewayFallback: summaryUseGatewayFallback });
-          
+          const client = getClientForModel(summaryModel, { useGatewayFallback: summaryUseGatewayFallback });
+
           const providerOptions: Record<string, Record<string, unknown>> = {};
-          
-          if (summaryUseGatewayFallback) {
+
+          if (summaryUseGatewayFallback && isCerebrasModel(summaryModel)) {
             providerOptions.gateway = { only: ['cerebras'] };
           }
-          
+
           followUpResult = await generateText({
-            model: client.chat(selectedModel),
+            model: client.chat(summaryModel),
             providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions as any : undefined,
             system: frameworkPrompt,
             messages: [
@@ -779,10 +794,18 @@ export async function* runCodeAgent(
           } else if (
             isRateLimitError(error) &&
             !summaryUseGatewayFallback &&
-            isCerebrasModel(selectedModel)
+            isCerebrasModel(summaryModel)
           ) {
             console.log(`[GATEWAY-FALLBACK] Rate limit hit for summary. Switching to Vercel AI Gateway...`);
             summaryUseGatewayFallback = true;
+          } else if (
+            isRateLimitError(error) &&
+            summaryUseGatewayFallback &&
+            isCerebrasModel(summaryModel)
+          ) {
+            console.log(`[MODEL-FALLBACK] Gateway also rate limited for summary. Switching to ${FALLBACK_MODEL}...`);
+            summaryModel = FALLBACK_MODEL;
+            summaryUseGatewayFallback = false;
           } else if (isRateLimitError(error)) {
             const waitMs = 60_000;
             console.log(`[GATEWAY-FALLBACK] Gateway rate limit for summary. Waiting ${waitMs / 1000}s...`);
@@ -846,9 +869,9 @@ export async function* runCodeAgent(
         data: `Auto-fixing errors (attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})...`,
       };
 
-      const fixPrompt = `CRITICAL BUILD/LINT ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
+      const fixPrompt = `CRITICAL BUILD ERROR - FIX REQUIRED (Attempt ${autoFixAttempts}/${AUTO_FIX_MAX_ATTEMPTS})
 
-Your previous code generation resulted in build or lint errors. You MUST fix these errors now.
+Your previous code generation resulted in build errors. You MUST fix these errors now.
 
 === ERROR OUTPUT ===
 ${validationErrors || lastErrorMessage || "No error details provided."}
@@ -857,7 +880,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 1. READ THE ERROR CAREFULLY: Look for specific file names, line numbers, and error types
 2. IDENTIFY THE ROOT CAUSE
 3. FIX THE ERROR using createOrUpdateFiles
-4. VERIFY YOUR FIX by running: npm run lint && npm run build
+4. VERIFY YOUR FIX by running: npm run build
 5. PROVIDE SUMMARY with <task_summary> once fixed`;
 
       const fixResult = await withRateLimitRetry(

@@ -17,7 +17,7 @@ export function createAgentTools(context: ToolContext) {
 
   return {
     terminal: tool({
-      description: "Use the terminal to run commands",
+      description: "Use the terminal to run commands (max 60s timeout)",
       inputSchema: z.object({
         command: z.string().describe("The command to execute"),
       }),
@@ -29,6 +29,7 @@ export function createAgentTools(context: ToolContext) {
         try {
           const sandbox = await getSandbox(sandboxId);
           const result = await sandbox.commands.run(command, {
+            timeoutMs: 60000,
             onStdout: (data: string) => {
               buffers.stdout += data;
               onToolOutput?.("stdout", data);

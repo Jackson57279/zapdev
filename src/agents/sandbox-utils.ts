@@ -144,7 +144,7 @@ export async function runCodeCommand(
   try {
     // Run command directly in shell with timeout
     const result = await sandbox.commands.run(`cd /home/user && ${command}`, {
-      timeoutMs: 120000, // 2 minute timeout for build commands
+      timeoutMs: 90000,
     });
 
     console.log("[DEBUG] Command completed:", {
@@ -264,7 +264,8 @@ export async function runBuildCheck(
 // Clean .next directory using shell command (no Python dependency)
 export async function cleanNextDirectory(sandbox: Sandbox): Promise<void> {
   try {
-    await sandbox.commands.run("rm -rf /home/user/.next", { timeoutMs: 10000 });
+    await sandbox.commands.run("rm -rf /home/user/.next && mkdir -p /home/user/.next && chmod 755 /home/user/.next", { timeoutMs: 10000 });
+    console.log("[DEBUG] Cleaned .next directory and set permissions");
   } catch (error) {
     console.warn("[WARN] Failed to clean .next directory:", error);
   }

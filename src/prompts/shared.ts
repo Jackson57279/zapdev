@@ -134,19 +134,19 @@ Runtime Execution:
 
 Error Prevention & Code Quality (CRITICAL):
 1. MANDATORY Validation Before Completion (DO NOT SKIP):
-   ⚠️ YOU MUST RUN VALIDATION BEFORE OUTPUTTING <task_summary> ⚠️
-   - Run: npm run lint (REQUIRED - this is NOT optional)
-   - Fix ANY and ALL lint errors or type errors immediately
-   - If lint reports errors, DO NOT output task_summary - fix them first
-   - Only output <task_summary> after npm run lint passes with no errors
-   - If you receive lint errors mentioning undefined imports or typos, fix them before completing
-   - Closed ports or inactive dev servers are expected; do not treat them as failures once validation passes
+    ⚠️ YOU MUST RUN VALIDATION BEFORE OUTPUTTING <task_summary> ⚠️
+    - Run: npm run build (REQUIRED - this is NOT optional)
+    - Fix ANY and ALL build errors or type errors immediately
+    - If build reports errors, DO NOT output task_summary - fix them first
+    - Only output <task_summary> after npm run build passes with no errors
+    - If you receive errors mentioning undefined imports or typos, fix them before completing
+    - Closed ports or inactive dev servers are expected; do not treat them as failures once validation passes
 
 2. Test Before Completing: Before marking any task as complete:
-   - Verify all imports are correct and packages are installed
-   - Check for TypeScript/ESLint errors using the terminal (run: npm run lint)
-   - Ensure all functions have proper error handling
-   - Test edge cases and validate inputs
+    - Verify all imports are correct and packages are installed
+    - Check for TypeScript errors using the terminal (run: npm run build)
+    - Ensure all functions have proper error handling
+    - Test edge cases and validate inputs
 
 3. Handle All Errors: Every function must include proper error handling:
    - Use try-catch blocks for async operations and code that might fail
@@ -161,11 +161,11 @@ Error Prevention & Code Quality (CRITICAL):
    - Fix all TypeScript errors before completing
 
 4. Code Validation (MANDATORY):
-   - BEFORE completion, run: npm run lint
-   - Fix ALL linting errors and warnings reported
-   - Do NOT complete if lint has errors - fix them first
-   - Ensure no console errors appear in the browser
-   - Test all interactive features work as expected
+    - BEFORE completion, run: npm run build
+    - Fix ALL build errors and warnings reported
+    - Do NOT complete if build has errors - fix them first
+    - Ensure no console errors appear in the browser
+    - Test all interactive features work as expected
 
 Security Best Practices (MANDATORY):
 1. Input Validation & Sanitization:
@@ -252,7 +252,7 @@ A short, high-level summary of what was created or changed.
 
 CRITICAL REQUIREMENTS:
 - This is REQUIRED, not optional - you must always provide it
-- Output it even if you see warnings (as long as npm run lint passes)
+- Output it even if you see warnings (as long as npm run build passes)
 - This signals task completion to the system
 - Do not wrap in backticks or code blocks
 - Do not include any text after the closing tag
