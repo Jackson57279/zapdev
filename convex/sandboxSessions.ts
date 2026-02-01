@@ -16,19 +16,22 @@ export const create = mutation({
       v.literal("ANGULAR"),
       v.literal("REACT"),
       v.literal("VUE"),
-      v.literal("SVELTE")
+      v.literal("SVELTE"),
+      v.literal("EXPO")
     ),
-    autoPauseTimeout: v.optional(v.number()), // Default 10 minutes
+    runtimeType: v.optional(v.union(v.literal("webcontainer"), v.literal("e2b"))),
+    autoPauseTimeout: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const autoPauseTimeout = args.autoPauseTimeout || 10 * 60 * 1000; // Default 10 minutes
+    const autoPauseTimeout = args.autoPauseTimeout || 10 * 60 * 1000;
 
     const sessionId = await ctx.db.insert("sandboxSessions", {
       sandboxId: args.sandboxId,
       projectId: args.projectId,
       userId: args.userId,
       framework: args.framework,
+      runtimeType: args.runtimeType || "e2b",
       state: "RUNNING",
       lastActivity: now,
       autoPauseTimeout,

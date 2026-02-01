@@ -1,0 +1,15 @@
+# E2B Sandbox Template Configuration for Expo Android Emulator
+
+# Template name used when creating sandboxes
+template_id = "zapdev-expo-android"
+
+# Dockerfile to build the template
+dockerfile = "e2b.Dockerfile"
+
+# Start command (runs when sandbox starts)
+start_cmd = "/start_android.sh"
+
+# Template resource configuration (higher specs for emulator)
+[resources]
+cpu_count = 4
+memory_mb = 8192

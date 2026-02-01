@@ -341,6 +341,73 @@ export const frameworks: Record<string, FrameworkData> = {
       'SSG',
       'production React'
     ]
+  },
+  expo: {
+    slug: 'expo',
+    name: 'Expo',
+    title: 'Cross-Platform Mobile Development with Expo & React Native',
+    description: 'Expo is the easiest way to build iOS, Android, and web apps from a single codebase using React Native. Create production-ready mobile applications with our AI-powered development tools.',
+    metaDescription: 'Create mobile apps with Expo and React Native using AI. Multiple preview modes: web, Expo Go, Android emulator, and EAS Build for production iOS/Android apps.',
+    features: [
+      'Cross-Platform (iOS/Android/Web)',
+      'Hot Reload & Fast Refresh',
+      'Expo SDK Modules',
+      'Multiple Preview Modes',
+      'EAS Build Integration',
+      'Over-the-Air Updates',
+      'TypeScript Support',
+      'expo-router Navigation'
+    ],
+    useCases: [
+      'Mobile-First Applications',
+      'Social Media Apps',
+      'E-commerce Mobile Apps',
+      'Fitness & Health Trackers',
+      'Photo & Video Apps',
+      'Location-Based Services',
+      'Progressive Web Apps'
+    ],
+    advantages: [
+      'One Codebase, Three Platforms',
+      'Rich Native Module Ecosystem',
+      'Fast Development Cycle',
+      'Real Device Testing (Expo Go)',
+      'Cloud Builds (No Xcode/Android Studio)',
+      'Strong Community Support'
+    ],
+    icon: '📱',
+    color: '#000020',
+    popularity: 85,
+    ecosystem: [
+      {
+        name: 'Expo Go',
+        description: 'Instant preview on real devices',
+        url: '/frameworks/expo/expo-go'
+      },
+      {
+        name: 'EAS Build',
+        description: 'Cloud-based iOS/Android builds',
+        url: '/frameworks/expo/eas-build'
+      },
+      {
+        name: 'expo-router',
+        description: 'File-based navigation system',
+        url: '/frameworks/expo/router'
+      }
+    ],
+    relatedFrameworks: ['react', 'nextjs'],
+    keywords: [
+      'Expo development',
+      'React Native',
+      'cross-platform mobile',
+      'iOS development',
+      'Android development',
+      'mobile app framework',
+      'Expo SDK',
+      'React Native components',
+      'EAS Build',
+      'mobile development'
+    ]
   }
 };
 

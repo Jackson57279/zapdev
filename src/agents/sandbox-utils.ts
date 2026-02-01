@@ -1,5 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { SANDBOX_TIMEOUT, type Framework } from "./types";
+import { SANDBOX_TIMEOUT, type Framework, type ExpoPreviewMode } from "./types";
 
 const SANDBOX_CACHE = new Map<string, Sandbox>();
 const PROJECT_SANDBOX_MAP = new Map<string, string>();
@@ -137,14 +137,21 @@ export async function createSandbox(framework: Framework): Promise<Sandbox> {
 // Command execution using shell (no Python kernel dependency)
 export async function runCodeCommand(
   sandbox: Sandbox,
-  command: string
+  command: string,
+  env?: Record<string, string>
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  console.log("[DEBUG] Running command:", command);
+  const redactedCommand = env 
+    ? command.replace(/EXPO_TOKEN="[^"]*"/g, 'EXPO_TOKEN="***"').replace(/Bearer [^\s]*/g, 'Bearer ***')
+    : command;
+  console.log("[DEBUG] Running command:", redactedCommand);
 
   try {
-    // Run command directly in shell with timeout
-    const result = await sandbox.commands.run(`cd /home/user && ${command}`, {
-      timeoutMs: 120000, // 2 minute timeout for build commands
+    const envPrefix = env 
+      ? Object.entries(env).map(([key, value]) => `${key}="${value}"`).join(' ') + ' '
+      : '';
+    
+    const result = await sandbox.commands.run(`cd /home/user && ${envPrefix}${command}`, {
+      timeoutMs: 120000,
     });
 
     console.log("[DEBUG] Command completed:", {
@@ -307,35 +314,47 @@ export async function readFileFast(
   }
 }
 
-export function getE2BTemplate(framework: Framework): string {
+export function getE2BTemplate(framework: Framework, expoPreviewMode?: ExpoPreviewMode): string {
   switch (framework) {
     case "nextjs": return "zapdev";
     case "angular": return "zapdev-angular";
     case "react": return "zapdev-react";
     case "vue": return "zapdev-vue";
     case "svelte": return "zapdev-svelte";
+    case "expo":
+      if (expoPreviewMode === "android-emulator") return "zapdev-expo-android";
+      if (expoPreviewMode === "expo-go") return "zapdev-expo-full";
+      return "zapdev-expo-web"; // Default to web preview (fastest)
     default: return "zapdev";
   }
 }
 
-export function getFrameworkPort(framework: Framework): number {
+export function getFrameworkPort(framework: Framework, expoPreviewMode?: ExpoPreviewMode): number {
   switch (framework) {
     case "nextjs": return 3000;
     case "angular": return 4200;
     case "react":
     case "vue":
     case "svelte": return 5173;
+    case "expo":
+      if (expoPreviewMode === "android-emulator") return 5900; // VNC port
+      return 8081; // Metro bundler port
     default: return 3000;
   }
 }
 
-export function getDevServerCommand(framework: Framework): string {
+export function getDevServerCommand(framework: Framework, expoPreviewMode?: ExpoPreviewMode): string {
   switch (framework) {
     case "nextjs": return "npm run dev";
     case "angular": return "npm run start -- --host 0.0.0.0 --port 4200";
     case "react":
     case "vue":
     case "svelte": return "npm run dev -- --host 0.0.0.0 --port 5173";
+    case "expo":
+      if (expoPreviewMode === "web") return "npx expo start --web --port 8081 --host 0.0.0.0";
+      if (expoPreviewMode === "expo-go") return "npx expo start --tunnel --port 8081";
+      if (expoPreviewMode === "android-emulator") return "/start_android.sh";
+      return "npx expo start --web --port 8081 --host 0.0.0.0";
     default: return "npm run dev";
   }
 }
@@ -422,6 +441,7 @@ export const getFindCommand = (framework: Framework): string => {
   const ignorePatterns = ["node_modules", ".git", "dist", "build"];
   if (framework === "nextjs") ignorePatterns.push(".next");
   if (framework === "svelte") ignorePatterns.push(".svelte-kit");
+  if (framework === "expo") ignorePatterns.push(".expo");
   
   return `find /home/user -type f -not -path '*/${ignorePatterns.join('/* -not -path */')}/*' 2>/dev/null`;
 };
