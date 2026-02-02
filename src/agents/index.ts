@@ -1,10 +1,6 @@
 export { 
   openrouter, 
-  getModel, 
-  isClaudeCodeModel, 
-  isClaudeCodeFeatureEnabled,
-  createClaudeCodeClientWithToken,
-  createAnthropicProviderWithToken,
+  getModel,
 } from "./client";
 export {
   type Framework,
@@ -13,14 +9,12 @@ export {
   type AgentRunResult,
   type ModelId,
   type AgentProvider,
-  type ClaudeCodeOptions,
   MODEL_CONFIGS,
   selectModelForTask,
   frameworkToConvexEnum,
   SANDBOX_TIMEOUT,
 } from "./types";
 export { createAgentTools, type ToolContext } from "./tools";
-export { createClaudeCodeTools, type ClaudeCodeToolContext } from "./claude-code-tools";
 export {
   getSandbox,
   createSandbox,

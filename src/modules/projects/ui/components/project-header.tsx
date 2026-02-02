@@ -143,8 +143,8 @@ export const ProjectHeader = ({ projectId }: Props) => {
       </div>
 
       <div className="flex items-center gap-3">
-        <DeploymentStatus projectId={projectId} />
-        <DeployButton projectId={projectId} />
+        <DeploymentStatus projectId={projectId as Id<"projects">} />
+        <DeployButton projectId={projectId} projectName={project?.name} />
         <GitHubExportButton projectId={projectId} />
         <Button
           variant="ghost"

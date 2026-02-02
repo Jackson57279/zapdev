@@ -4,7 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-import { getClientForModel, isCerebrasModel, isClaudeCodeModel, isClaudeCodeFeatureEnabled } from "./client";
+import { getClientForModel, isCerebrasModel } from "./client";
 import { internal } from "@/convex/_generated/api";
 import { createAgentTools } from "./tools";
 import { createBraveTools } from "./brave-tools";
@@ -449,34 +449,15 @@ export async function* runCodeAgent(
       validatedModel = "auto";
     }
 
-    const claudeCodeEnabled = isClaudeCodeFeatureEnabled();
     const selectedModel: keyof typeof MODEL_CONFIGS =
       validatedModel === "auto"
-        ? selectModelForTask(value, selectedFramework, claudeCodeEnabled)
+        ? selectModelForTask(value, selectedFramework)
         : (validatedModel as keyof typeof MODEL_CONFIGS);
-
-    let userAnthropicToken: string | undefined;
-    if (isClaudeCodeModel(selectedModel)) {
-      console.log("[INFO] Claude Code model selected, fetching user's Anthropic token...");
-      try {
-        const token = await convex.action(api.oauth.getAnthropicAccessTokenForCurrentUser, {});
-        if (!token) {
-          console.error("[ERROR] User has no Anthropic OAuth connection");
-          throw new Error("Claude Code requires connecting your Anthropic account. Please connect in Settings > Connections.");
-        }
-        userAnthropicToken = token;
-        console.log("[INFO] User Anthropic token retrieved successfully");
-      } catch (error) {
-        console.error("[ERROR] Failed to fetch Anthropic token:", error);
-        throw new Error("Failed to authenticate with Claude Code. Please reconnect your Anthropic account.");
-      }
-    }
 
     console.log("[INFO] Selected model:", {
       model: selectedModel,
       name: MODEL_CONFIGS[selectedModel].name,
       provider: MODEL_CONFIGS[selectedModel].provider,
-      isClaudeCode: isClaudeCodeModel(selectedModel),
     });
 
     try {
@@ -712,7 +693,6 @@ export async function* runCodeAgent(
       try {
         const client = getClientForModel(selectedModel, { 
           useGatewayFallback: useGatewayFallbackForStream,
-          userAnthropicToken,
         });
         const result = streamText({
           model: client.chat(selectedModel),
@@ -851,7 +831,6 @@ export async function* runCodeAgent(
         try {
           const client = getClientForModel(selectedModel, { 
             useGatewayFallback: summaryUseGatewayFallback,
-            userAnthropicToken,
           });
           followUpResult = await generateText({
             model: client.chat(selectedModel),
@@ -980,7 +959,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
       const fixResult = await withRateLimitRetry(
         () => generateText({
-          model: getClientForModel(selectedModel, { userAnthropicToken }).chat(selectedModel),
+          model: getClientForModel(selectedModel).chat(selectedModel),
           system: systemPrompt,
           messages: [
             ...messages,
@@ -1295,17 +1274,6 @@ export async function runErrorFix(fragmentId: string): Promise<{
     (fragmentMetadata.model as keyof typeof MODEL_CONFIGS) ||
     "anthropic/claude-haiku-4.5";
 
-  let userAnthropicToken: string | undefined;
-  if (isClaudeCodeModel(fragmentModel)) {
-    const token = await convex.query(internal.oauth.getAnthropicAccessToken, {
-      userId: project.userId,
-    });
-    if (!token) {
-      throw new Error("Claude Code requires connecting your Anthropic account. Please connect in Settings > Connections.");
-    }
-    userAnthropicToken = token;
-  }
-
   // Skip lint check for speed - only run build validation
   const buildErrors = await runBuildCheck(sandbox);
 
@@ -1351,7 +1319,7 @@ REQUIRED ACTIONS:
 
   const result = await withRateLimitRetry(
     () => generateText({
-      model: getClientForModel(fragmentModel, { userAnthropicToken }).chat(fragmentModel),
+      model: getClientForModel(fragmentModel).chat(fragmentModel),
       system: frameworkPrompt,
       messages: [{ role: "user", content: fixPrompt }],
       tools,

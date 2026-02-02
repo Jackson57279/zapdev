@@ -281,7 +281,7 @@ export const exportToGitHub = action({
       );
 
       const treeEntries = buildTreeEntries(files);
-      const accessToken = await ctx.runQuery(internal.oauth.getGithubAccessToken, {
+      const accessToken = await ctx.runAction(internal.oauth.getGithubAccessToken, {
         userId: identity.subject,
       });
       if (!accessToken) {

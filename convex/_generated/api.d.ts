@@ -8,18 +8,20 @@
  * @module
  */
 
-import type * as helpers from "../helpers.js";
-import type * as http from "../http.js";
 import type * as deployments from "../deployments.js";
 import type * as githubExports from "../githubExports.js";
+import type * as helpers from "../helpers.js";
+import type * as http from "../http.js";
 import type * as importData from "../importData.js";
 import type * as imports from "../imports.js";
 import type * as messages from "../messages.js";
 import type * as oauth from "../oauth.js";
+import type * as oauthQueries from "../oauthQueries.js";
 import type * as polar from "../polar.js";
 import type * as projects from "../projects.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as sandboxSessions from "../sandboxSessions.js";
+import type * as skills from "../skills.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as usage from "../usage.js";
 import type * as webhooks from "../webhooks.js";
@@ -31,18 +33,20 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  helpers: typeof helpers;
-  http: typeof http;
   deployments: typeof deployments;
   githubExports: typeof githubExports;
+  helpers: typeof helpers;
+  http: typeof http;
   importData: typeof importData;
   imports: typeof imports;
   messages: typeof messages;
   oauth: typeof oauth;
+  oauthQueries: typeof oauthQueries;
   polar: typeof polar;
   projects: typeof projects;
   rateLimit: typeof rateLimit;
   sandboxSessions: typeof sandboxSessions;
+  skills: typeof skills;
   subscriptions: typeof subscriptions;
   usage: typeof usage;
   webhooks: typeof webhooks;

@@ -1,49 +1,62 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { NetlifyConnectDialog } from "./netlify-connect-dialog";
+import { NetlifyCLIDialog } from "./netlify-cli-dialog";
 
 type DeployButtonProps = {
   projectId: string;
+  projectName?: string;
 };
 
-export const DeployButton = ({ projectId }: DeployButtonProps) => {
-  const connection = useQuery(api.oauth.getConnection, { provider: "netlify" });
-  const [isDeploying, setIsDeploying] = useState(false);
+export const DeployButton = ({ projectId, projectName = "project" }: DeployButtonProps) => {
+  const [isPreparing, setIsPreparing] = useState(false);
 
-  const handleDeploy = async () => {
-    if (isDeploying) return;
-    setIsDeploying(true);
+  const handleQuickDownload = async () => {
+    if (isPreparing) return;
+    setIsPreparing(true);
 
     try {
-      const response = await fetch("/api/deploy/netlify/deploy", {
+      const response = await fetch("/api/deploy/netlify/cli", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
       });
 
-      const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error || "Deployment failed");
+        const error = await response.json();
+        throw new Error(error.error || "Failed to prepare deployment package");
       }
 
-      toast.success(`Deployment started: ${payload.siteUrl}`);
+      // Get the blob and download it
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectName}-netlify-ready.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success("Deployment package downloaded! Extract and run 'netlify deploy --prod'");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Deployment failed");
+      toast.error(error instanceof Error ? error.message : "Download failed");
     } finally {
-      setIsDeploying(false);
+      setIsPreparing(false);
     }
   };
 
-  if (!connection) {
-    return <NetlifyConnectDialog />;
-  }
-
   return (
-    <Button size="sm" onClick={handleDeploy} disabled={isDeploying}>
-      {isDeploying ? "Deploying..." : "Deploy to Netlify"}
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button 
+        size="sm" 
+        onClick={handleQuickDownload} 
+        disabled={isPreparing}
+        variant="default"
+      >
+        {isPreparing ? "Preparing..." : "Deploy to Netlify"}
+      </Button>
+      <NetlifyCLIDialog projectId={projectId} projectName={projectName} />
+    </div>
   );
 };

@@ -1,5 +1,6 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { DeployButton } from "./deploy-button";
 import { DeploymentStatus } from "./deployment-status";
 import { EnvVarsDialog } from "./env-vars-dialog";
@@ -12,16 +13,18 @@ type DeploymentDashboardProps = {
 };
 
 export const DeploymentDashboard = ({ projectId }: DeploymentDashboardProps) => {
-  const deployment = useQuery(api.deployments.getDeployment, { projectId });
+  const projectIdTyped = projectId as Id<"projects">;
+  const deployment = useQuery(api.deployments.getDeployment, { projectId: projectIdTyped });
+  const project = useQuery(api.projects.get, { projectId: projectIdTyped });
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h3 className="text-sm font-medium">Netlify Deployment</h3>
-          <DeploymentStatus projectId={projectId} />
+          <DeploymentStatus projectId={projectIdTyped} />
         </div>
-        <DeployButton projectId={projectId} />
+        <DeployButton projectId={projectId} projectName={project?.name} />
       </div>
 
       {deployment?.siteId && (
@@ -33,12 +36,12 @@ export const DeploymentDashboard = ({ projectId }: DeploymentDashboardProps) => 
 
       <div>
         <h4 className="text-sm font-medium mb-2">Preview Deployments</h4>
-        <PreviewDeployments projectId={projectId} />
+        <PreviewDeployments projectId={projectIdTyped} />
       </div>
 
       <div>
         <h4 className="text-sm font-medium mb-2">Deployment History</h4>
-        <DeploymentHistory projectId={projectId} />
+        <DeploymentHistory projectId={projectIdTyped} />
       </div>
     </div>
   );
