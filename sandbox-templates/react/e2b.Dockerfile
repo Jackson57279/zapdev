@@ -4,6 +4,9 @@ FROM node:21-slim
 # Install curl
 RUN apt-get update && apt-get install -y curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Update npm to latest version and install pnpm
+RUN npm install -g npm@latest pnpm@latest
+
 # Install dependencies and customize sandbox
 WORKDIR /home/user
 

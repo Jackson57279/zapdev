@@ -9,6 +9,9 @@ RUN groupadd -r user && useradd -r -g user user && \
 # Install curl
 RUN apt-get update && apt-get install -y curl sudo && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Update npm to latest version and install pnpm
+RUN npm install -g npm@latest pnpm@latest
+
 COPY compile_page.sh /compile_page.sh
 RUN chmod +x /compile_page.sh
 
