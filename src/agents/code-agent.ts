@@ -624,17 +624,19 @@ export async function* runCodeAgent(
           },
         });
 
-        for await (const chunk of result.textStream) {
-          fullText += chunk;
-          chunkCount++;
-          if (chunkCount % 10 === 0) {
-            console.log("[DEBUG] Streamed", chunkCount, "chunks");
-            yield {
-              type: "progress",
-              data: { stage: "generating", chunks: chunkCount },
-            };
+        for await (const part of result.fullStream) {
+          if (part.type === "text-delta") {
+            fullText += part.text;
+            chunkCount++;
+            if (chunkCount % 10 === 0) {
+              console.log("[DEBUG] Streamed", chunkCount, "chunks");
+              yield {
+                type: "progress",
+                data: { stage: "generating", chunks: chunkCount },
+              };
+            }
+            yield { type: "text", data: part.text };
           }
-          yield { type: "text", data: chunk };
 
           while (pendingEvents.length > 0) {
             const nextEvent = pendingEvents.shift();
