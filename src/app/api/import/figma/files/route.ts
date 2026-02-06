@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery } from "convex/nextjs";
+import { getUser, getToken } from "@/lib/auth-server";
+import { fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 
 export async function GET() {
@@ -13,17 +13,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (false) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
-    // Get OAuth connection
-    const connection = await fetchQuery((api as any).oauth.getConnection, {
-      provider: "figma",
-    });
+    const token = await getToken();
+    const accessToken = await fetchAction(
+      api.oauth.getAccessTokenForCurrentUser,
+      { provider: "figma" as const },
+      { token: token ?? undefined },
+    ) as string | null;
 
-    if (!connection) {
+    if (!accessToken) {
       return NextResponse.json(
         { error: "Figma not connected" },
         { status: 401 }
@@ -33,7 +31,7 @@ export async function GET() {
     // Fetch files from Figma API
     const response = await fetch("https://api.figma.com/v1/files", {
       headers: {
-        Authorization: `Bearer ${connection.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 

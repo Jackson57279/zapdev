@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getUser, getConvexClientWithAuth, getToken } from "@/lib/auth-server";
@@ -46,10 +46,6 @@ type MessageWithFragment = {
   } | null;
 };
 
-type NetlifyConnection = {
-  accessToken?: string;
-};
-
 const normalizeFiles = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object") {
     return {};
@@ -84,17 +80,17 @@ const getLatestFragmentFiles = async (projectId: Id<"projects">, token?: string)
 };
 
 const getNetlifyAccessToken = async (token?: string): Promise<string> => {
-  const connection = await fetchQuery(
-    api.oauth.getConnection,
-    { provider: "netlify" },
+  const accessToken = await fetchAction(
+    api.oauth.getAccessTokenForCurrentUser,
+    { provider: "netlify" as const },
     { token },
-  ) as NetlifyConnection | null;
+  ) as string | null;
 
-  if (!connection?.accessToken) {
+  if (!accessToken) {
     throw new Error("Netlify connection not found. Please connect your Netlify account.");
   }
 
-  return connection.accessToken;
+  return accessToken;
 };
 
 export async function POST(request: Request) {

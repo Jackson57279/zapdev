@@ -43,6 +43,26 @@ export async function POST(request: NextRequest) {
 
     (async () => {
       let subscriptionStream: Awaited<ReturnType<typeof subscribe>> | null = null;
+      let writerClosed = false;
+
+      const safeWrite = async (data: Uint8Array) => {
+        if (writerClosed) return;
+        try {
+          await writer.write(data);
+        } catch {
+          writerClosed = true;
+        }
+      };
+
+      const safeClose = async () => {
+        if (writerClosed) return;
+        writerClosed = true;
+        try {
+          await writer.close();
+        } catch {
+          /* noop */
+        }
+      };
 
       try {
         await inngest.send({
@@ -65,7 +85,7 @@ export async function POST(request: NextRequest) {
           },
           async (message) => {
             const event = message.data as StreamEvent;
-            await writer.write(formatSSE(event));
+            await safeWrite(formatSSE(event));
 
             if (event.type === "complete" || event.type === "error") {
               await subscriptionStream?.cancel();
@@ -83,10 +103,10 @@ export async function POST(request: NextRequest) {
               ? error.message
               : "An unexpected error occurred",
         };
-        await writer.write(formatSSE(errorEvent));
+        await safeWrite(formatSSE(errorEvent));
       } finally {
         await subscriptionStream?.cancel();
-        await writer.close();
+        await safeClose();
       }
     })();
 

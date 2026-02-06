@@ -67,8 +67,8 @@ export const MODEL_CONFIGS = {
     isClaudeCode: false,
     maxTokens: 4096,
   },
-  "moonshotai/kimi-k2-0905": {
-    name: "Kimi K2",
+  "moonshotai/kimi-k2.5": {
+    name: "Kimi K2.5",
     provider: "moonshot",
     description: "Specialized for coding tasks",
     temperature: 0.7,
@@ -149,7 +149,7 @@ export function selectModelForTask(
   }
 
   if (userExplicitlyRequestsKimi) {
-    return "moonshotai/kimi-k2-0905";
+    return "moonshotai/kimi-k2.5";
   }
 
   return defaultModel;

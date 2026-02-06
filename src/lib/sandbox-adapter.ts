@@ -253,9 +253,11 @@ export async function createSandboxAdapter(
   framework: Framework,
   options?: CreateSandboxAdapterOptions
 ): Promise<ISandboxAdapter> {
+  const isServer = typeof window === "undefined";
   const useWC =
-    options?.useWebContainers ??
-    process.env.NEXT_PUBLIC_USE_WEBCONTAINERS === "true";
+    !isServer &&
+    (options?.useWebContainers ??
+      process.env.NEXT_PUBLIC_USE_WEBCONTAINERS === "true");
 
   if (useWC) {
     const { getWebContainer } = await import("@/lib/webcontainer");
@@ -263,7 +265,7 @@ export async function createSandboxAdapter(
     return new WebContainerAdapter(wc);
   }
 
-  // Default: E2B
+  // Default: E2B (always used server-side, regardless of feature flag)
   const { createSandbox } = await import("@/agents/sandbox-utils");
   const sandbox = await createSandbox(framework);
   return new E2BSandboxAdapter(sandbox);

@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${project.name}-netlify-ready.zip"`,
+        "Content-Disposition": `attachment; filename="${project.name.replace(/["\\\r\n]/g, "_")}-netlify-ready.zip"`,
       },
     });
   } catch (error) {

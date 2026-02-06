@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery, fetchMutation } from "convex/nextjs";
+import { getUser, getToken } from "@/lib/auth-server";
+import { fetchAction, fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 
 export async function POST(request: Request) {
@@ -10,10 +10,6 @@ export async function POST(request: Request) {
   }
 
   if (!user.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (false) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,12 +24,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get OAuth connection
-    const connection = await fetchQuery((api as any).oauth.getConnection, {
-      provider: "github",
-    });
+    const token = await getToken();
+    const accessToken = await fetchAction(
+      api.oauth.getAccessTokenForCurrentUser,
+      { provider: "github" as const },
+      { token: token ?? undefined },
+    ) as string | null;
 
-    if (!connection) {
+    if (!accessToken) {
       return NextResponse.json(
         { error: "GitHub not connected" },
         { status: 401 }
@@ -45,7 +43,7 @@ export async function POST(request: Request) {
       `https://api.github.com/repos/${repoFullName}`,
       {
         headers: {
-          Authorization: `Bearer ${connection.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "User-Agent": "ZapDev",
         },
       }

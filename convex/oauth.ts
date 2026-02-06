@@ -105,9 +105,21 @@ export const getGithubAccessTokenForCurrentUser = action({
     if (!identity?.subject) {
       return null;
     }
-    return await ctx.runAction(internal.oauth.getGithubAccessToken, {
+
+    const connection = await ctx.runQuery(internal.oauthQueries.getConnectionInternal, {
       userId: identity.subject,
+      provider: "github",
     });
+
+    if (!connection?.accessToken) {
+      return null;
+    }
+
+    try {
+      return decryptToken(connection.accessToken);
+    } catch {
+      return null;
+    }
   },
 });
 
@@ -140,8 +152,46 @@ export const getAnthropicAccessTokenForCurrentUser = action({
     if (!identity?.subject) {
       return null;
     }
-    return await ctx.runAction(internal.oauth.getAnthropicAccessToken, {
+
+    const connection = await ctx.runQuery(internal.oauthQueries.getConnectionInternal, {
       userId: identity.subject,
+      provider: "anthropic",
     });
+
+    if (!connection?.accessToken) {
+      return null;
+    }
+
+    try {
+      return decryptToken(connection.accessToken);
+    } catch {
+      return null;
+    }
+  },
+});
+
+export const getAccessTokenForCurrentUser = action({
+  args: { provider: oauthProviderEnum },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      return null;
+    }
+
+    const connection = await ctx.runQuery(internal.oauthQueries.getConnectionInternal, {
+      userId: identity.subject,
+      provider: args.provider,
+    });
+
+    if (!connection?.accessToken) {
+      return null;
+    }
+
+    try {
+      return decryptToken(connection.accessToken);
+    } catch {
+      return null;
+    }
   },
 });

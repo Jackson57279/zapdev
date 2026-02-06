@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchQuery } from "convex/nextjs";
+import { fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { getUser, getToken } from "@/lib/auth-server";
 import { createNetlifyClient } from "@/lib/netlify-client";
-
-type NetlifyConnection = {
-  accessToken?: string;
-};
 
 type RollbackPayload = {
   deployId: string;
@@ -14,17 +10,17 @@ type RollbackPayload = {
 
 const getNetlifyAccessToken = async (): Promise<string> => {
   const token = await getToken();
-  const connection = await fetchQuery(
-    api.oauth.getConnection,
-    { provider: "netlify" },
+  const accessToken = await fetchAction(
+    api.oauth.getAccessTokenForCurrentUser,
+    { provider: "netlify" as const },
     { token: token ?? undefined },
-  ) as NetlifyConnection | null;
+  ) as string | null;
 
-  if (!connection?.accessToken) {
+  if (!accessToken) {
     throw new Error("Netlify connection not found.");
   }
 
-  return connection.accessToken;
+  return accessToken;
 };
 
 export async function POST(request: Request) {

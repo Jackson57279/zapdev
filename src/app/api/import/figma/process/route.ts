@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery, fetchMutation } from "convex/nextjs";
+import { getUser, getToken } from "@/lib/auth-server";
+import { fetchAction, fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { processFigmaImport } from "@/agents/figma-import";
 
@@ -25,11 +25,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const connection = await fetchQuery((api as any).oauth.getConnection, {
-      provider: "figma",
-    });
+    const token = await getToken();
+    const accessToken = await fetchAction(
+      api.oauth.getAccessTokenForCurrentUser,
+      { provider: "figma" as const },
+      { token: token ?? undefined },
+    ) as string | null;
 
-    if (!connection) {
+    if (!accessToken) {
       return NextResponse.json(
         { error: "Figma not connected" },
         { status: 401 }
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
       `https://api.figma.com/v1/files/${fileKey}`,
       {
         headers: {
-          Authorization: `Bearer ${connection.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       }
     );
@@ -71,7 +74,7 @@ export async function POST(request: Request) {
       importId: importRecord,
       projectId,
       fileKey,
-      accessToken: connection.accessToken,
+      accessToken,
     }).catch((error) => {
       console.error("[ERROR] Background Figma import failed:", error);
     });

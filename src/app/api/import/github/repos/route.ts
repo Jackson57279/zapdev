@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth-server";
-import { fetchQuery } from "convex/nextjs";
+import { getUser, getToken } from "@/lib/auth-server";
+import { fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 
 interface GitHubRepo {
@@ -25,17 +25,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (false) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
-    // Get OAuth connection
-    const connection = await fetchQuery((api as any).oauth.getConnection, {
-      provider: "github",
-    });
+    const token = await getToken();
+    const accessToken = await fetchAction(
+      api.oauth.getAccessTokenForCurrentUser,
+      { provider: "github" as const },
+      { token: token ?? undefined },
+    ) as string | null;
 
-    if (!connection) {
+    if (!accessToken) {
       return NextResponse.json(
         { error: "GitHub not connected" },
         { status: 401 }
@@ -47,7 +45,7 @@ export async function GET() {
       "https://api.github.com/user/repos?per_page=100&sort=updated",
       {
         headers: {
-          Authorization: `Bearer ${connection.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "User-Agent": "ZapDev",
         },
       }

@@ -44,8 +44,6 @@ export const getConnection = query({
       _creationTime: v.number(),
       userId: v.string(),
       provider: oauthProviderEnum,
-      accessToken: v.string(),
-      refreshToken: v.optional(v.string()),
       expiresAt: v.optional(v.number()),
       scope: v.string(),
       metadata: v.optional(v.any()),
@@ -57,12 +55,19 @@ export const getConnection = query({
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
 
-    return await ctx.db
+    const connection = await ctx.db
       .query("oauthConnections")
       .withIndex("by_userId_provider", (q) =>
         q.eq("userId", userId).eq("provider", args.provider)
       )
       .first();
+
+    if (!connection) {
+      return null;
+    }
+
+    const { accessToken: _, refreshToken: _rt, ...safeConnection } = connection;
+    return safeConnection;
   },
 });
 
