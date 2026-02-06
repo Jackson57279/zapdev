@@ -57,11 +57,31 @@ export const NetlifyCLIDialog = ({ projectId, projectName }: NetlifyCLIDialogPro
     }
   };
 
-  const copyToClipboard = (text: string, commandName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedCommand(commandName);
-    toast.success("Copied to clipboard!");
-    setTimeout(() => setCopiedCommand(null), 2000);
+  const copyToClipboard = async (text: string, commandName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCommand(commandName);
+      toast.success("Copied to clipboard!");
+      setTimeout(() => setCopiedCommand(null), 2000);
+    } catch (err) {
+      // Fallback for non-secure contexts (HTTP, older browsers)
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        setCopiedCommand(commandName);
+        toast.success("Copied to clipboard!");
+        setTimeout(() => setCopiedCommand(null), 2000);
+      } catch (fallbackErr) {
+        console.error("Failed to copy to clipboard:", fallbackErr);
+        toast.error("Failed to copy to clipboard");
+      }
+    }
   };
 
   const installCommand = "npm install -g netlify-cli";

@@ -4,6 +4,7 @@ import { action, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { oauthProviderEnum } from "./schema";
 import crypto from "crypto";
 
 function getEncryptionKey(): Buffer {
@@ -44,7 +45,7 @@ export function decryptToken(encryptedToken: string): string {
 
 export const storeConnection = action({
   args: {
-    provider: v.union(v.literal("github"), v.literal("anthropic")),
+    provider: oauthProviderEnum,
     accessToken: v.string(),
     refreshToken: v.optional(v.string()),
     expiresAt: v.optional(v.number()),

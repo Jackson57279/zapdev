@@ -118,14 +118,9 @@ export const listConnections = query({
   returns: v.array(
     v.object({
       _id: v.id("oauthConnections"),
-      _creationTime: v.number(),
       userId: v.string(),
       provider: oauthProviderEnum,
-      accessToken: v.string(),
-      refreshToken: v.optional(v.string()),
-      expiresAt: v.optional(v.number()),
       scope: v.string(),
-      metadata: v.optional(v.any()),
       createdAt: v.number(),
       updatedAt: v.number(),
     })
@@ -133,10 +128,19 @@ export const listConnections = query({
   handler: async (ctx) => {
     const userId = await requireAuth(ctx);
 
-    return await ctx.db
+    const connections = await ctx.db
       .query("oauthConnections")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect();
+
+    return connections.map((conn) => ({
+      _id: conn._id,
+      userId: conn.userId,
+      provider: conn.provider,
+      scope: conn.scope,
+      createdAt: conn.createdAt,
+      updatedAt: conn.updatedAt,
+    }));
   },
 });
 
