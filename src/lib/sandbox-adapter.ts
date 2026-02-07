@@ -1,19 +1,18 @@
-import type { Sandbox } from "@e2b/code-interpreter";
 import type { WebContainer } from "@webcontainer/api";
 import type { Framework } from "@/agents/types";
 
 // ---------------------------------------------------------------------------
-// ISandboxAdapter — unified interface over E2B and WebContainer
+// ISandboxAdapter — unified interface over sandbox backends
 // ---------------------------------------------------------------------------
 
 /**
- * Abstraction layer over E2B sandboxes and WebContainers.
+ * Abstraction layer over sandbox implementations.
  *
  * Both implementations expose the same operations so the agent pipeline
  * (code-agent.ts, tools.ts) can work with either backend transparently.
  *
- * The factory `createSandboxAdapter()` checks the feature flag
- * `NEXT_PUBLIC_USE_WEBCONTAINERS` to decide which implementation to use.
+ * - `WebContainerAdapter`: Runs client-side in the browser
+ * - `DeferredSandboxAdapter`: Used server-side, delegates to client via callbacks
  */
 export interface ISandboxAdapter {
   /** Unique identifier for this sandbox instance. */
@@ -46,34 +45,261 @@ export interface ISandboxAdapter {
 }
 
 // ---------------------------------------------------------------------------
-// E2BSandboxAdapter — wraps existing sandbox-utils functions
+// SandboxRequest / SandboxResponse — Protocol types for deferred execution
 // ---------------------------------------------------------------------------
 
 /**
- * Adapter that delegates to the existing E2B sandbox-utils.ts functions.
- *
- * This is a thin wrapper that preserves 100% of the existing E2B behaviour.
- * When `NEXT_PUBLIC_USE_WEBCONTAINERS` is `false` (the default), this adapter
- * is used and the agent pipeline behaves identically to before.
+ * Base request fields shared by all sandbox requests.
  */
-export class E2BSandboxAdapter implements ISandboxAdapter {
-  readonly id: string;
-  private sandbox: Sandbox;
+interface BaseRequest {
+  /** Unique identifier for this request, used to correlate responses. */
+  id: string;
+}
 
-  constructor(sandbox: Sandbox) {
-    this.sandbox = sandbox;
-    this.id = sandbox.sandboxId;
+/**
+ * Request to write multiple files into the sandbox.
+ */
+export interface WriteFilesRequest extends BaseRequest {
+  type: "write-files";
+  files: Record<string, string>;
+}
+
+/**
+ * Request to read a single file from the sandbox.
+ */
+export interface ReadFileRequest extends BaseRequest {
+  type: "read-file";
+  path: string;
+}
+
+/**
+ * Request to run a shell command in the sandbox.
+ */
+export interface RunCommandRequest extends BaseRequest {
+  type: "run-command";
+  command: string;
+}
+
+/**
+ * Request to start the dev server for a given framework.
+ */
+export interface StartDevServerRequest extends BaseRequest {
+  type: "start-dev-server";
+  framework: string;
+}
+
+/**
+ * Request to run a build check (npm run build).
+ */
+export interface BuildCheckRequest extends BaseRequest {
+  type: "build-check";
+}
+
+/**
+ * Request to get the preview URL for a running dev server.
+ */
+export interface GetPreviewUrlRequest extends BaseRequest {
+  type: "get-preview-url";
+  framework: string;
+}
+
+/**
+ * Request to clean up sandbox resources.
+ */
+export interface CleanupRequest extends BaseRequest {
+  type: "cleanup";
+}
+
+/**
+ * Discriminated union of all sandbox request types.
+ *
+ * The agent sends these requests to the client via SSE events.
+ * The client executes them in WebContainer and POSTs the result back.
+ */
+export type SandboxRequest =
+  | WriteFilesRequest
+  | ReadFileRequest
+  | RunCommandRequest
+  | StartDevServerRequest
+  | BuildCheckRequest
+  | GetPreviewUrlRequest
+  | CleanupRequest;
+
+/**
+ * Response to a write-files request.
+ */
+export interface WriteFilesResponse {
+  type: "write-files";
+  requestId: string;
+  success: true;
+}
+
+/**
+ * Response to a read-file request.
+ */
+export interface ReadFileResponse {
+  type: "read-file";
+  requestId: string;
+  content: string | null;
+}
+
+/**
+ * Response to a run-command request.
+ */
+export interface RunCommandResponse {
+  type: "run-command";
+  requestId: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+/**
+ * Response to a start-dev-server request.
+ */
+export interface StartDevServerResponse {
+  type: "start-dev-server";
+  requestId: string;
+  url: string;
+}
+
+/**
+ * Response to a build-check request.
+ */
+export interface BuildCheckResponse {
+  type: "build-check";
+  requestId: string;
+  /** Error output if build failed, null if successful. */
+  error: string | null;
+}
+
+/**
+ * Response to a get-preview-url request.
+ */
+export interface GetPreviewUrlResponse {
+  type: "get-preview-url";
+  requestId: string;
+  url: string;
+}
+
+/**
+ * Response to a cleanup request.
+ */
+export interface CleanupResponse {
+  type: "cleanup";
+  requestId: string;
+  success: true;
+}
+
+/**
+ * Error response for any request that failed.
+ */
+export interface ErrorResponse {
+  type: "error";
+  requestId: string;
+  error: string;
+}
+
+/**
+ * Discriminated union of all sandbox response types.
+ *
+ * The client sends these responses after executing sandbox requests.
+ */
+export type SandboxResponse =
+  | WriteFilesResponse
+  | ReadFileResponse
+  | RunCommandResponse
+  | StartDevServerResponse
+  | BuildCheckResponse
+  | GetPreviewUrlResponse
+  | CleanupResponse
+  | ErrorResponse;
+
+// ---------------------------------------------------------------------------
+// DeferredSandboxAdapter — delegates operations to client via callback
+// ---------------------------------------------------------------------------
+
+/**
+ * Callback type for sending sandbox requests to the client.
+ *
+ * The agent runner provides this callback, which:
+ * 1. Serializes the request as an SSE event
+ * 2. Waits for the client to execute it in WebContainer
+ * 3. Returns the response when the client POSTs it back
+ */
+export type SendRequestCallback = (
+  request: SandboxRequest
+) => Promise<SandboxResponse>;
+
+/**
+ * Generates a unique request ID.
+ */
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/**
+ * Adapter that delegates sandbox operations to the client via a callback.
+ *
+ * This adapter is used SERVER-SIDE by the agent. Each method creates a
+ * request object and passes it to the `sendRequest` callback provided
+ * at construction time.
+ *
+ * Architecture:
+ * 1. Agent calls a method (e.g., `runCommand("npm run build")`)
+ * 2. Method creates a `SandboxRequest` with unique ID
+ * 3. Request is passed to `sendRequest` callback
+ * 4. Callback yields SSE event to client
+ * 5. Client executes request in WebContainer
+ * 6. Client POSTs response back
+ * 7. Callback resolves with the response
+ * 8. Method extracts and returns the relevant data
+ *
+ * @example
+ * ```typescript
+ * const adapter = new DeferredSandboxAdapter(async (request) => {
+ *   yield { type: "sandbox-request", data: request };
+ *   return await waitForClientResponse(request.id);
+ * });
+ *
+ * await adapter.runCommand("npm run build");
+ * ```
+ */
+export class DeferredSandboxAdapter implements ISandboxAdapter {
+  readonly id: string;
+  private sendRequest: SendRequestCallback;
+
+  constructor(sendRequest: SendRequestCallback) {
+    this.sendRequest = sendRequest;
+    this.id = `sandbox-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   async writeFiles(files: Record<string, string>): Promise<void> {
-    // Lazy import to avoid pulling E2B deps when using WebContainer
-    const { writeFilesBatch } = await import("@/agents/sandbox-utils");
-    await writeFilesBatch(this.sandbox, files);
+    const request: WriteFilesRequest = {
+      type: "write-files",
+      id: generateRequestId(),
+      files,
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
+    }
   }
 
   async readFile(path: string): Promise<string | null> {
-    const { readFileFast } = await import("@/agents/sandbox-utils");
-    return readFileFast(this.sandbox, path);
+    const request: ReadFileRequest = {
+      type: "read-file",
+      id: generateRequestId(),
+      path,
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
+    }
+    if (response.type !== "read-file") {
+      throw new Error(`Unexpected response type: ${response.type}`);
+    }
+    return response.content;
   }
 
   async runCommand(command: string): Promise<{
@@ -81,36 +307,81 @@ export class E2BSandboxAdapter implements ISandboxAdapter {
     stderr: string;
     exitCode: number;
   }> {
-    const { runCodeCommand } = await import("@/agents/sandbox-utils");
-    return runCodeCommand(this.sandbox, command);
+    const request: RunCommandRequest = {
+      type: "run-command",
+      id: generateRequestId(),
+      command,
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
+    }
+    if (response.type !== "run-command") {
+      throw new Error(`Unexpected response type: ${response.type}`);
+    }
+    return {
+      stdout: response.stdout,
+      stderr: response.stderr,
+      exitCode: response.exitCode,
+    };
   }
 
   async startDevServer(framework: Framework): Promise<string> {
-    const { startDevServer } = await import("@/agents/sandbox-utils");
-    return startDevServer(this.sandbox, framework);
+    const request: StartDevServerRequest = {
+      type: "start-dev-server",
+      id: generateRequestId(),
+      framework,
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
+    }
+    if (response.type !== "start-dev-server") {
+      throw new Error(`Unexpected response type: ${response.type}`);
+    }
+    return response.url;
   }
 
   async runBuildCheck(): Promise<string | null> {
-    const { runBuildCheck } = await import("@/agents/sandbox-utils");
-    return runBuildCheck(this.sandbox);
+    const request: BuildCheckRequest = {
+      type: "build-check",
+      id: generateRequestId(),
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
+    }
+    if (response.type !== "build-check") {
+      throw new Error(`Unexpected response type: ${response.type}`);
+    }
+    return response.error;
   }
 
   async getPreviewUrl(framework: Framework): Promise<string> {
-    const { getSandboxUrl } = await import("@/agents/sandbox-utils");
-    return getSandboxUrl(this.sandbox, framework);
+    const request: GetPreviewUrlRequest = {
+      type: "get-preview-url",
+      id: generateRequestId(),
+      framework,
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
+    }
+    if (response.type !== "get-preview-url") {
+      throw new Error(`Unexpected response type: ${response.type}`);
+    }
+    return response.url;
   }
 
   async cleanup(): Promise<void> {
-    try {
-      await this.sandbox.kill();
-    } catch {
-      // Sandbox may already be dead — ignore
+    const request: CleanupRequest = {
+      type: "cleanup",
+      id: generateRequestId(),
+    };
+    const response = await this.sendRequest(request);
+    if (response.type === "error") {
+      throw new Error(response.error);
     }
-  }
-
-  /** Expose the underlying E2B Sandbox for operations that need it directly. */
-  getSandbox(): Sandbox {
-    return this.sandbox;
   }
 }
 
@@ -235,38 +506,42 @@ export class WebContainerAdapter implements ISandboxAdapter {
 // Factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Options for creating a sandbox adapter.
+ */
 export interface CreateSandboxAdapterOptions {
-  /** Override the feature flag. If not provided, reads NEXT_PUBLIC_USE_WEBCONTAINERS. */
-  useWebContainers?: boolean;
+  /**
+   * Callback for sending sandbox requests to the client.
+   * The callback receives a request object and must return a Promise
+   * that resolves with the client's response.
+   */
+  sendRequest: SendRequestCallback;
 }
 
 /**
- * Create the appropriate sandbox adapter based on the feature flag.
+ * Create a DeferredSandboxAdapter with the provided callback.
  *
- * - `NEXT_PUBLIC_USE_WEBCONTAINERS=true` → WebContainerAdapter
- * - `NEXT_PUBLIC_USE_WEBCONTAINERS=false` (default) → E2BSandboxAdapter
+ * The adapter delegates all sandbox operations to the client via the
+ * `sendRequest` callback. This is used server-side in the agent runner.
  *
- * The E2B path creates a new sandbox via `createSandbox()`.
- * The WebContainer path boots the singleton via `getWebContainer()`.
+ * @example
+ * ```typescript
+ * const adapter = await createSandboxAdapter({
+ *   sendRequest: async (request) => {
+ *     // Send request to client via SSE
+ *     emitSSE({ type: "sandbox-request", data: request });
+ *     // Wait for client response
+ *     return await waitForResponse(request.id);
+ *   },
+ * });
+ *
+ * await adapter.writeFiles({ "src/App.tsx": "..." });
+ * await adapter.runCommand("npm run build");
+ * ```
  */
 export async function createSandboxAdapter(
-  framework: Framework,
-  options?: CreateSandboxAdapterOptions
+  options: CreateSandboxAdapterOptions
 ): Promise<ISandboxAdapter> {
-  const isServer = typeof window === "undefined";
-  const useWC =
-    !isServer &&
-    (options?.useWebContainers ??
-      process.env.NEXT_PUBLIC_USE_WEBCONTAINERS === "true");
-
-  if (useWC) {
-    const { getWebContainer } = await import("@/lib/webcontainer");
-    const wc = await getWebContainer();
-    return new WebContainerAdapter(wc);
-  }
-
-  // Default: E2B (always used server-side, regardless of feature flag)
-  const { createSandbox } = await import("@/agents/sandbox-utils");
-  const sandbox = await createSandbox(framework);
-  return new E2BSandboxAdapter(sandbox);
+  console.log("[SANDBOX] Creating DeferredSandboxAdapter");
+  return new DeferredSandboxAdapter(options.sendRequest);
 }

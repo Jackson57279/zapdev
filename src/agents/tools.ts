@@ -1,6 +1,5 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { getSandbox, writeFilesBatch, readFileFast } from "./sandbox-utils";
 import {
   autumnConfigTemplate,
   getPaymentTemplate,
@@ -12,17 +11,10 @@ import {
 } from "@/lib/database-templates";
 import type { AgentState } from "./types";
 import type { ISandboxAdapter } from "@/lib/sandbox-adapter";
-import { E2BSandboxAdapter } from "@/lib/sandbox-adapter";
 
 export interface ToolContext {
-  /** The sandbox adapter (preferred). When provided, tools use this. */
-  adapter?: ISandboxAdapter;
-  /**
-   * Legacy sandbox ID for backward compatibility.
-   * Used when `adapter` is not provided (e.g. runErrorFix path).
-   * @deprecated Prefer `adapter` — will be removed once all callers migrate.
-   */
-  sandboxId: string;
+  /** The sandbox adapter. */
+  adapter: ISandboxAdapter;
   state: AgentState;
   updateFiles: (files: Record<string, string>) => void;
   onFileCreated?: (path: string, content: string) => void;
@@ -31,7 +23,7 @@ export interface ToolContext {
 }
 
 export function createAgentTools(context: ToolContext) {
-  const { adapter, sandboxId, state, updateFiles, onFileCreated, onToolCall, onToolOutput } = context;
+  const { adapter, state, updateFiles, onFileCreated, onToolCall, onToolOutput } = context;
 
   return {
     terminal: tool({
@@ -40,56 +32,19 @@ export function createAgentTools(context: ToolContext) {
         command: z.string().describe("The command to execute"),
       }),
       execute: async ({ command }) => {
-        const buffers = { stdout: "", stderr: "" };
         console.log("[DEBUG] Terminal tool called with command:", command);
         onToolCall?.("terminal", { command });
 
         try {
-          // When using E2B adapter (or legacy sandboxId), use streaming callbacks
-          // for real-time output. WebContainer adapter uses non-streaming runCommand.
-          if (adapter && adapter instanceof E2BSandboxAdapter) {
-            const sandbox = adapter.getSandbox();
-            const result = await sandbox.commands.run(command, {
-              onStdout: (data: string) => {
-                buffers.stdout += data;
-                onToolOutput?.("stdout", data);
-              },
-              onStderr: (data: string) => {
-                buffers.stderr += data;
-                onToolOutput?.("stderr", data);
-              },
-            });
-            console.log("[DEBUG] Terminal command completed");
-            return result.stdout || buffers.stdout;
-          } else if (adapter) {
-            // WebContainer or other adapter — no streaming callbacks
-            const result = await adapter.runCommand(command);
-            if (result.stdout) onToolOutput?.("stdout", result.stdout);
-            if (result.stderr) onToolOutput?.("stderr", result.stderr);
-            console.log("[DEBUG] Terminal command completed (adapter)");
-            return result.stdout || result.stderr || "";
-          } else {
-            // Legacy path: use sandboxId directly
-            const sandbox = await getSandbox(sandboxId);
-            const result = await sandbox.commands.run(command, {
-              onStdout: (data: string) => {
-                buffers.stdout += data;
-                onToolOutput?.("stdout", data);
-              },
-              onStderr: (data: string) => {
-                buffers.stderr += data;
-                onToolOutput?.("stderr", data);
-              },
-            });
-            console.log("[DEBUG] Terminal command completed");
-            return result.stdout || buffers.stdout;
-          }
+          const result = await adapter.runCommand(command);
+          if (result.stdout) onToolOutput?.("stdout", result.stdout);
+          if (result.stderr) onToolOutput?.("stderr", result.stderr);
+          console.log("[DEBUG] Terminal command completed");
+          return result.stdout || result.stderr || "";
         } catch (e) {
           const errorMessage = e instanceof Error ? e.message : String(e);
           console.error("[ERROR] Terminal command failed:", errorMessage);
-          console.error("[ERROR] stdout:", buffers.stdout.substring(0, 500));
-          console.error("[ERROR] stderr:", buffers.stderr.substring(0, 500));
-          return `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
+          return `Command failed: ${errorMessage}`;
         }
       },
     }),
@@ -117,28 +72,22 @@ export function createAgentTools(context: ToolContext) {
             console.log("[DEBUG] Queuing file for write:", file.path, `(${file.content.length} bytes)`);
           }
 
-          // Retry logic for file writes (max 2 attempts)
-          let lastError: Error | null = null;
-          for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-              if (adapter) {
-                await adapter.writeFiles(filesToWrite);
-              } else {
-                // Legacy path
-                const sandbox = await getSandbox(sandboxId);
-                await writeFilesBatch(sandbox, filesToWrite);
-              }
-              lastError = null;
-              break; // Success
-            } catch (e) {
-              lastError = e instanceof Error ? e : new Error(String(e));
-              console.warn(`[WARN] File write attempt ${attempt} failed:`, lastError.message);
-              if (attempt < 2) {
-                console.log("[DEBUG] Retrying file write in 2 seconds...");
-                await new Promise(resolve => setTimeout(resolve, 2000));
-              }
-            }
-          }
+           // Retry logic for file writes (max 2 attempts)
+           let lastError: Error | null = null;
+           for (let attempt = 1; attempt <= 2; attempt++) {
+             try {
+               await adapter.writeFiles(filesToWrite);
+               lastError = null;
+               break; // Success
+             } catch (e) {
+               lastError = e instanceof Error ? e : new Error(String(e));
+               console.warn(`[WARN] File write attempt ${attempt} failed:`, lastError.message);
+               if (attempt < 2) {
+                 console.log("[DEBUG] Retrying file write in 2 seconds...");
+                 await new Promise(resolve => setTimeout(resolve, 2000));
+               }
+             }
+           }
 
           if (lastError) {
             throw lastError;
@@ -168,20 +117,13 @@ export function createAgentTools(context: ToolContext) {
         console.log("[DEBUG] readFiles tool called with", files.length, "files");
         onToolCall?.("readFiles", { files });
         try {
-          const results = await Promise.all(
-            files.map(async (file) => {
-              let content: string | null;
-              if (adapter) {
-                content = await adapter.readFile(file);
-              } else {
-                // Legacy path
-                const sandbox = await getSandbox(sandboxId);
-                content = await readFileFast(sandbox, file);
-              }
-              console.log("[DEBUG] Read file:", file, content ? `(${content.length} bytes)` : "(empty or not found)");
-              return { path: file, content: content || "" };
-            })
-          );
+           const results = await Promise.all(
+             files.map(async (file) => {
+               const content = await adapter.readFile(file);
+               console.log("[DEBUG] Read file:", file, content ? `(${content.length} bytes)` : "(empty or not found)");
+               return { path: file, content: content || "" };
+             })
+           );
 
           console.log("[INFO] Successfully read", results.length, "file(s)");
           return JSON.stringify(results);

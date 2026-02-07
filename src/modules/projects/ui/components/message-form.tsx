@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { toast } from "sonner";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +11,8 @@ import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
 import type { ModelId } from "@/agents/types";
+import { useSandboxExecutor } from "@/lib/use-sandbox-executor";
+import type { SandboxRequest } from "@/lib/sandbox-adapter";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
 
   const usage = useQuery(api.usage.getUsage);
   const createMessageWithAttachments = useAction(api.messages.createWithAttachments);
+  const { handleSandboxRequest, cleanup: cleanupSandbox } = useSandboxExecutor();
 
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -133,6 +136,16 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
                       streamingFiles[event.data.path] = event.data.content;
                       onStreamingFiles?.(streamingFiles);
                       break;
+                    case "sandbox-request": {
+                      const { sandboxId, request } = event.data as {
+                        sandboxId: string;
+                        request: SandboxRequest;
+                      };
+                      handleSandboxRequest(sandboxId, request).catch((err) => {
+                        console.error("[SSE] Failed to handle sandbox request:", err);
+                      });
+                      break;
+                    }
                     case "error":
                       toast.error(event.data as string);
                       break;
@@ -256,6 +269,13 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
   };
 
   const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      cleanupSandbox();
+    };
+  }, [cleanupSandbox]);
+
   const isPending = isCreating;
   const isButtonDisabled = isPending || !form.formState.isValid || isUploading;
   const isEnhanceDisabled = isEnhancing || isPending || isUploading;

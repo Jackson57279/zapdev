@@ -12,7 +12,7 @@ import type { WebContainer, FileSystemTree } from "@webcontainer/api";
  * Normalise a file path coming from the agent.
  *
  * Handles:
- *  - Leading `/home/user/` prefix (E2B sandbox convention)
+ *  - Leading `/home/user/` prefix (sandbox convention)
  *  - Leading `/` (absolute paths)
  *  - Trailing slashes
  *  - Double slashes
@@ -20,7 +20,7 @@ import type { WebContainer, FileSystemTree } from "@webcontainer/api";
 function normalisePath(filePath: string): string {
   let p = filePath;
 
-  // Strip E2B sandbox prefix
+   // Strip sandbox prefix
   if (p.startsWith("/home/user/")) {
     p = p.slice("/home/user/".length);
   }

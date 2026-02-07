@@ -19,7 +19,7 @@
     "@clerk/backend": "^2.29.0",
     "@clerk/nextjs": "^6.36.5",
     "@databuddy/sdk": "^2.3.2",
-    "@e2b/code-interpreter": "^1.5.1",
+
     "@hookform/resolvers": "^3.10.0",
     "@inngest/realtime": "^0.4.5",
     "@opentelemetry/api": "^1.9.0",
@@ -74,7 +74,7 @@
     "csv-parse": "^6.1.0",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
-    "e2b": "^2.9.0",
+
     "embla-carousel-react": "^8.6.0",
     "eslint-config-next": "^16.1.1",
     "firecrawl": "^4.10.0",

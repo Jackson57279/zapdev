@@ -21,6 +21,8 @@ export const agentChannel = channel((runId: string) => `agent:${runId}`)
   .addTopic(topic("research-start").type<{ type: "research-start"; data: { taskType: string; query: string } }>())
   .addTopic(topic("research-complete").type<{ type: "research-complete"; data: { taskId: string; status: string; elapsedTime: number } }>())
   .addTopic(topic("time-budget").type<{ type: "time-budget"; data: { remaining: number; stage: string } }>())
+  .addTopic(topic("skills-loaded").type<{ type: "skills-loaded"; data: { skillCount: number } }>())
+  .addTopic(topic("sandbox-request").type<{ type: "sandbox-request"; data: import("@/lib/sandbox-adapter").SandboxRequest }>())
   .addTopic(topic("error").type<{ type: "error"; data: string }>())
   .addTopic(
     topic("complete").type<{

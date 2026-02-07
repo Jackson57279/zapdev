@@ -12,7 +12,6 @@ module.exports = {
     '^@/convex/(.*)$': '<rootDir>/convex/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@inngest/agent-kit$': '<rootDir>/tests/mocks/inngest-agent-kit.ts',
-    '^@e2b/code-interpreter$': '<rootDir>/tests/mocks/e2b-code-interpreter.ts',
     '^convex/browser$': '<rootDir>/tests/mocks/convex-browser.ts',
   },
   collectCoverageFrom: [

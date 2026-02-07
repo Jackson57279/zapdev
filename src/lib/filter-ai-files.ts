@@ -1,5 +1,5 @@
 /**
- * Filters out E2B sandbox system files and configuration boilerplate,
+ * Filters out sandbox system files and configuration boilerplate,
  * returning only AI-generated source code files.
  */
 export function filterAIGeneratedFiles(
@@ -7,7 +7,7 @@ export function filterAIGeneratedFiles(
 ): Record<string, string> {
   const filtered: Record<string, string> = {};
 
-  // Patterns for files to EXCLUDE (E2B sandbox system files)
+  // Patterns for files to EXCLUDE (sandbox system files)
   const excludePatterns = [
     // Configuration files
     /^package\.json$/,

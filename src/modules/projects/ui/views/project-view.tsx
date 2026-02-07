@@ -68,7 +68,7 @@ export const ProjectView = ({ projectId }: Props) => {
       files = { ...files, ...normalizedFiles };
     }
 
-    // Filter out E2B sandbox system files - only show AI-generated code
+    // Filter out sandbox system files - only show AI-generated code
     return filterAIGeneratedFiles(files);
   }, [activeFragment, streamingFiles]);
 

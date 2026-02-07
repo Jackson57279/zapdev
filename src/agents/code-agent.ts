@@ -1,5 +1,4 @@
 import { generateText, streamText, stepCountIs } from "ai";
-import { Sandbox } from "@e2b/code-interpreter";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -19,17 +18,7 @@ import {
   frameworkToConvexEnum,
   databaseProviderToConvexEnum,
 } from "./types";
-import {
-  createSandbox,
-  getSandbox,
-  runBuildCheck,
-  shouldTriggerAutoFix,
-  getFindCommand,
-  readFilesInBatches,
-  isValidFilePath,
-  startDevServer,
-  cleanNextDirectory,
-} from "./sandbox-utils";
+
 import { crawlUrl, type CrawledContent } from "@/lib/firecrawl";
 import {
   FRAGMENT_TITLE_PROMPT,
@@ -57,8 +46,8 @@ import {
   type SubagentResponse 
 } from "./subagent";
 import { loadSkillsForAgent } from "./skill-loader";
-import { createSandboxAdapter, E2BSandboxAdapter } from "@/lib/sandbox-adapter";
-import type { ISandboxAdapter } from "@/lib/sandbox-adapter";
+import { createSandboxAdapter } from "@/lib/sandbox-adapter";
+import type { ISandboxAdapter, SandboxRequest, SandboxResponse, SendRequestCallback } from "@/lib/sandbox-adapter";
 
 let convexClient: ConvexHttpClient | null = null;
 function getConvexClient() {
@@ -82,6 +71,85 @@ const AUTO_FIX_MAX_ATTEMPTS = 1;
 const MAX_AGENT_ITERATIONS = 8;
 const FRAMEWORK_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
 const DATABASE_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
+
+const ALLOWED_WORKSPACE_PATHS = ["/home/user", "."];
+
+const isValidFilePath = (filePath: string): boolean => {
+  if (!filePath || typeof filePath !== "string") return false;
+  const normalizedPath = filePath.trim();
+  if (normalizedPath.length === 0 || normalizedPath.length > 4096) return false;
+  if (normalizedPath.includes("..")) return false;
+  if (
+    normalizedPath.includes("\0") ||
+    normalizedPath.includes("\n") ||
+    normalizedPath.includes("\r")
+  )
+    return false;
+
+  const isInWorkspace = ALLOWED_WORKSPACE_PATHS.some(
+    (basePath) =>
+      normalizedPath === basePath ||
+      normalizedPath.startsWith(`${basePath}/`) ||
+      normalizedPath.startsWith(`./`)
+  );
+
+  return (
+    isInWorkspace ||
+    normalizedPath.startsWith("/home/user/") ||
+    !normalizedPath.startsWith("/")
+  );
+};
+
+const getFindCommand = (framework: Framework): string => {
+  const ignorePatterns = ["node_modules", ".git", "dist", "build"];
+  if (framework === "nextjs") ignorePatterns.push(".next");
+  if (framework === "svelte") ignorePatterns.push(".svelte-kit");
+
+  return `find /home/user -type f -not -path '*/${ignorePatterns.join(
+    "/* -not -path */"
+  )}/*' 2>/dev/null`;
+};
+
+const AUTO_FIX_ERROR_PATTERNS = [
+  /Error:/i,
+  /\[ERROR\]/i,
+  /ERROR/,
+  /Failed\b/i,
+  /failure\b/i,
+  /Exception\b/i,
+  /SyntaxError/i,
+  /TypeError/i,
+  /ReferenceError/i,
+  /Module not found/i,
+  /Cannot find module/i,
+  /Build failed/i,
+  /Compilation error/i,
+];
+
+const shouldTriggerAutoFix = (message?: string): boolean => {
+  if (!message) return false;
+  return AUTO_FIX_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+};
+
+type PendingRequest = {
+  resolve: (response: SandboxResponse) => void;
+  reject: (error: Error) => void;
+};
+
+const PENDING_SANDBOX_REQUESTS = new Map<string, Map<string, PendingRequest>>();
+
+export function resolveSandboxResponse(
+  sandboxId: string,
+  response: SandboxResponse
+): boolean {
+  const pending = PENDING_SANDBOX_REQUESTS.get(sandboxId);
+  if (!pending) return false;
+  const entry = pending.get(response.requestId);
+  if (!entry) return false;
+  pending.delete(response.requestId);
+  entry.resolve(response);
+  return true;
+}
 
 type FragmentMetadata = Record<string, unknown>;
 
@@ -300,6 +368,7 @@ export interface StreamEvent {
     | "research-complete"
     | "time-budget"
     | "skills-loaded"
+    | "sandbox-request"
     | "error"
     | "complete";
   data: unknown;
@@ -336,7 +405,6 @@ export async function* runCodeAgent(
   });
 
   console.log("[DEBUG] Starting code-agent with AI SDK");
-  console.log("[DEBUG] E2B_API_KEY present:", !!process.env.E2B_API_KEY);
   console.log(
     "[DEBUG] OPENROUTER_API_KEY present:",
     !!process.env.OPENROUTER_API_KEY
@@ -411,15 +479,35 @@ export async function* runCodeAgent(
       }
     }
 
-    console.log("[DEBUG] Creating sandbox with framework:", detectedFramework);
+    const pendingEvents: StreamEvent[] = [];
+    const queueEvent = (event: StreamEvent) => {
+      pendingEvents.push({ ...event, timestamp: Date.now() });
+    };
+
+    // Mutable reference for sandboxId — set after adapter creation
+    // The sendRequest callback captures this closure so it can include sandboxId
+    // in SSE events, allowing the client to route responses back correctly.
+    let adapterSandboxId = "";
+
+    const sandboxPendingRequests = new Map<string, PendingRequest>();
+    const sendRequest: SendRequestCallback = (request) => {
+      return new Promise((resolve, reject) => {
+        sandboxPendingRequests.set(request.id, { resolve, reject });
+        queueEvent({ type: "sandbox-request", data: { sandboxId: adapterSandboxId, request } });
+      });
+    };
+
+    console.log("[DEBUG] Creating DeferredSandboxAdapter for:", detectedFramework);
     const [detectedDatabase, adapter, skillContent] = await Promise.all([
       needsDatabaseDetection
         ? detectDatabaseProvider(value)
         : Promise.resolve(selectedDatabase),
-      createSandboxAdapter(detectedFramework),
+      createSandboxAdapter({ sendRequest }),
       loadSkillsForAgent(projectId, project.userId),
     ]);
 
+    adapterSandboxId = adapter.id;
+    PENDING_SANDBOX_REQUESTS.set(adapter.id, sandboxPendingRequests);
     console.log("[DEBUG] Sandbox adapter created:", adapter.id);
 
     if (needsDatabaseDetection) {
@@ -586,15 +674,9 @@ export async function* runCodeAgent(
       summaryRetryCount: 0,
     };
 
-    const pendingEvents: StreamEvent[] = [];
-    const queueEvent = (event: StreamEvent) => {
-      pendingEvents.push({ ...event, timestamp: Date.now() });
-    };
-
     console.log("[DEBUG] Creating agent tools...");
     const baseTools = createAgentTools({
       adapter,
-      sandboxId,
       state,
       updateFiles: (files) => {
         state.files = files;
@@ -903,9 +985,8 @@ export async function* runCodeAgent(
       yield { type: "status", data: "Validating build..." };
       console.log("[INFO] Running build validation...");
 
-      // Clean .next directory (E2B-specific, skip for WebContainer)
-      if (adapter instanceof E2BSandboxAdapter) {
-        await cleanNextDirectory(adapter.getSandbox());
+      if (selectedFramework === "nextjs") {
+        await adapter.runCommand("rm -rf .next");
         console.log("[DEBUG] Cleaned .next directory");
       }
 
@@ -1061,7 +1142,7 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
     yield { type: "status", data: "Reading sandbox files..." };
     console.log("[DEBUG] Reading sandbox files...");
 
-    // Read files from sandbox — use adapter for command, E2B-specific batch read for efficiency
+    // Read files from sandbox via adapter
     const findCommand = getFindCommand(selectedFramework);
     const findResult = await adapter.runCommand(findCommand);
     const filePaths = findResult.stdout
@@ -1072,20 +1153,15 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
 
     console.log("[DEBUG] Found", filePaths.length, "files in sandbox");
 
-    let sandboxFiles: Record<string, string>;
-    if (adapter instanceof E2BSandboxAdapter) {
-      // E2B: use optimised batch read
-      sandboxFiles = await readFilesInBatches(adapter.getSandbox(), filePaths);
-    } else {
-      // WebContainer or other adapter: read files individually
-      const entries = await Promise.all(
-        filePaths.slice(0, 500).map(async (fp) => {
-          const content = await adapter.readFile(fp);
-          return [fp, content] as const;
-        })
-      );
-      sandboxFiles = Object.fromEntries(entries.filter(([, c]) => c !== null)) as Record<string, string>;
-    }
+    const entries = await Promise.all(
+      filePaths.slice(0, 500).map(async (fp) => {
+        const content = await adapter.readFile(fp);
+        return [fp, content] as const;
+      })
+    );
+    const sandboxFiles = Object.fromEntries(
+      entries.filter(([, c]) => c !== null)
+    ) as Record<string, string>;
     console.log("[DEBUG] Read", Object.keys(sandboxFiles).length, "files from sandbox");
 
     const filteredSandboxFiles = filterAIGeneratedFiles(sandboxFiles);
@@ -1222,152 +1298,14 @@ ${validationErrors || lastErrorMessage || "No error details provided."}
   }
 }
 
-export async function runErrorFix(fragmentId: string): Promise<{
+export async function runErrorFix(_fragmentId: string): Promise<{
   success: boolean;
   message: string;
   summary?: string;
   remainingErrors?: string;
 }> {
-  const fragment = await convex.query(api.messages.getFragmentById, {
-    fragmentId: fragmentId as Id<"fragments">,
-  });
-
-  if (!fragment) {
-    throw new Error("Fragment not found");
-  }
-
-  if (!fragment.sandboxId) {
-    throw new Error("Fragment has no active sandbox");
-  }
-
-  const message = await convex.query(api.messages.get, {
-    messageId: fragment.messageId as Id<"messages">,
-  });
-  if (!message) {
-    throw new Error("Message not found");
-  }
-
-  const project = await convex.query(api.projects.getForSystem, {
-    projectId: message.projectId as Id<"projects">,
-  });
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  const fragmentFramework = (fragment.framework?.toLowerCase() ||
-    "nextjs") as Framework;
-  const sandboxId = fragment.sandboxId;
-
-  let sandbox: Sandbox;
-  try {
-    sandbox = await getSandbox(sandboxId);
-  } catch {
-    throw new Error("Sandbox is no longer active. Please refresh the fragment.");
-  }
-
-  const fragmentMetadata =
-    typeof fragment.metadata === "object" && fragment.metadata !== null
-      ? (fragment.metadata as Record<string, unknown>)
-      : {};
-
-  const fragmentModel =
-    (fragmentMetadata.model as keyof typeof MODEL_CONFIGS) ||
-    "anthropic/claude-haiku-4.5";
-
-  // Skip lint check for speed - only run build validation
-  const buildErrors = await runBuildCheck(sandbox);
-
-  const validationErrors = buildErrors || "";
-
-  if (!validationErrors) {
-    return {
-      success: true,
-      message: "No errors detected",
-    };
-  }
-
-  const state: AgentState = {
-    summary: "",
-    files: fragment.files as Record<string, string>,
-    selectedFramework: fragmentFramework,
-    summaryRetryCount: 0,
-  };
-
-  const tools = createAgentTools({
-    sandboxId,
-    state,
-    updateFiles: (files) => {
-      state.files = files;
-    },
-  });
-
-  const frameworkPrompt = getFrameworkPrompt(fragmentFramework);
-  const modelConfig = MODEL_CONFIGS[fragmentModel];
-
-  const fixPrompt = `CRITICAL ERROR FIX REQUEST
-
-The following errors were detected in the application and need to be fixed immediately:
-
-${validationErrors}
-
-REQUIRED ACTIONS:
-1. Carefully analyze the error messages to identify the root cause
-2. Check for common issues: missing imports, type errors, syntax errors, missing packages
-3. Apply the necessary fixes to resolve ALL errors completely
-4. Verify the fixes by ensuring the code is syntactically correct
-5. Provide a <task_summary> explaining what was fixed`;
-
-  const result = await withRateLimitRetry(
-    () => generateText({
-      model: getClientForModel(fragmentModel).chat(fragmentModel),
-      system: frameworkPrompt,
-      messages: [{ role: "user", content: fixPrompt }],
-      tools,
-      stopWhen: stepCountIs(10),
-      temperature: modelConfig.temperature,
-    }),
-    { context: "runErrorFix" }
+  throw new Error(
+    "Error fix is not supported with the WebContainer backend. " +
+      "Please regenerate the fragment or fix errors manually."
   );
-
-  const summaryText = extractSummaryText(result.text || "");
-  if (summaryText) {
-    state.summary = summaryText;
-  }
-
-  // Skip lint check for speed - only run build validation
-  const newBuildErrors = await runBuildCheck(sandbox);
-
-  const remainingErrors = newBuildErrors || "";
-
-  for (const [path, content] of Object.entries(state.files)) {
-    try {
-      await sandbox.files.write(path, content);
-    } catch (error) {
-      console.error(`[ERROR] Failed to write file ${path}:`, error);
-    }
-  }
-
-  await convex.mutation(api.messages.createFragmentForUser, {
-    userId: project.userId,
-    messageId: fragment.messageId,
-    sandboxId: fragment.sandboxId || undefined,
-    sandboxUrl: fragment.sandboxUrl,
-    title: fragment.title,
-    files: state.files,
-    framework: frameworkToConvexEnum(fragmentFramework),
-    metadata: {
-      ...fragmentMetadata,
-      previousFiles: fragment.files,
-      fixedAt: new Date().toISOString(),
-    },
-  });
-
-  return {
-    success: !remainingErrors,
-    message: remainingErrors
-      ? "Some errors may remain. Please check the sandbox."
-      : "Errors fixed successfully",
-    summary: state.summary,
-    remainingErrors: remainingErrors || undefined,
-  };
 }
