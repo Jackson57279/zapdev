@@ -68,7 +68,7 @@ const convex = new Proxy({} as ConvexHttpClient, {
 });
 
 const AUTO_FIX_MAX_ATTEMPTS = 1;
-const MAX_AGENT_ITERATIONS = 8;
+const MAX_AGENT_ITERATIONS = 12;
 const FRAMEWORK_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
 const DATABASE_CACHE_TTL_30_MINUTES = 1000 * 60 * 30;
 
@@ -761,6 +761,10 @@ export async function* runCodeAgent(
       modelOptions.frequencyPenalty = modelConfig.frequencyPenalty;
     }
 
+    if (modelConfig.maxTokens) {
+      modelOptions.maxOutputTokens = modelConfig.maxTokens;
+    }
+
     console.log("[DEBUG] Beginning AI stream...");
 
     let fullText = "";
@@ -891,6 +895,55 @@ export async function* runCodeAgent(
       totalChunks: chunkCount,
       totalLength: fullText.length,
     });
+
+    // Retry with toolChoice:"required" if model responded with text but never called tools
+    if (Object.keys(state.files).length === 0 && streamCompletedSuccessfully) {
+      console.log("[WARN] Model completed without generating any files. Retrying with explicit tool-use instruction...");
+      yield { type: "status", data: "No files generated. Retrying with explicit instructions..." };
+
+      const retryPrompt = `You MUST generate code files now by calling the "createOrUpdateFiles" tool. Do NOT respond with plain text. You are a code generation agent — your job is to create files using the createOrUpdateFiles tool.
+
+The user's request was:
+${value}
+
+Call the createOrUpdateFiles tool with the appropriate files to fulfill this request. Do not explain, just generate the code.`;
+
+      try {
+        const retryClient = getClientForModel(selectedModel);
+        const retryResult = await withRateLimitRetry(
+          () => generateText({
+            model: retryClient.chat(selectedModel),
+            system: systemPrompt,
+            messages: [
+              ...messages,
+              { role: "assistant" as const, content: fullText },
+              { role: "user" as const, content: retryPrompt },
+            ],
+            tools,
+            toolChoice: "required" as const,
+            stopWhen: stepCountIs(MAX_AGENT_ITERATIONS),
+            ...modelOptions,
+          }),
+          { context: "retryToolUse" }
+        );
+
+        while (pendingEvents.length > 0) {
+          const nextEvent = pendingEvents.shift();
+          if (nextEvent) {
+            yield nextEvent;
+          }
+        }
+
+        const retrySummary = extractSummaryText(retryResult.text || "");
+        if (retrySummary) {
+          state.summary = retrySummary;
+        }
+
+        console.log("[INFO] Retry complete. Files generated:", Object.keys(state.files).length);
+      } catch (retryError) {
+        console.error("[ERROR] Retry with explicit tool-use instruction failed:", retryError);
+      }
+    }
 
     timeoutManager.endStage("codeGeneration");
 

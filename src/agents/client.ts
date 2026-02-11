@@ -46,7 +46,7 @@ export function getModel(
   if (isCerebrasModel(modelId)) {
     return cerebras(modelId);
   }
-  return openrouter(modelId);
+  return openrouter.chat(modelId);
 }
 
 export function getClientForModel(
@@ -65,6 +65,6 @@ export function getClientForModel(
     };
   }
   return {
-    chat: (modelId: string) => openrouter(modelId),
+    chat: (modelId: string) => openrouter.chat(modelId),
   };
 }

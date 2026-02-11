@@ -171,5 +171,158 @@ export function createAgentTools(context: ToolContext) {
         });
       },
     }),
+
+    listFiles: tool({
+      description: "List files and directories in a given path. Use this to explore the project structure before reading files.",
+      inputSchema: z.object({
+        path: z.string().describe("Directory path to list (relative to project root)"),
+        recursive: z.boolean().optional().describe("If true, lists files recursively (use sparingly for large directories)"),
+      }),
+      execute: async ({ path, recursive }) => {
+        console.log("[DEBUG] listFiles tool called for path:", path);
+        onToolCall?.("listFiles", { path, recursive });
+        try {
+          const command = recursive 
+            ? `find ${path} -type f 2>/dev/null | head -50`
+            : `ls -la ${path} 2>/dev/null`;
+          const result = await adapter.runCommand(command);
+          const output = result.stdout || result.stderr || "";
+          console.log("[INFO] Listed files in", path);
+          return output;
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] listFiles failed:", errorMessage);
+          return `Error listing files: ${errorMessage}`;
+        }
+      },
+    }),
+
+    searchFiles: tool({
+      description: "Search for files containing a pattern. Useful for finding imports, function definitions, or specific code patterns across the project.",
+      inputSchema: z.object({
+        pattern: z.string().describe("Pattern to search for (regex or string)"),
+        filePattern: z.string().optional().describe("File glob pattern to limit search (e.g., '*.tsx', '*.ts')"),
+        path: z.string().optional().describe("Directory path to search in (default: project root)"),
+      }),
+      execute: async ({ pattern, filePattern, path }) => {
+        console.log("[DEBUG] searchFiles tool called with pattern:", pattern);
+        onToolCall?.("searchFiles", { pattern, filePattern, path });
+        try {
+          const searchPath = path || ".";
+          const includePattern = filePattern ? `--include="${filePattern}"` : "";
+          const command = `grep -r ${includePattern} -l "${pattern}" ${searchPath} 2>/dev/null | head -20`;
+          const result = await adapter.runCommand(command);
+          const files = result.stdout.split("\n").filter(f => f.trim());
+          console.log("[INFO] Found", files.length, "files matching pattern");
+          return JSON.stringify({ files, count: files.length });
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] searchFiles failed:", errorMessage);
+          return JSON.stringify({ files: [], count: 0, error: errorMessage });
+        }
+      },
+    }),
+
+    installDependencies: tool({
+      description: "Install npm/bun/pnpm dependencies. Automatically detects package manager from lock files.",
+      inputSchema: z.object({
+        packages: z.array(z.string()).describe("Package names to install"),
+        dev: z.boolean().optional().describe("If true, installs as dev dependencies"),
+      }),
+      execute: async ({ packages, dev }) => {
+        console.log("[DEBUG] installDependencies tool called for", packages.length, "packages");
+        onToolCall?.("installDependencies", { packages, dev });
+        try {
+          const pkgManagerCmd = await adapter.runCommand("test -f bun.lock && echo 'bun' || test -f pnpm-lock.yaml && echo 'pnpm' || echo 'npm'");
+          const pkgManager = pkgManagerCmd.stdout.trim();
+          const devFlag = dev ? (pkgManager === "npm" ? "--save-dev" : "--dev") : "";
+          const command = `${pkgManager} install ${devFlag} ${packages.join(" ")}`;
+          console.log("[INFO] Running:", command);
+          const result = await adapter.runCommand(command);
+          if (result.stdout) onToolOutput?.("stdout", result.stdout);
+          if (result.stderr) onToolOutput?.("stderr", result.stderr);
+          return `Installed ${packages.length} package(s) with ${pkgManager}`;
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] installDependencies failed:", errorMessage);
+          return `Error installing packages: ${errorMessage}`;
+        }
+      },
+    }),
+
+    runBuildAndLint: tool({
+      description: "Run both build and lint checks in parallel. Returns combined results for faster validation.",
+      inputSchema: z.object({
+        framework: z.enum(["nextjs", "react", "vue", "angular", "svelte"]).describe("Framework to determine build command"),
+      }),
+      execute: async ({ framework }) => {
+        console.log("[DEBUG] runBuildAndLint tool called for", framework);
+        onToolCall?.("runBuildAndLint", { framework });
+        try {
+          const buildCmd = framework === "nextjs" ? "npm run build" : "npm run build";
+          const lintCmd = "npm run lint";
+          
+          const [buildResult, lintResult] = await Promise.allSettled([
+            adapter.runCommand(buildCmd),
+            adapter.runCommand(lintCmd),
+          ]);
+
+          const results = {
+            build: buildResult.status === "fulfilled" 
+              ? { success: true, output: buildResult.value.stdout, error: buildResult.value.stderr }
+              : { success: false, error: buildResult.reason?.message || "Build failed" },
+            lint: lintResult.status === "fulfilled"
+              ? { success: true, output: lintResult.value.stdout, error: lintResult.value.stderr }
+              : { success: false, error: lintResult.reason?.message || "Lint failed" },
+          };
+
+          const hasErrors = !results.build.success || !results.lint.success;
+          if (hasErrors) {
+            const errors = [
+              results.build.error || "",
+              results.lint.error || "",
+            ].filter(Boolean).join("\n");
+            console.error("[ERROR] Build/lint failed:", errors.substring(0, 200));
+            return `Build/Lint Errors:\n${errors}`;
+          }
+
+          console.log("[INFO] Build and lint completed successfully");
+          return "Build and lint checks passed successfully";
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] runBuildAndLint failed:", errorMessage);
+          return `Error: ${errorMessage}`;
+        }
+      },
+    }),
+
+    getFileStructure: tool({
+      description: "Get a quick overview of the project structure including key config files. Returns package.json, tsconfig.json, and directory listing in one call.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        console.log("[DEBUG] getFileStructure tool called");
+        onToolCall?.("getFileStructure", {});
+        try {
+          const [packageJson, tsconfigJson, dirListing] = await Promise.allSettled([
+            adapter.readFile("package.json"),
+            adapter.readFile("tsconfig.json"),
+            adapter.runCommand("ls -la"),
+          ]);
+
+          const result = {
+            packageJson: packageJson.status === "fulfilled" ? JSON.parse(packageJson.value || "{}") : null,
+            tsconfigJson: tsconfigJson.status === "fulfilled" ? JSON.parse(tsconfigJson.value || "{}") : null,
+            rootFiles: dirListing.status === "fulfilled" ? dirListing.value.stdout : "",
+          };
+
+          console.log("[INFO] Retrieved file structure overview");
+          return JSON.stringify(result, null, 2);
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error("[ERROR] getFileStructure failed:", errorMessage);
+          return `Error: ${errorMessage}`;
+        }
+      },
+    }),
   };
 }

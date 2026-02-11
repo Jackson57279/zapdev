@@ -40,7 +40,8 @@ export const attachmentTypeEnum = v.union(
 
 export const importSourceEnum = v.union(
   v.literal("FIGMA"),
-  v.literal("GITHUB")
+  v.literal("GITHUB"),
+  v.literal("ZAPDEV")
 );
 
 export const oauthProviderEnum = v.union(
@@ -117,6 +118,10 @@ export default defineSchema({
     framework: frameworkEnum,
     databaseProvider: v.optional(databaseProviderEnum),
     modelPreference: v.optional(v.string()),
+    source: v.optional(importSourceEnum),
+    sourceId: v.optional(v.string()),
+    importedAt: v.optional(v.number()),
+    importMetadata: v.optional(v.any()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })
