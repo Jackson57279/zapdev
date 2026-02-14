@@ -410,8 +410,9 @@ export const getForSystem = internalQuery({
 /**
  * Get all core skill content strings for prompt injection.
  * Returns an array of objects with name and content for each core skill.
+ * Public so server-side agents can call via ConvexHttpClient without deploy key.
  */
-export const getCoreSkillContents = internalQuery({
+export const getCoreSkillContents = query({
   args: {},
   returns: v.array(
     v.object({
@@ -599,8 +600,9 @@ export const seedCoreSkills = internalMutation({
 /**
  * Get installed skill contents for a project/user.
  * Returns name, slug, and content for each active installed skill.
+ * Public so server-side agents can call via ConvexHttpClient without deploy key.
  */
-export const getInstalledSkillContents = internalQuery({
+export const getInstalledSkillContents = query({
   args: {
     projectId: v.optional(v.id("projects")),
     userId: v.string(),

@@ -1,5 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
-import { internal } from "@/convex/_generated/api";
+import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cache } from "@/lib/cache";
 import { readFileSync } from "fs";
@@ -147,7 +147,7 @@ export async function loadSkillsForAgent(
         let coreSkills: SkillContent[] = [];
         try {
           coreSkills = await convex.query(
-            internal.skills.getCoreSkillContents,
+            api.skills.getCoreSkillContents,
             {},
           );
         } catch {
@@ -163,7 +163,7 @@ export async function loadSkillsForAgent(
         let installedSkills: SkillContent[] = [];
         try {
           installedSkills = await convex.query(
-            internal.skills.getInstalledSkillContents,
+            api.skills.getInstalledSkillContents,
             {
               projectId: projectId as Id<"projects">,
               userId,
