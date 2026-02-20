@@ -1,4 +1,4 @@
-/* eslint-disable */
+/* eslint_disable */
 /**
  * Generated `api` utility.
  *
