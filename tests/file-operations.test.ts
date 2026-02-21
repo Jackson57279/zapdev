@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 
 // Import the functions we want to test
-import { readFileWithTimeout, readFilesInBatches } from '../src/inngest/functions';
+import { readFileWithTimeout, readFilesInBatches } from '../src/agents/sandbox-utils';
 
 describe('File Reading Integration Tests', () => {
   describe('readFileWithTimeout', () => {

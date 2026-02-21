@@ -1,4 +1,4 @@
-/* eslint_disable @next/next/no-html-link-for-pages */
+/* eslint-disable @next/next/no-html-link-for-pages */
 
 export default function Custom404() {
   return (

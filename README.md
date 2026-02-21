@@ -12,7 +12,7 @@ AI-powered development platform that lets you create web applications by chattin
 - 🎯 Smart usage tracking and rate limiting
 - 💳 Subscription management with pro features
 - 🔐 Authentication with Clerk
-- ⚙️ Background job processing with Inngest
+- ⚙️ Background job processing with Inngest + Agent Kit
 - 🗃️ Project management and persistence
 
 ## Tech Stack
@@ -185,7 +185,7 @@ npm run lint           # Run ESLint
 - `src/app/` - Next.js app router pages and layouts
 - `src/components/` - Reusable UI components and file explorer
 - `src/modules/` - Feature-specific modules (projects, messages, usage)
-- `src/inngest/` - Background job functions and AI agent logic
+- `src/inngest/` - Inngest clients, triggers, and Agent Kit workflows
 - `src/lib/` - Utilities and database client
 - `src/trpc/` - tRPC router and client setup
 - `prisma/` - Database schema and migrations
@@ -194,7 +194,7 @@ npm run lint           # Run ESLint
 ## How It Works
 
 1. **Project Creation**: Users create projects and describe what they want to build
-2. **AI Processing**: Messages are sent to GPT-4 agents via Inngest background jobs
+2. **AI Processing**: Interactive runs stream via `/api/agent/run` (AI SDK), with optional background execution via `/api/inngest` (Inngest + Agent Kit)
 3. **Code Generation**: AI agents use E2B sandboxes to generate and test Next.js applications
 4. **Real-time Updates**: Generated code and previews are displayed in split-pane interface
 5. **File Management**: Users can browse generated files with syntax highlighting

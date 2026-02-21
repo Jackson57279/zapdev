@@ -19,6 +19,7 @@
     "@databuddy/sdk": "^2.3.2",
     "@e2b/code-interpreter": "^1.5.1",
     "@hookform/resolvers": "^3.10.0",
+    "@inngest/agent-kit": "^0.13.2",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/core": "^2.2.0",
     "@opentelemetry/resources": "^2.2.0",
@@ -73,8 +74,8 @@
     "e2b": "^2.9.0",
     "embla-carousel-react": "^8.6.0",
     "eslint-config-next": "^16.1.1",
-
     "firecrawl": "^4.10.0",
+    "inngest": "^3.52.3",
     "input-otp": "^1.4.2",
     "jest": "^30.2.0",
     "jszip": "^3.10.1",

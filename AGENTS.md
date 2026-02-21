@@ -13,7 +13,8 @@ AI-powered web app development platform using Next.js 15, Convex (real-time DB),
 ├── src/
 │   ├── app/              # Next.js 15 App Router
 │   ├── modules/          # Feature-based: home, projects, messages, usage
-│   ├── agents/           # AI agent orchestration (migrated from Inngest)
+│   ├── agents/           # AI agent orchestration (primary SSE path)
+│   ├── inngest/          # Inngest + Agent Kit background workflows
 │   ├── prompts/          # Framework-specific LLM prompts
 │   ├── components/ui/    # Shadcn/ui components
 │   ├── lib/              # Utilities, framework config
@@ -112,7 +113,7 @@ e2b template build --name your-template-name --cmd "/compile_page.sh"
 
 ## NOTES
 
-**Migration Status**: Prisma/PostgreSQL → Convex (complete). Inngest → Custom agents (migrated to `src/agents/`).
+**Migration Status**: Prisma/PostgreSQL → Convex (complete). Hybrid agent execution: primary custom SSE agents in `src/agents/` with Inngest Agent Kit workflows in `src/inngest/`.
 
 **E2B Prerequisites**: Must build sandbox templates manually before AI code generation. Not automated in CI.
 

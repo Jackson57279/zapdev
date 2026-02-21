@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { isValidFilePath } from '../src/inngest/functions';
+import { isValidFilePath } from '../src/agents/sandbox-utils';
 
 describe('Security Tests - Path Traversal Prevention', () => {
   describe('isValidFilePath', () => {
