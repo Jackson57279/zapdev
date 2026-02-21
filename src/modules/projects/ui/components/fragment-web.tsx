@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 
 import { Hint } from "@/components/hint";
@@ -15,9 +15,7 @@ const WEB_CONTAINER_PREVIEW_URL = "webcontainer://local";
 export function FragmentWeb({ data }: Props) {
   const [copied, setCopied] = useState(false);
   const [fragmentKey, setFragmentKey] = useState(0);
-  const [isTransferring, setIsTransferring] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState(data.sandboxUrl);
-  const isWebContainerPreview = currentUrl === WEB_CONTAINER_PREVIEW_URL;
+  const isWebContainerPreview = data.sandboxUrl === WEB_CONTAINER_PREVIEW_URL;
   const normalizedFiles =
     typeof data.files === "object" && data.files !== null
       ? Object.entries(data.files as Record<string, unknown>).reduce<Record<string, string>>(
@@ -36,92 +34,10 @@ export function FragmentWeb({ data }: Props) {
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(currentUrl);
+    navigator.clipboard.writeText(data.sandboxUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  // Check if sandbox is older than 55 minutes and auto-transfer
-  useEffect(() => {
-    const checkAndTransferSandbox = async () => {
-      // Convex createdAt is a number (timestamp) or optional
-      if (!data.createdAt) return;
-
-      const sandboxAge = Date.now() - data.createdAt;
-      const FIFTY_FIVE_MINUTES = 55 * 60 * 1000;
-
-      if (sandboxAge >= FIFTY_FIVE_MINUTES && !isWebContainerPreview) {
-        setIsTransferring(true);
-
-        try {
-          const response = await fetch("/api/transfer-sandbox", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              fragmentId: data._id,
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error("Transfer failed");
-          }
-
-          // Poll for the updated fragment
-          let attempts = 0;
-          const maxAttempts = 120; // 4 minutes total (120 * 2 seconds)
-
-          const pollInterval = setInterval(async () => {
-            attempts++;
-
-            try {
-              const checkResponse = await fetch(`/api/fragment/${data._id}`);
-              if (checkResponse.ok) {
-                const updatedFragment = await checkResponse.json();
-
-                if (updatedFragment.sandboxUrl !== currentUrl) {
-                  setCurrentUrl(updatedFragment.sandboxUrl);
-                  setFragmentKey((prev) => prev + 1);
-                  clearInterval(pollInterval);
-                  setIsTransferring(false);
-                }
-              }
-            } catch (err) {
-              console.error("Polling error:", err);
-            }
-
-            if (attempts >= maxAttempts) {
-              clearInterval(pollInterval);
-              setIsTransferring(false);
-              console.error("Sandbox transfer polling timeout after 4 minutes");
-            }
-          }, 2000);
-        } catch (error) {
-          console.error("Transfer error:", error);
-          setIsTransferring(false);
-        }
-      }
-    };
-
-    checkAndTransferSandbox();
-  }, [data._id, data.createdAt, currentUrl, isWebContainerPreview]);
-
-  if (isTransferring) {
-    return (
-      <div className="flex flex-col items-center justify-center w-full h-full bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <div className="text-center">
-            <h3 className="text-lg font-semibold">Transferring to Fresh Sandbox</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your app is being moved to a new sandbox. This will take a moment...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -136,22 +52,22 @@ export function FragmentWeb({ data }: Props) {
             size="sm"
             variant="outline"
             onClick={handleCopy}
-            disabled={!currentUrl || copied || isWebContainerPreview}
+            disabled={!data.sandboxUrl || copied || isWebContainerPreview}
             className="flex-1 justify-start text-start font-normal"
           >
             <span className="truncate">
-              {isWebContainerPreview ? "webcontainer://preview" : currentUrl}
+              {isWebContainerPreview ? "webcontainer://preview" : data.sandboxUrl}
             </span>
           </Button>
         </Hint>
         <Hint text="Open in a new tab" side="bottom" align="start">
           <Button
             size="sm"
-            disabled={!currentUrl || isWebContainerPreview}
+            disabled={!data.sandboxUrl || isWebContainerPreview}
             variant="outline"
             onClick={() => {
-              if (!currentUrl) return;
-              window.open(currentUrl, "_blank");
+              if (!data.sandboxUrl) return;
+              window.open(data.sandboxUrl, "_blank");
             }}
           >
             <ExternalLinkIcon />
@@ -166,9 +82,9 @@ export function FragmentWeb({ data }: Props) {
           className="h-full w-full"
           sandbox="allow-forms allow-scripts allow-same-origin"
           loading="lazy"
-          src={currentUrl}
+          src={data.sandboxUrl}
         />
       )}
     </div>
-  )
+  );
 };

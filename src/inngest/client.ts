@@ -27,6 +27,24 @@ type WebContainerRunEvent = {
   };
 };
 
+type FixErrorsRunEvent = {
+  data: {
+    fragmentId: string;
+  };
+};
+
+type FigmaImportRunEvent = {
+  data: {
+    projectId: string;
+    importId: string;
+    fileKey?: string;
+    accessToken?: string;
+    figmaUrl?: string;
+    fileBase64?: string;
+    fileName?: string;
+  };
+};
+
 export const inngest = new Inngest({
   id: "zapdev",
   middleware: [realtimeMiddleware()],
@@ -34,5 +52,7 @@ export const inngest = new Inngest({
     "agent/code.run": CodeAgentRunEvent;
     "agent/code-agent-kit.run": AgentKitRunEvent;
     "agent/code-webcontainer.run": WebContainerRunEvent;
+    "agent/fix-errors.run": FixErrorsRunEvent;
+    "agent/figma-import.run": FigmaImportRunEvent;
   }>(),
 });

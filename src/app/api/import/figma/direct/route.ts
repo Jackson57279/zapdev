@@ -2,8 +2,9 @@ import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth-server";
 import { fetchMutation } from "convex/nextjs";
+import type { FunctionReference } from "convex/server";
 import { api } from "@/convex/_generated/api";
-import { processFigmaDirectImport } from "@/agents/figma-import";
+import { inngest } from "@/inngest/client";
 
 export async function POST(request: Request) {
   const user = await getUser();
@@ -32,11 +33,9 @@ export async function POST(request: Request) {
 
     let fileBase64: string | undefined;
     let fileName: string | undefined;
-    let fileSize: number | undefined;
 
     if (file) {
       fileName = file.name;
-      fileSize = file.size;
       if (!fileName.toLowerCase().endsWith(".fig")) {
         return NextResponse.json({ error: "Only .fig files are supported" }, { status: 400 });
       }
@@ -48,7 +47,7 @@ export async function POST(request: Request) {
     const sourceUrl = figmaUrl || "figma-file-upload";
     const sourceName = fileName || (figmaUrl ? "Figma link" : "Figma upload");
 
-    const importId = await fetchMutation((api as any).imports.createImport, {
+    const importId = await fetchMutation(api.imports.createImport as unknown as FunctionReference<"mutation">, {
       projectId,
       source: "FIGMA",
       sourceId,
@@ -57,19 +56,19 @@ export async function POST(request: Request) {
       metadata: {
         inputType: fileBase64 ? "file" : "link",
         fileName,
-        fileSize,
         figmaUrl: figmaUrl || undefined,
       },
     });
 
-    processFigmaDirectImport({
-      importId,
-      projectId,
-      figmaUrl: figmaUrl || undefined,
-      fileBase64,
-      fileName,
-    }).catch((error) => {
-      console.error("[ERROR] Background Figma import failed:", error);
+    await inngest.send({
+      name: "agent/figma-import.run",
+      data: {
+        projectId,
+        importId,
+        figmaUrl: figmaUrl || undefined,
+        fileBase64,
+        fileName,
+      },
     });
 
     return NextResponse.json({
@@ -79,9 +78,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Error processing direct Figma import:", error);
-    return NextResponse.json(
-      { error: "Failed to process Figma import" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to process Figma import" }, { status: 500 });
   }
 }

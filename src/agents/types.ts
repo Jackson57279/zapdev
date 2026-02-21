@@ -1,5 +1,3 @@
-export const SANDBOX_TIMEOUT = 60_000 * 60;
-
 export type Framework = "nextjs" | "angular" | "react" | "vue" | "svelte";
 
 export interface AgentState {
@@ -21,7 +19,6 @@ export interface AgentRunResult {
   title: string;
   files: Record<string, string>;
   summary: string;
-  sandboxId: string;
   framework: Framework;
 }
 

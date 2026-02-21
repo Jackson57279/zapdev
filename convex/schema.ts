@@ -49,12 +49,6 @@ export const importStatusEnum = v.union(
   v.literal("FAILED")
 );
 
-export const sandboxStateEnum = v.union(
-  v.literal("RUNNING"),
-  v.literal("PAUSED"),
-  v.literal("KILLED")
-);
-
 export const agentRunStatusEnum = v.union(
   v.literal("PENDING"),
   v.literal("RUNNING"),
@@ -63,8 +57,8 @@ export const agentRunStatusEnum = v.union(
 );
 
 export const agentRunSourceEnum = v.union(
-  v.literal("E2B"),
-  v.literal("WEBCONTAINER")
+  v.literal("WEBCONTAINER"),
+  v.literal("INNGEST")
 );
 
 export const webhookEventStatusEnum = v.union(
@@ -121,7 +115,6 @@ export default defineSchema({
 
   fragments: defineTable({
     messageId: v.id("messages"),
-    sandboxId: v.optional(v.string()),
     sandboxUrl: v.string(),
     title: v.string(),
     files: v.any(),
@@ -134,8 +127,6 @@ export default defineSchema({
 
   fragmentDrafts: defineTable({
     projectId: v.id("projects"),
-    sandboxId: v.optional(v.string()),
-    sandboxUrl: v.optional(v.string()),
     files: v.any(),
     framework: frameworkEnum,
     createdAt: v.optional(v.number()),
@@ -261,23 +252,6 @@ export default defineSchema({
     .index("by_polarSubscriptionId", ["polarSubscriptionId"])
     .index("by_customerId", ["customerId"])
     .index("by_status", ["status"]),
-
-  sandboxSessions: defineTable({
-    sandboxId: v.string(),
-    projectId: v.id("projects"),
-    userId: v.string(),
-    framework: frameworkEnum,
-    state: sandboxStateEnum,
-    lastActivity: v.number(),
-    autoPauseTimeout: v.number(),
-    pausedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_projectId", ["projectId"])
-    .index("by_userId", ["userId"])
-    .index("by_state", ["state"])
-    .index("by_sandboxId", ["sandboxId"]),
 
   agentRuns: defineTable({
     projectId: v.id("projects"),

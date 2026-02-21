@@ -132,7 +132,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Authentication:</strong> Clerk (for secure user authentication)</li>
               <li><strong>Database:</strong> Convex (for data storage)</li>
               <li><strong>Payments:</strong> Polar/Stripe (for payment processing)</li>
-              <li><strong>Code Execution:</strong> E2B (for secure sandbox environments)</li>
+              <li><strong>Code Execution:</strong> WebContainer (for browser-based preview environments)</li>
               <li><strong>AI Services:</strong> OpenRouter/Anthropic (for AI model access)</li>
               <li><strong>Infrastructure:</strong> Vercel (for hosting)</li>
               <li><strong>Monitoring:</strong> Sentry (for error tracking)</li>

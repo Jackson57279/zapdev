@@ -18,7 +18,6 @@ import type * as oauth from "../oauth.js";
 import type * as polar from "../polar.js";
 import type * as projects from "../projects.js";
 import type * as rateLimit from "../rateLimit.js";
-import type * as sandboxSessions from "../sandboxSessions.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as usage from "../usage.js";
 import type * as webhooks from "../webhooks.js";
@@ -40,7 +39,6 @@ declare const fullApi: ApiFromModules<{
   polar: typeof polar;
   projects: typeof projects;
   rateLimit: typeof rateLimit;
-  sandboxSessions: typeof sandboxSessions;
   subscriptions: typeof subscriptions;
   usage: typeof usage;
   webhooks: typeof webhooks;

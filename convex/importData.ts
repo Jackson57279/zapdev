@@ -79,10 +79,9 @@ export const importFragment = internalMutation({
     oldId: v.string(),
     oldMessageId: v.string(),
     newMessageId: v.id("messages"),
-    sandboxId: v.optional(v.string()),
     sandboxUrl: v.string(),
     title: v.string(),
-    files: v.any(), // JSON object
+    files: v.any(),
     metadata: v.optional(v.any()),
     framework: v.union(
       v.literal("NEXTJS"),
@@ -100,7 +99,6 @@ export const importFragment = internalMutation({
 
     const fragmentId = await ctx.db.insert("fragments", {
       messageId: args.newMessageId,
-      sandboxId: args.sandboxId,
       sandboxUrl: args.sandboxUrl,
       title: args.title,
       files: args.files,
@@ -122,8 +120,6 @@ export const importFragmentDraft = internalMutation({
     oldId: v.string(),
     oldProjectId: v.string(),
     newProjectId: v.id("projects"),
-    sandboxId: v.optional(v.string()),
-    sandboxUrl: v.optional(v.string()),
     files: v.any(),
     framework: v.union(
       v.literal("NEXTJS"),
@@ -141,8 +137,6 @@ export const importFragmentDraft = internalMutation({
 
     const draftId = await ctx.db.insert("fragmentDrafts", {
       projectId: args.newProjectId,
-      sandboxId: args.sandboxId,
-      sandboxUrl: args.sandboxUrl,
       files: args.files,
       framework: args.framework,
       createdAt,
@@ -310,7 +304,6 @@ export const importFragmentAction = action({
     oldId: v.string(),
     oldMessageId: v.string(),
     newMessageId: v.id("messages"),
-    sandboxId: v.optional(v.string()),
     sandboxUrl: v.string(),
     title: v.string(),
     files: v.any(),
@@ -325,7 +318,7 @@ export const importFragmentAction = action({
     createdAt: v.string(),
     updatedAt: v.string(),
   },
-  handler: async (ctx, args): Promise<{ oldId: string; newId: any }> => {
+  handler: async (ctx, args): Promise<{ oldId: string; newId: string }> => {
     return await ctx.runMutation(internal.importData.importFragment, args);
   },
 });
@@ -335,8 +328,6 @@ export const importFragmentDraftAction = action({
     oldId: v.string(),
     oldProjectId: v.string(),
     newProjectId: v.id("projects"),
-    sandboxId: v.optional(v.string()),
-    sandboxUrl: v.optional(v.string()),
     files: v.any(),
     framework: v.union(
       v.literal("NEXTJS"),
@@ -348,7 +339,7 @@ export const importFragmentDraftAction = action({
     createdAt: v.string(),
     updatedAt: v.string(),
   },
-  handler: async (ctx, args): Promise<{ oldId: string; newId: any }> => {
+  handler: async (ctx, args): Promise<{ oldId: string; newId: string }> => {
     return await ctx.runMutation(internal.importData.importFragmentDraft, args);
   },
 });

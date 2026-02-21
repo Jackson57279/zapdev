@@ -8,12 +8,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
 import {
   ArrowUpIcon,
-  CloudIcon,
   DownloadIcon,
   FigmaIcon,
   GitBranchIcon,
   ImageIcon,
-  LaptopIcon,
   Loader2Icon,
   SparklesIcon,
   XIcon,
@@ -53,8 +51,6 @@ interface AttachmentData {
   height?: number;
 }
 
-type RunSource = "e2b" | "webcontainer";
-
 export const MessageForm = ({ projectId }: Props) => {
   const router = useRouter();
 
@@ -68,7 +64,6 @@ export const MessageForm = ({ projectId }: Props) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
   const [isEnhancing, setIsEnhancing] = useState(false);
-  const [runSource, setRunSource] = useState<RunSource>("e2b");
 
   // Model configurations matching backend
   const modelOptions = [
@@ -104,7 +99,6 @@ export const MessageForm = ({ projectId }: Props) => {
           projectId: result.projectId,
           value: result.value,
           model: selectedModel,
-          runSource,
         }),
       });
 
@@ -417,25 +411,6 @@ export const MessageForm = ({ projectId }: Props) => {
                 </div>
               </PopoverContent>
             </Popover>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              type="button"
-              disabled={isPending || isUploading}
-              onClick={() => setRunSource((current) => (current === "e2b" ? "webcontainer" : "e2b"))}
-              title={
-                runSource === "e2b"
-                  ? "Execution mode: Cloud sandbox (click for WebContainer)"
-                  : "Execution mode: Browser WebContainer (click for cloud sandbox)"
-              }
-            >
-              {runSource === "e2b" ? (
-                <CloudIcon className="size-4 text-muted-foreground" />
-              ) : (
-                <LaptopIcon className="size-4 text-muted-foreground" />
-              )}
-            </Button>
             <div className="text-[10px] text-muted-foreground font-mono">
               <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
                 <span>&#8984;</span>Enter
