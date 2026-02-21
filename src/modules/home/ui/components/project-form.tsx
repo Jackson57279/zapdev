@@ -76,7 +76,7 @@ export const ProjectForm = () => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      fetch("/api/agent/run", {
+      const agentResponse = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -85,6 +85,10 @@ export const ProjectForm = () => {
           model: selectedModel,
         }),
       });
+
+      if (!agentResponse.ok) {
+        throw new Error("Failed to start agent");
+      }
 
       form.reset();
       setAttachments([]);

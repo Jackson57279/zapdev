@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agentRuns from "../agentRuns.js";
 import type * as helpers from "../helpers.js";
 import type * as http from "../http.js";
 import type * as importData from "../importData.js";
@@ -29,6 +30,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentRuns: typeof agentRuns;
   helpers: typeof helpers;
   http: typeof http;
   importData: typeof importData;

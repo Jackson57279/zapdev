@@ -21,6 +21,7 @@ import { MessagesContainer } from "../components/messages-container";
 import { ErrorBoundary } from "react-error-boundary";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
+import { useWebContainerRunner } from "../hooks/use-webcontainer-runner";
 
 // Dynamically import heavy components
 const FileExplorer = dynamic(() => import("@/components/file-explorer").then(m => m.FileExplorer), {
@@ -38,6 +39,8 @@ interface Props {
 };
 
 export const ProjectView = ({ projectId }: Props) => {
+  useWebContainerRunner(projectId);
+
   const usage = useQuery(api.usage.getUsage);
   const hasProAccess = usage?.planType === "pro";
 

@@ -1,8 +1,12 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/inngest/client";
-import { runCodeAgentInngestFunction, runCodeAgentKitFunction } from "@/inngest/functions";
+import {
+  enqueueWebContainerRunFunction,
+  runCodeAgentInngestFunction,
+  runCodeAgentKitFunction,
+} from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [runCodeAgentInngestFunction, runCodeAgentKitFunction],
+  functions: [runCodeAgentInngestFunction, runCodeAgentKitFunction, enqueueWebContainerRunFunction],
 });

@@ -1,4 +1,6 @@
 import { getUser } from "@/lib/auth-server";
+import { getSubscriptionToken } from "@inngest/realtime";
+import { inngest } from "@/inngest/client";
 
 export async function POST() {
   try {
@@ -11,12 +13,12 @@ export async function POST() {
       );
     }
 
-    // Realtime token generation is not available without @inngest/realtime middleware
-    // TODO: Install @inngest/realtime if needed
-    return Response.json(
-      { error: "Realtime feature not configured" },
-      { status: 503 }
-    );
+    const token = await getSubscriptionToken(inngest, {
+      channel: `user:${user.id}`,
+      topics: ["agent_stream"],
+    });
+
+    return Response.json({ token });
   } catch (error) {
     console.error("[ERROR] Failed to generate realtime token:", error);
     return Response.json(

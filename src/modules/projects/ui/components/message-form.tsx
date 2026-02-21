@@ -6,7 +6,18 @@ import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
-import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon, FigmaIcon, SparklesIcon } from "lucide-react";
+import {
+  ArrowUpIcon,
+  CloudIcon,
+  DownloadIcon,
+  FigmaIcon,
+  GitBranchIcon,
+  ImageIcon,
+  LaptopIcon,
+  Loader2Icon,
+  SparklesIcon,
+  XIcon,
+} from "lucide-react";
 import { UploadButton } from "@uploadthing/react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
@@ -42,7 +53,9 @@ interface AttachmentData {
   height?: number;
 }
 
-export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
+type RunSource = "e2b" | "webcontainer";
+
+export const MessageForm = ({ projectId }: Props) => {
   const router = useRouter();
 
   const usage = useQuery(api.usage.getUsage);
@@ -55,6 +68,7 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [runSource, setRunSource] = useState<RunSource>("e2b");
 
   // Model configurations matching backend
   const modelOptions = [
@@ -83,7 +97,6 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
         attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      // Open fetch stream for real-time updates
       const response = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,68 +104,13 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
           projectId: result.projectId,
           value: result.value,
           model: selectedModel,
+          runSource,
         }),
       });
 
-      if (!response.ok || !response.body) {
+      if (!response.ok) {
         throw new Error("Failed to start agent");
       }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      const streamingFiles: Record<string, string> = {};
-
-      // Process the SSE stream
-      const processStream = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                try {
-                  const event = JSON.parse(line.slice(6));
-                  console.log("[SSE] Received event:", event.type);
-                  
-                  // Handle different event types
-                  switch (event.type) {
-                    case "text":
-                      // Text chunks are streamed - could update a temporary display
-                      break;
-                    case "status":
-                      console.log("[SSE] Status:", event.data);
-                      break;
-                    case "file-created":
-                      console.log("[SSE] File created:", event.data.path);
-                      streamingFiles[event.data.path] = event.data.content;
-                      onStreamingFiles?.(streamingFiles);
-                      break;
-                    case "error":
-                      toast.error(event.data as string);
-                      break;
-                    case "complete":
-                      console.log("[SSE] Agent completed");
-                      break;
-                  }
-                } catch (parseError) {
-                  console.warn("[SSE] Failed to parse event:", parseError);
-                }
-              }
-            }
-          }
-        } catch (streamError) {
-          console.error("[SSE] Stream error:", streamError);
-        }
-      };
-
-      // Start processing the stream
-      processStream();
 
       form.reset();
       setAttachments([]);
@@ -459,6 +417,25 @@ export const MessageForm = ({ projectId, onStreamingFiles }: Props) => {
                 </div>
               </PopoverContent>
             </Popover>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              type="button"
+              disabled={isPending || isUploading}
+              onClick={() => setRunSource((current) => (current === "e2b" ? "webcontainer" : "e2b"))}
+              title={
+                runSource === "e2b"
+                  ? "Execution mode: Cloud sandbox (click for WebContainer)"
+                  : "Execution mode: Browser WebContainer (click for cloud sandbox)"
+              }
+            >
+              {runSource === "e2b" ? (
+                <CloudIcon className="size-4 text-muted-foreground" />
+              ) : (
+                <LaptopIcon className="size-4 text-muted-foreground" />
+              )}
+            </Button>
             <div className="text-[10px] text-muted-foreground font-mono">
               <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
                 <span>&#8984;</span>Enter

@@ -4,16 +4,32 @@ import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import type { Doc } from "@/convex/_generated/dataModel";
+import { WebContainerPreview } from "./webcontainer-preview";
 
 interface Props {
   data: Doc<"fragments">;
 };
+
+const WEB_CONTAINER_PREVIEW_URL = "webcontainer://local";
 
 export function FragmentWeb({ data }: Props) {
   const [copied, setCopied] = useState(false);
   const [fragmentKey, setFragmentKey] = useState(0);
   const [isTransferring, setIsTransferring] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(data.sandboxUrl);
+  const isWebContainerPreview = currentUrl === WEB_CONTAINER_PREVIEW_URL;
+  const normalizedFiles =
+    typeof data.files === "object" && data.files !== null
+      ? Object.entries(data.files as Record<string, unknown>).reduce<Record<string, string>>(
+          (acc, [path, content]) => {
+            if (typeof content === "string") {
+              acc[path] = content;
+            }
+            return acc;
+          },
+          {}
+        )
+      : {};
 
   const onRefresh = () => {
     setFragmentKey((prev) => prev + 1);
@@ -34,7 +50,7 @@ export function FragmentWeb({ data }: Props) {
       const sandboxAge = Date.now() - data.createdAt;
       const FIFTY_FIVE_MINUTES = 55 * 60 * 1000;
 
-      if (sandboxAge >= FIFTY_FIVE_MINUTES) {
+      if (sandboxAge >= FIFTY_FIVE_MINUTES && !isWebContainerPreview) {
         setIsTransferring(true);
 
         try {
@@ -89,7 +105,7 @@ export function FragmentWeb({ data }: Props) {
     };
 
     checkAndTransferSandbox();
-  }, [data._id, data.createdAt, currentUrl]);
+  }, [data._id, data.createdAt, currentUrl, isWebContainerPreview]);
 
   if (isTransferring) {
     return (
@@ -120,18 +136,18 @@ export function FragmentWeb({ data }: Props) {
             size="sm"
             variant="outline"
             onClick={handleCopy}
-            disabled={!currentUrl || copied}
+            disabled={!currentUrl || copied || isWebContainerPreview}
             className="flex-1 justify-start text-start font-normal"
           >
             <span className="truncate">
-              {currentUrl}
+              {isWebContainerPreview ? "webcontainer://preview" : currentUrl}
             </span>
           </Button>
         </Hint>
         <Hint text="Open in a new tab" side="bottom" align="start">
           <Button
             size="sm"
-            disabled={!currentUrl}
+            disabled={!currentUrl || isWebContainerPreview}
             variant="outline"
             onClick={() => {
               if (!currentUrl) return;
@@ -142,13 +158,17 @@ export function FragmentWeb({ data }: Props) {
           </Button>
         </Hint>
       </div>
-      <iframe
-        key={fragmentKey}
-        className="h-full w-full"
-        sandbox="allow-forms allow-scripts allow-same-origin"
-        loading="lazy"
-        src={currentUrl}
-      />
+      {isWebContainerPreview ? (
+        <WebContainerPreview files={normalizedFiles} refreshKey={fragmentKey} />
+      ) : (
+        <iframe
+          key={fragmentKey}
+          className="h-full w-full"
+          sandbox="allow-forms allow-scripts allow-same-origin"
+          loading="lazy"
+          src={currentUrl}
+        />
+      )}
     </div>
   )
 };

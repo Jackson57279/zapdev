@@ -4,7 +4,7 @@
 **Parent**: [AGENTS.md](../AGENTS.md)
 
 ## OVERVIEW
-AI agent orchestration for real-time code generation, migrated from Inngest to a custom event-driven loop.
+AI agent orchestration for code generation, executed through Inngest events and Agent Kit workflows.
 
 ## WHERE TO LOOK
 
@@ -15,11 +15,11 @@ AI agent orchestration for real-time code generation, migrated from Inngest to a
 | `tools.ts` | **Agent Capabilities**: Terminal access, batch file writes, and parallel file reading. |
 | `types.ts` | **Configurations**: Framework mappings, model preferences, and state interfaces. |
 | `client.ts` | **LLM Client**: OpenRouter configuration for model access. |
-| `/api/agent/run/route.ts` | **Entry Point**: SSE (Server-Sent Events) endpoint for streaming agent progress. |
+| `/api/agent/run/route.ts` | **Entry Point**: Validates requests and dispatches Inngest Agent Kit events. |
 
 ## CONVENTIONS
 
-- **Streaming**: All agent operations MUST use `streamText` and yield `StreamEvent` objects to the client via SSE.
+- **Execution Path**: User submits prompts to `/api/agent/run`, which triggers Inngest; long-running work does not execute in the API request lifecycle.
 - **Python Optimizations**: Use Python scripts inside E2B sandboxes for batch operations (e.g., `writeFilesBatch`) to avoid O(N) API latency.
 - **Framework Detection**: Automatic framework selection via Gemini if not explicitly provided by the project.
 - **Auto-Fix Logic**: Single-attempt retry loop that feeds build/lint errors back to the model for correction.
