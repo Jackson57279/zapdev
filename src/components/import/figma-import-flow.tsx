@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2Icon, UploadIcon, LinkIcon, FileIcon } from "lucide-react";
+import { Loader2Icon, UploadIcon, FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function FigmaImportFlow() {
-  const [figmaUrl, setFigmaUrl] = useState("");
   const [figFile, setFigFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -18,8 +17,8 @@ export function FigmaImportFlow() {
       return;
     }
 
-    if (!figmaUrl && !figFile) {
-      toast.error("Provide a Figma link or upload a .fig file");
+    if (!figFile) {
+      toast.error("Please upload a .fig file");
       return;
     }
 
@@ -27,12 +26,7 @@ export function FigmaImportFlow() {
       setIsProcessing(true);
       const formData = new FormData();
       formData.append("projectId", projectId);
-      if (figmaUrl) {
-        formData.append("figmaUrl", figmaUrl);
-      }
-      if (figFile) {
-        formData.append("figmaFile", figFile);
-      }
+      formData.append("figmaFile", figFile);
 
       const response = await fetch("/api/import/figma/direct", {
         method: "POST",
@@ -44,7 +38,7 @@ export function FigmaImportFlow() {
         throw new Error(errorText || "Failed to start Figma import");
       }
 
-      toast.success("Import started! We’ll generate code from your design.");
+      toast.success("Import started! We'll generate code from your design.");
       setTimeout(() => {
         window.location.href = `/projects/${projectId}`;
       }, 1500);
@@ -63,30 +57,15 @@ export function FigmaImportFlow() {
       <div>
         <h2 className="text-2xl font-bold mb-2">Import from Figma</h2>
         <p className="text-muted-foreground">
-          Paste a public Figma link or upload a .fig file. No Figma API token required.
+          Upload your .fig file and we'll generate code from your design.
         </p>
       </div>
 
       <div className="space-y-4">
         <label className="flex flex-col gap-2">
           <span className="text-sm font-medium flex items-center gap-2">
-            <LinkIcon className="w-4 h-4 text-muted-foreground" />
-            Public Figma link (optional)
-          </span>
-          <input
-            type="url"
-            placeholder="https://www.figma.com/file/..."
-            value={figmaUrl}
-            onChange={(e) => setFigmaUrl(e.target.value)}
-            disabled={inputDisabled}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium flex items-center gap-2">
             <FileIcon className="w-4 h-4 text-muted-foreground" />
-            Upload .fig file (optional)
+            Upload .fig file
           </span>
           <input
             type="file"
@@ -109,7 +88,7 @@ export function FigmaImportFlow() {
         </Button>
         <Button
           onClick={handleSubmit}
-          disabled={isProcessing || (!figmaUrl && !figFile)}
+          disabled={isProcessing || !figFile}
           className="gap-2"
         >
           {isProcessing && <Loader2Icon className="w-4 h-4 animate-spin" />}

@@ -20,43 +20,36 @@ export async function POST(request: Request) {
 
     const form = await request.formData();
     const projectId = form.get("projectId")?.toString();
-    const figmaUrl = form.get("figmaUrl")?.toString().trim() || "";
     const file = form.get("figmaFile") as File | null;
 
     if (!projectId) {
       return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
     }
 
-    if (!figmaUrl && !file) {
-      return NextResponse.json({ error: "Provide figmaUrl or figmaFile" }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ error: "Please upload a .fig file" }, { status: 400 });
     }
 
-    let fileBase64: string | undefined;
-    let fileName: string | undefined;
-
-    if (file) {
-      fileName = file.name;
-      if (!fileName.toLowerCase().endsWith(".fig")) {
-        return NextResponse.json({ error: "Only .fig files are supported" }, { status: 400 });
-      }
-      const fileBuffer = Buffer.from(await file.arrayBuffer());
-      fileBase64 = fileBuffer.toString("base64");
+    const fileName = file.name;
+    if (!fileName.toLowerCase().endsWith(".fig")) {
+      return NextResponse.json({ error: "Only .fig files are supported" }, { status: 400 });
     }
 
-    const sourceId = figmaUrl || fileName || "figma-direct";
-    const sourceUrl = figmaUrl || "figma-file-upload";
-    const sourceName = fileName || (figmaUrl ? "Figma link" : "Figma upload");
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const fileBase64 = fileBuffer.toString("base64");
+
+    const sourceId = fileName;
+    const sourceUrl = "figma-file-upload";
 
     const importId = await fetchMutation(api.imports.createImport as unknown as FunctionReference<"mutation">, {
       projectId,
       source: "FIGMA",
       sourceId,
-      sourceName,
+      sourceName: fileName,
       sourceUrl,
       metadata: {
-        inputType: fileBase64 ? "file" : "link",
+        inputType: "file",
         fileName,
-        figmaUrl: figmaUrl || undefined,
       },
     });
 
@@ -65,7 +58,6 @@ export async function POST(request: Request) {
       data: {
         projectId,
         importId,
-        figmaUrl: figmaUrl || undefined,
         fileBase64,
         fileName,
       },

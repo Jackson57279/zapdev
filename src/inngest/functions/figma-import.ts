@@ -1,3 +1,5 @@
+"use node";
+
 import { createAgent, createNetwork, createTool, openai } from "@inngest/agent-kit";
 import { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
@@ -7,6 +9,7 @@ import { frameworkToConvexEnum } from "@/agents/types";
 import { NEXTJS_PROMPT } from "@/prompt";
 import { sanitizeTextForDatabase } from "@/lib/utils";
 import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
+import { parseFigmaFigFile, extractDesignSystem, generateFigmaCodePrompt } from "@/lib/figma-processor";
 import { inngest } from "../client";
 
 const WEB_CONTAINER_PREVIEW_URL = "webcontainer://local";
@@ -42,57 +45,32 @@ export const runFigmaImportFunction = inngest.createFunction(
   { id: "run-figma-import" },
   { event: "agent/figma-import.run" },
   async ({ event }) => {
-    const { projectId, importId, fileKey, accessToken, figmaUrl, fileBase64, fileName } = event.data;
+    const { projectId, importId, fileBase64, fileName } = event.data;
     const convex = getConvexClient();
 
-    let prompt: string;
+    if (!fileBase64) {
+      throw new Error("No .fig file provided");
+    }
 
-    if (fileKey && accessToken) {
-      let figmaFileContext = "";
-      try {
-        const fileResponse = await fetch(`https://api.figma.com/v1/files/${fileKey}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (fileResponse.ok) {
-          const fileData = await fileResponse.json() as { name?: string; document?: unknown };
-          figmaFileContext = `Figma file name: ${fileData.name ?? "Unknown"}\n`;
-        }
-      } catch {
-        figmaFileContext = "";
-      }
-
-      prompt = `${figmaFileContext}Import and recreate this Figma design (file key: ${fileKey}).
-
-Please analyze the design and create a complete Next.js implementation with:
-1. Accurate layout and spacing matching the original design
-2. Proper color scheme and typography
-3. Responsive design that works on mobile and desktop
-4. All interactive elements with proper hover/focus states
-5. Use Shadcn UI components from @/components/ui/
-6. Follow Next.js best practices
-
-After finishing, return a concise summary wrapped in <task_summary> tags.`;
-    } else if (figmaUrl) {
-      prompt = `Import and recreate the Figma design from this URL: ${figmaUrl}
-
-Create a complete Next.js implementation with:
-1. Accurate layout matching the design intent
+    let figmaFileData: any;
+    let designSystem: any;
+    let designPrompt = "";
+    try {
+      const fileBuffer = Buffer.from(fileBase64, "base64");
+      const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength);
+      figmaFileData = await parseFigmaFigFile(arrayBuffer);
+      designSystem = extractDesignSystem(figmaFileData);
+      designPrompt = generateFigmaCodePrompt(figmaFileData, designSystem);
+    } catch (parseError) {
+      console.error("Error parsing .fig file:", parseError);
+      designPrompt = `Import and recreate the Figma design from the uploaded file: ${fileName ?? "figma-upload"}.
+The file could not be fully parsed, but please create a complete Next.js implementation based on typical design patterns with:
+1. Accurate layout and spacing
 2. Proper color scheme and typography
 3. Responsive design for mobile and desktop
 4. Interactive elements with hover/focus states
 5. Use Shadcn UI components from @/components/ui/
-
-After finishing, return a concise summary wrapped in <task_summary> tags.`;
-    } else {
-      prompt = `Import and recreate the Figma design from the uploaded file: ${fileName ?? "figma-upload"}.
-
-Create a complete Next.js implementation with:
-1. Accurate layout and spacing
-2. Proper color scheme
-3. Responsive design
-4. Interactive elements
-5. Use Shadcn UI components from @/components/ui/
-
+6. Follow Next.js best practices
 After finishing, return a concise summary wrapped in <task_summary> tags.`;
     }
 
@@ -123,7 +101,9 @@ After finishing, return a concise summary wrapped in <task_summary> tags.`;
       description: "Generates code from Figma designs in-memory.",
       system: `${NEXTJS_PROMPT}
 
-You are implementing a design imported from Figma. Create a faithful implementation using Next.js and Shadcn UI components.`,
+You are implementing a design imported from Figma. Create a faithful implementation using Next.js and Shadcn UI components.
+
+${designPrompt}`,
       model: openai({
         model: "anthropic/claude-haiku-4.5",
         baseUrl: "https://openrouter.ai/api/v1",
@@ -138,6 +118,18 @@ You are implementing a design imported from Figma. Create a faithful implementat
       agents: [figmaAgent],
       router: ({ callCount }) => (callCount > 0 ? undefined : figmaAgent),
     });
+
+    const prompt = designPrompt || `Import and recreate the Figma design from the uploaded file: ${fileName ?? "figma-upload"}.
+
+Create a complete Next.js implementation with:
+1. Accurate layout and spacing
+2. Proper color scheme and typography
+3. Responsive design for mobile and desktop
+4. Interactive elements with hover/focus states
+5. Use Shadcn UI components from @/components/ui/
+6. Follow Next.js best practices
+
+After finishing, return a concise summary wrapped in <task_summary> tags.`;
 
     const result = await network.run(prompt);
     const resultText = truncate(toText(result));
