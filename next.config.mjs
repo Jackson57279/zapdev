@@ -43,9 +43,6 @@ const nextConfig = {
       },
       {
         source: '/api/auth/:path*',
-    return [
-      {
-        source: '/api/auth/:path*',
         headers: [
           {
             key: 'Access-Control-Allow-Credentials',
