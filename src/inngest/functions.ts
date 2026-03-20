@@ -1,16 +1,24 @@
 import { z } from "zod";
-import { Sandbox } from "@e2b/code-interpreter";
+import { Sandbox } from "e2b";
 import { openai, createAgent, createTool, createNetwork, type Tool, type Message, createState } from "@inngest/agent-kit";
+import { ConvexHttpClient } from "convex/browser";
 
-import { prisma } from "@/lib/db";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { FRAGMENT_TITLE_PROMPT, PROMPT, RESPONSE_PROMPT } from "@/prompt";
-import { selectModelForTask, type Framework } from "@/agents/types";
+import { selectModelForTask } from "@/agents/types";
 
 import { inngest } from "./client";
 import { SANDBOX_TIMEOUT } from "./types";
 import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from "./utils";
 
 const E2B_TEMPLATE = "zapdev-nextjs";
+
+function getConvexClient(): ConvexHttpClient {
+  const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
+  return new ConvexHttpClient(url);
+}
 
 const getModelForAgent = (
   requestedModel: string | undefined,
@@ -27,7 +35,7 @@ interface AgentState {
 
 export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
-  { event: "code-agent/run" },
+  { event: "agent/code-agent-kit.run" },
   async ({ event, step }) => {
     const sandboxId = await step.run("get-sandbox-id", async () => {
       const sandbox = await Sandbox.create(E2B_TEMPLATE);
@@ -38,25 +46,24 @@ export const codeAgentFunction = inngest.createFunction(
     const previousMessages = await step.run("get-previous-messages", async () => {
       const formattedMessages: Message[] = [];
 
-      const messages = await prisma.message.findMany({
-        where: {
-          projectId: event.data.projectId,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 5,
+      const convex = getConvexClient();
+      const messages = await convex.query(api.messages.listForUser, {
+        userId: event.data.userId as string,
+        projectId: event.data.projectId as Id<"projects">,
       });
 
-      for (const message of messages) {
+      // Take last 5 messages
+      const recentMessages = messages.slice(-5);
+
+      for (const message of recentMessages) {
         formattedMessages.push({
           type: "text",
           role: message.role === "ASSISTANT" ? "assistant" : "user",
           content: message.content,
-        })
+        });
       }
 
-      return formattedMessages.reverse();
+      return formattedMessages;
     });
 
     const state = createState<AgentState>(
@@ -69,7 +76,7 @@ export const codeAgentFunction = inngest.createFunction(
       },
     );
 
-    const selectedModel = getModelForAgent(event.data.model, event.data.value);
+    const selectedModel = getModelForAgent(event.data.model as string | undefined, event.data.value as string);
 
     const codeAgent = createAgent<AgentState>({
       name: "code-agent",
@@ -204,7 +211,7 @@ export const codeAgentFunction = inngest.createFunction(
       },
     });
 
-    const result = await network.run(event.data.value, { state });
+    const result = await network.run(event.data.value as string, { state });
 
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
@@ -215,7 +222,7 @@ export const codeAgentFunction = inngest.createFunction(
         baseUrl: "https://openrouter.ai/api/v1",
         apiKey: process.env.OPENROUTER_API_KEY,
       }),
-    })
+    });
 
     const responseGenerator = createAgent({
       name: "response-generator",
@@ -228,10 +235,10 @@ export const codeAgentFunction = inngest.createFunction(
       }),
     });
 
-    const { 
+    const {
       output: fragmentTitleOuput
     } = await fragmentTitleGenerator.run(result.state.data.summary);
-    const { 
+    const {
       output: responseOutput
     } = await responseGenerator.run(result.state.data.summary);
 
@@ -246,35 +253,41 @@ export const codeAgentFunction = inngest.createFunction(
     });
 
     await step.run("save-result", async () => {
+      const convex = getConvexClient();
+      const userId = event.data.userId as string;
+      const projectId = event.data.projectId as Id<"projects">;
+
       if (isError) {
-        return await prisma.message.create({
-          data: {
-            projectId: event.data.projectId,
-            content: "Something went wrong. Please try again.",
-            role: "ASSISTANT",
-            type: "ERROR",
-          },
+        return await convex.mutation(api.messages.createForUser, {
+          userId,
+          projectId,
+          content: "Something went wrong. Please try again.",
+          role: "ASSISTANT",
+          type: "ERROR",
         });
       }
 
-      return await prisma.message.create({
-        data: {
-          projectId: event.data.projectId,
-          content: parseAgentOutput(responseOutput),
-          role: "ASSISTANT",
-          type: "RESULT",
-          fragment: {
-            create: {
-              sandboxUrl: sandboxUrl,
-              title: parseAgentOutput(fragmentTitleOuput),
-              files: result.state.data.files,
-            },
-          },
-        },
-      })
+      const messageId = await convex.mutation(api.messages.createForUser, {
+        userId,
+        projectId,
+        content: parseAgentOutput(responseOutput),
+        role: "ASSISTANT",
+        type: "RESULT",
+      });
+
+      await convex.mutation(api.messages.createFragmentForUser, {
+        userId,
+        messageId: messageId as Id<"messages">,
+        sandboxUrl,
+        title: parseAgentOutput(fragmentTitleOuput),
+        files: result.state.data.files,
+        framework: "NEXTJS",
+      });
+
+      return messageId;
     });
 
-    return { 
+    return {
       url: sandboxUrl,
       title: "Fragment",
       files: result.state.data.files,

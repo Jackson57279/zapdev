@@ -1,4 +1,4 @@
-import { Sandbox } from "@e2b/code-interpreter";
+import { Sandbox } from "e2b";
 import { AgentResult, Message, TextMessage } from "@inngest/agent-kit";
 
 import { SANDBOX_TIMEOUT } from "./types";
