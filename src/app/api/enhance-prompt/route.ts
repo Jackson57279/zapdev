@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("[DEBUG] Enhancing prompt with length:", prompt.length);
-    console.log("[DEBUG] Using model: openai/gpt-5-nano");
+    console.log("[DEBUG] Using model: moonshotai/kimi-k2.5:nitro");
     console.log("[DEBUG] API Base URL:", baseUrl);
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         "X-Title": "ZapDev Prompt Enhancer",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5-nano",
+        model: "moonshotai/kimi-k2.5:nitro",
         messages: [
           {
             role: "system",

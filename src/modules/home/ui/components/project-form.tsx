@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
-import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, FigmaIcon, GitBranchIcon, SparklesIcon } from "lucide-react";
+import { ArrowUpIcon, Loader2Icon, ImageIcon, XIcon, DownloadIcon, GitBranchIcon, SparklesIcon } from "lucide-react";
 import { UploadButton } from "@uploadthing/react";
 import { useAction } from "convex/react";
 import { api } from "@/lib/convex-api";
@@ -64,7 +64,7 @@ export const ProjectForm = () => {
     { id: "anthropic/claude-haiku-4.5" as ModelId, name: "Claude Haiku 4.5", image: "/haiku.svg", description: "Fast and efficient" },
     { id: "google/gemini-3-pro-preview" as ModelId, name: "Gemini 3 Pro", image: "/gemini.svg", description: "Google's most intelligent model with state-of-the-art reasoning" },
     { id: "openai/gpt-5.1-codex" as ModelId, name: "GPT-5.1 Codex", image: "/openai.svg", description: "OpenAI's flagship model for complex tasks" },
-    { id: "zai-glm-4.7" as ModelId, name: "Z-AI GLM 4.7", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
+    { id: "z-ai/glm-5" as ModelId, name: "Z-AI GLM 5", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
     { id: "moonshotai/kimi-k2.5" as ModelId, name: "Kimi K2.5", image: "/globe.svg", description: "Moonshot's advanced reasoning model for complex development tasks" },
   ];
 
@@ -116,53 +116,12 @@ export const ProjectForm = () => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleFigmaImport = async () => {
-    setIsImportMenuOpen(false);
-    try {
-      if (isUploading) {
-        toast.error("Please wait for uploads to finish");
-        return;
-      }
-
-      const rawValue = form.getValues("value")?.trim() || "";
-      const projectValue = rawValue || "Start this project from a Figma import.";
-
-      setIsCreating(true);
-      const result = await createProjectWithMessageAndAttachments({
-        value: projectValue,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      });
-
-      const url = new URL("/import", window.location.origin);
-      url.searchParams.set("source", "figma");
-      url.searchParams.set("projectId", result.id);
-      window.location.href = url.toString();
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message);
-
-        if (error.message.includes("Unauthenticated") || error.message.includes("Not authenticated")) {
-          router.push("/sign-in");
-        }
-
-        if (error.message.includes("credits") || error.message.includes("out of credits")) {
-          router.push("/pricing");
-        }
-      } else {
-        toast.error("Failed to start Figma import");
-      }
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
   const handleGitHubImport = async () => {
     setIsImportMenuOpen(false);
     try {
-      // Navigate to GitHub OAuth flow
-      window.location.href = "/api/import/github/auth";
+      window.location.href = "/import?source=github";
     } catch {
-      toast.error("Failed to start GitHub import");
+      toast.error("Failed to open GitHub import");
     }
   };
 
@@ -359,14 +318,6 @@ export const ProjectForm = () => {
                 </PopoverTrigger>
                 <PopoverContent className="w-48 p-2" align="start">
                   <div className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={handleFigmaImport}
-                      className="flex items-center gap-2 w-full px-3 py-2 rounded-md hover:bg-accent text-left text-sm"
-                    >
-                      <FigmaIcon className="size-4" />
-                      <span>Import from Figma</span>
-                    </button>
                     <button
                       type="button"
                       onClick={handleGitHubImport}

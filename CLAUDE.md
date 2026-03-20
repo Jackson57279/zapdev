@@ -177,3 +177,16 @@ Key test files:
 3. **New features** - Use Convex for data, not any other database
 4. **UI components** - Use Shadcn/ui from `@/components/ui/`
 5. **Next.js code generation** - Must use Shadcn components (enforced by build validation)
+
+## Frontend Design Standards (MANDATORY)
+
+Before writing ANY frontend/UI/website code, you MUST apply the `Vanguard_UI_Architect` design system defined in `src/prompts/shared.ts` (`DESIGNER_RULES`). Key rules:
+
+- **NO banned fonts**: Inter, Roboto, Arial, Open Sans, Helvetica are forbidden. Use Geist, Plus Jakarta Sans, Space Grotesk, Playfair Display, DM Sans
+- **Double-Bezel cards**: All cards/containers use nested outer shell + inner core architecture
+- **Floating island navbar**: Detached from top, pill-shaped, glass effect
+- **Custom cubic-bezier motion only**: `ease-[cubic-bezier(0.32,0.72,0,1)]` — never `linear` or `ease-in-out`
+- **Macro whitespace**: Sections use `py-24` to `py-40`
+- **Scroll entry animations**: Every element enters via `translate-y-16 blur-md opacity-0` → resolved
+- **Mobile-first**: Always `min-h-[100dvh]`, asymmetric layouts collapse to `w-full px-4` below 768px
+- **Animate only** `transform` and `opacity` — never layout properties

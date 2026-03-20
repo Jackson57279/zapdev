@@ -16,10 +16,8 @@ export const gateway = createGateway({
 });
 
 // Cerebras model IDs (direct API)
-const CEREBRAS_MODELS = ["zai-glm-4.7"];
-const GATEWAY_MODEL_ID_MAP: Record<string, string> = {
-  "zai-glm-4.7": "zai/glm-4.7",
-};
+const CEREBRAS_MODELS: string[] = [];
+const GATEWAY_MODEL_ID_MAP: Record<string, string> = {};
 
 const getGatewayModelId = (modelId: string): string =>
   GATEWAY_MODEL_ID_MAP[modelId] ?? modelId;

@@ -45,15 +45,26 @@ export const MODEL_CONFIGS = {
     isSpeedOptimized: false,
     maxTokens: undefined,
   },
-  "zai-glm-4.7": {
-    name: "Z-AI GLM 4.7",
-    provider: "cerebras",
-    description: "Ultra-fast inference with subagent research capabilities via Cerebras",
+  "z-ai/glm-5": {
+    name: "Z-AI GLM 5",
+    provider: "openrouter",
+    description: "Ultra-fast inference with subagent research capabilities",
     temperature: 0.7,
     supportsFrequencyPenalty: false,
     supportsSubagents: true,
     isSpeedOptimized: true,
     maxTokens: 4096,
+  },
+  "moonshotai/kimi-k2.5:nitro": {
+    name: "Kimi K2.5 Nitro",
+    provider: "moonshot",
+    description: "Fast Kimi K2.5 with nitro routing for speed-optimized inference",
+    temperature: 0.7,
+    supportsFrequencyPenalty: true,
+    frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: true,
+    maxTokens: undefined,
   },
   "moonshotai/kimi-k2-0905": {
     name: "Kimi K2",
@@ -110,7 +121,7 @@ export function selectModelForTask(
   const promptLength = prompt.length;
   const lowercasePrompt = prompt.toLowerCase();
   
-  const defaultModel: keyof typeof MODEL_CONFIGS = "zai-glm-4.7";
+  const defaultModel: keyof typeof MODEL_CONFIGS = "moonshotai/kimi-k2.5:nitro";
 
   const enterpriseComplexityPatterns = [
     "enterprise architecture",
