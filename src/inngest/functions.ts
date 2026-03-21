@@ -107,7 +107,7 @@ async function runResearchAgent(
       system: RESEARCH_AGENT_PROMPT,
       prompt: researchPrompt,
       temperature: 0.2,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 4096,
       tools: {
         exa_search: tool({
           description:
@@ -147,7 +147,7 @@ async function runResearchAgent(
           },
         }),
       },
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(5),
     });
 
     console.log(`[RESEARCH] Done — ${text.length} chars`);
