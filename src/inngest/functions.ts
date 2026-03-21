@@ -254,23 +254,14 @@ export const codeAgentFunction = inngest.createFunction(
           }),
           handler: async (
             { files },
-            { step, network }: Tool.Options<AgentState>
+            { network }: Tool.Options<AgentState>
           ) => {
-            const newFiles = await step?.run(
-              "createOrUpdateFiles",
-              async () => {
-                const updatedFiles = network.state.data.files || {};
-                for (const file of files) {
-                  updatedFiles[file.path] = file.content;
-                }
-                return updatedFiles;
-              }
-            );
-            if (typeof newFiles === "object") {
-              network.state.data.files = newFiles;
-            } else {
-              console.error("[CODING] createOrUpdateFiles returned non-object (silently failed):", newFiles);
+            const updatedFiles = network.state.data.files || {};
+            for (const file of files) {
+              updatedFiles[file.path] = file.content;
             }
+            network.state.data.files = updatedFiles;
+            console.log(`[CODING] Files saved: ${Object.keys(updatedFiles).join(", ")}`);
           },
         }),
         createTool({
@@ -311,80 +302,87 @@ export const codeAgentFunction = inngest.createFunction(
 
     const result = await network.run(augmentedPrompt, { state });
 
-    // ── Post-processing: title + response message ────────────────────────────
-    const fragmentTitleGenerator = createAgent({
-      name: "fragment-title-generator",
-      description: "A fragment title generator",
-      system: FRAGMENT_TITLE_PROMPT,
-      model: openai({
-        model: "anthropic/claude-haiku-4.5",
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-      }),
-    });
-
-    const responseGenerator = createAgent({
-      name: "response-generator",
-      description: "A response generator",
-      system: RESPONSE_PROMPT,
-      model: openai({
-        model: "anthropic/claude-haiku-4.5",
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-      }),
-    });
-
-    const { output: fragmentTitleOutput } = await fragmentTitleGenerator.run(
-      result.state.data.summary
-    );
-    const { output: responseOutput } = await responseGenerator.run(
-      result.state.data.summary
-    );
-
-    const hasSummary = Boolean(result.state.data.summary);
+    // ── Resolve summary & error state ────────────────────────────────────────
     const fileCount = Object.keys(result.state.data.files || {}).length;
-    const isError = !hasSummary || fileCount === 0;
+    // If agent hit maxIter without a summary but did write files, use fallback
+    if (!result.state.data.summary && fileCount > 0) {
+      result.state.data.summary = `<task_summary>Generated ${fileCount} file(s): ${Object.keys(result.state.data.files).join(", ")}</task_summary>`;
+    }
+    const hasSummary = Boolean(result.state.data.summary);
+    const isError = !hasSummary && fileCount === 0;
 
     console.log(`[CODING] Agent finished — hasSummary=${hasSummary}, fileCount=${fileCount}, isError=${isError}`);
     if (!hasSummary) console.error("[CODING] No <task_summary> produced — agent may have hit maxIter or build kept failing");
-    if (fileCount === 0) console.error("[CODING] No files written — createOrUpdateFiles may have silently failed (sandbox timeout?)");
+    if (fileCount === 0) console.error("[CODING] No files written — createOrUpdateFiles may have silently failed");
 
     const sandboxUrl = "webcontainer://local";
 
-    await step.run("save-result", async () => {
-      const convex = getConvexClient();
-      const userId = event.data.userId as string;
-      const projectId = event.data.projectId as Id<"projects">;
-
-      if (isError) {
+    if (isError) {
+      await step.run("save-error", async () => {
+        const convex = getConvexClient();
         return await convex.mutation(api.messages.createForUser, {
-          userId,
-          projectId,
+          userId: event.data.userId as string,
+          projectId: event.data.projectId as Id<"projects">,
           content: "Something went wrong. Please try again.",
           role: "ASSISTANT",
           type: "ERROR",
         });
-      }
-
-      const messageId = await convex.mutation(api.messages.createForUser, {
-        userId,
-        projectId,
-        content: parseAgentOutput(responseOutput),
-        role: "ASSISTANT",
-        type: "RESULT",
+      });
+    } else {
+      // Generate title + response from the summary
+      const fragmentTitleGenerator = createAgent({
+        name: "fragment-title-generator",
+        description: "A fragment title generator",
+        system: FRAGMENT_TITLE_PROMPT,
+        model: openai({
+          model: "anthropic/claude-haiku-4.5",
+          baseUrl: "https://openrouter.ai/api/v1",
+          apiKey: process.env.OPENROUTER_API_KEY,
+        }),
       });
 
-      await convex.mutation(api.messages.createFragmentForUser, {
-        userId,
-        messageId: messageId as Id<"messages">,
-        sandboxUrl,
-        title: parseAgentOutput(fragmentTitleOutput),
-        files: result.state.data.files,
-        framework: "NEXTJS",
+      const responseGenerator = createAgent({
+        name: "response-generator",
+        description: "A response generator",
+        system: RESPONSE_PROMPT,
+        model: openai({
+          model: "anthropic/claude-haiku-4.5",
+          baseUrl: "https://openrouter.ai/api/v1",
+          apiKey: process.env.OPENROUTER_API_KEY,
+        }),
       });
 
-      return messageId;
-    });
+      const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
+        await Promise.all([
+          fragmentTitleGenerator.run(result.state.data.summary),
+          responseGenerator.run(result.state.data.summary),
+        ]);
+
+      await step.run("save-result", async () => {
+        const convex = getConvexClient();
+        const userId = event.data.userId as string;
+        const projectId = event.data.projectId as Id<"projects">;
+
+        const messageId = await convex.mutation(api.messages.createForUser, {
+          userId,
+          projectId,
+          content: parseAgentOutput(responseOutput),
+          role: "ASSISTANT",
+          type: "RESULT",
+        });
+
+        await convex.mutation(api.messages.createFragmentForUser, {
+          userId,
+          messageId: messageId as Id<"messages">,
+          sandboxUrl,
+          title: parseAgentOutput(fragmentTitleOutput),
+          files: result.state.data.files,
+          framework: "NEXTJS",
+        });
+
+        return messageId;
+      });
+    }
 
     return {
       url: sandboxUrl,
