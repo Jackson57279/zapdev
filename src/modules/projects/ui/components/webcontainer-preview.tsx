@@ -77,7 +77,7 @@ export function WebContainerPreview({ files, refreshKey }: Props) {
 
       try {
         const { WebContainer } = await import("@webcontainer/api");
-        const webcontainer = await WebContainer.boot();
+        const webcontainer = await WebContainer.boot({ coep: "credentialless" });
         teardown = () => {
           runProcessRef.current?.kill();
           runProcessRef.current = null;

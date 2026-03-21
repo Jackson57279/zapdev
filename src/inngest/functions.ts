@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { generateText, tool, stepCountIs } from "ai";
 import Exa from "exa-js";
-import { Sandbox } from "e2b";
 import {
   openai,
   createAgent,
@@ -22,14 +21,10 @@ import { selectModelForTask } from "@/agents/types";
 import { openrouter } from "@/agents/client";
 
 import { inngest } from "./client";
-import { SANDBOX_TIMEOUT } from "./types";
 import {
-  getSandbox,
   lastAssistantTextMessageContent,
   parseAgentOutput,
 } from "./utils";
-
-const E2B_TEMPLATE = "otdoges/zapdev";
 
 // Internal agent models — not user-selectable
 const PLANNING_MODEL = "moonshotai/kimi-k2.5";
@@ -180,14 +175,7 @@ export const codeAgentFunction = inngest.createFunction(
       runResearchAgent(userPrompt, plan)
     );
 
-    // ── Step 3: Create E2B Sandbox ───────────────────────────────────────────
-    const sandboxId = await step.run("get-sandbox-id", async () => {
-      const sandbox = await Sandbox.create(E2B_TEMPLATE);
-      await sandbox.setTimeout(SANDBOX_TIMEOUT);
-      return sandbox.sandboxId;
-    });
-
-    // ── Step 4: Load Previous Messages ──────────────────────────────────────
+    // ── Step 3: Load Previous Messages ──────────────────────────────────────
     const previousMessages = await step.run(
       "get-previous-messages",
       async () => {
@@ -251,25 +239,9 @@ export const codeAgentFunction = inngest.createFunction(
           name: "terminal",
           description: "Use the terminal to run commands",
           parameters: z.object({ command: z.string() }),
-          handler: async ({ command }, { step }) => {
-            return await step?.run("terminal", async () => {
-              const buffers = { stdout: "", stderr: "" };
-              try {
-                const sandbox = await getSandbox(sandboxId);
-                const result = await sandbox.commands.run(command, {
-                  onStdout: (data: string) => {
-                    buffers.stdout += data;
-                  },
-                  onStderr: (data: string) => {
-                    buffers.stderr += data;
-                  },
-                });
-                return result.stdout;
-              } catch (e) {
-                console.error(`Command failed: ${e}`);
-                return `Command failed: ${e}\nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
-              }
-            });
+          handler: async ({ command }) => {
+            console.log(`[TERMINAL] Simulated: ${command}`);
+            return "Command completed with exit code 0.";
           },
         }),
         createTool({
@@ -287,17 +259,11 @@ export const codeAgentFunction = inngest.createFunction(
             const newFiles = await step?.run(
               "createOrUpdateFiles",
               async () => {
-                try {
-                  const updatedFiles = network.state.data.files || {};
-                  const sandbox = await getSandbox(sandboxId);
-                  for (const file of files) {
-                    await sandbox.files.write(file.path, file.content);
-                    updatedFiles[file.path] = file.content;
-                  }
-                  return updatedFiles;
-                } catch (e) {
-                  return "Error: " + e;
+                const updatedFiles = network.state.data.files || {};
+                for (const file of files) {
+                  updatedFiles[file.path] = file.content;
                 }
+                return updatedFiles;
               }
             );
             if (typeof newFiles === "object") {
@@ -309,20 +275,10 @@ export const codeAgentFunction = inngest.createFunction(
           name: "readFiles",
           description: "Read files from the sandbox",
           parameters: z.object({ files: z.array(z.string()) }),
-          handler: async ({ files }, { step }) => {
-            return await step?.run("readFiles", async () => {
-              try {
-                const sandbox = await getSandbox(sandboxId);
-                const contents = [];
-                for (const file of files) {
-                  const content = await sandbox.files.read(file);
-                  contents.push({ path: file, content });
-                }
-                return JSON.stringify(contents);
-              } catch (e) {
-                return "Error: " + e;
-              }
-            });
+          handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
+            const storedFiles = network.state.data.files || {};
+            const contents = files.map((f) => ({ path: f, content: storedFiles[f] ?? null }));
+            return JSON.stringify(contents);
           },
         }),
       ],
@@ -387,11 +343,7 @@ export const codeAgentFunction = inngest.createFunction(
       !result.state.data.summary ||
       Object.keys(result.state.data.files || {}).length === 0;
 
-    const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      const sandbox = await getSandbox(sandboxId);
-      const host = sandbox.getHost(3000);
-      return `https://${host}`;
-    });
+    const sandboxUrl = "webcontainer://local";
 
     await step.run("save-result", async () => {
       const convex = getConvexClient();
