@@ -129,34 +129,13 @@ export function selectModelForTask(
   prompt: string,
   _framework?: Framework
 ): keyof typeof MODEL_CONFIGS {
-  const promptLength = prompt.length;
   const lowercasePrompt = prompt.toLowerCase();
 
   const defaultModel: keyof typeof MODEL_CONFIGS = "moonshotai/kimi-k2.5:nitro";
 
-  const enterpriseComplexityPatterns = [
-    "enterprise architecture",
-    "multi-tenant",
-    "distributed system",
-    "microservices",
-    "kubernetes",
-    "advanced authentication",
-    "complex authorization",
-    "large-scale migration",
-  ];
-
-  const requiresEnterpriseModel = enterpriseComplexityPatterns.some((pattern) =>
-    lowercasePrompt.includes(pattern)
-  );
-
-  const isVeryLongPrompt = promptLength > 2000;
   const userExplicitlyRequestsGPT = lowercasePrompt.includes("gpt-5") || lowercasePrompt.includes("gpt5");
   const userExplicitlyRequestsGemini = lowercasePrompt.includes("gemini");
   const userExplicitlyRequestsKimi = lowercasePrompt.includes("kimi");
-
-  if (requiresEnterpriseModel || isVeryLongPrompt) {
-    return "anthropic/claude-haiku-4.5";
-  }
 
   if (userExplicitlyRequestsGPT) {
     return "openai/gpt-5.1-codex";

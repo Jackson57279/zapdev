@@ -25,9 +25,10 @@ import {
   lastAssistantTextMessageContent,
   parseAgentOutput,
 } from "./utils";
+import { estimateComplexity } from "@/agents/timeout-manager";
 
 // Internal agent models — not user-selectable
-const PLANNING_MODEL = "moonshotai/kimi-k2.5";
+const PLANNING_MODEL = "moonshotai/kimi-k2.5:nitro";
 const RESEARCH_MODEL = "x-ai/grok-4.1-fast";
 
 function getConvexClient(): ConvexHttpClient {
@@ -129,13 +130,13 @@ async function runResearchAgent(
               const exa = new Exa(exaApiKey);
               const results = await exa.searchAndContents(query, {
                 type: "auto",
-                numResults: Math.min(numResults ?? 5, 8),
-                text: { maxCharacters: 2000 },
+                numResults: Math.min(numResults ?? 3, 5),
+                text: { maxCharacters: 800 },
               });
               const formatted = results.results.map((r) => ({
                 title: r.title,
                 url: r.url,
-                content: r.text?.slice(0, 1200) ?? "",
+                content: r.text?.slice(0, 600) ?? "",
               }));
               console.log(`[RESEARCH] Exa returned ${formatted.length} results`);
               return JSON.stringify(formatted);
@@ -147,7 +148,7 @@ async function runResearchAgent(
           },
         }),
       },
-      stopWhen: stepCountIs(5),
+      stopWhen: stepCountIs(3),
     });
 
     console.log(`[RESEARCH] Done — ${text.length} chars`);
@@ -164,21 +165,17 @@ export const codeAgentFunction = inngest.createFunction(
   { event: "agent/code-agent-kit.run" },
   async ({ event, step }) => {
     const userPrompt = event.data.value as string;
+    const complexity = estimateComplexity(userPrompt);
+    console.log(`[AGENT] Task complexity: ${complexity}`);
 
-    // ── Step 1: Planning Agent (kimi-k2.5) ──────────────────────────────────
-    const plan = await step.run("planning-agent", () =>
-      runPlanningAgent(userPrompt)
-    );
-
-    // ── Step 2: Research Agent (grok-4.1-fast + Exa) ────────────────────────
-    const research = await step.run("research-agent", () =>
-      runResearchAgent(userPrompt, plan)
-    );
-
-    // ── Step 3: Load Previous Messages ──────────────────────────────────────
-    const previousMessages = await step.run(
-      "get-previous-messages",
-      async () => {
+    // ── Steps 1 + 3: Planning Agent + Previous Messages (in parallel) ───────
+    // Message loading doesn't depend on planning, so run both at once.
+    // For simple tasks, skip planning entirely to save 20-40s.
+    const [plan, previousMessages] = await Promise.all([
+      complexity === "simple"
+        ? Promise.resolve("")
+        : step.run("planning-agent", () => runPlanningAgent(userPrompt)),
+      step.run("get-previous-messages", async () => {
         const formattedMessages: Message[] = [];
         const convex = getConvexClient();
         const messages = await convex.query(api.messages.listForUser, {
@@ -194,8 +191,17 @@ export const codeAgentFunction = inngest.createFunction(
           });
         }
         return formattedMessages;
-      }
-    );
+      }),
+    ]);
+
+    // ── Step 2: Research Agent (only for complex tasks) ──────────────────────
+    // Simple/medium tasks don't need web research — saves 20-45s.
+    const research =
+      complexity === "complex" && plan
+        ? await step.run("research-agent", () =>
+            runResearchAgent(userPrompt, plan)
+          )
+        : "";
 
     const state = createState<AgentState>(
       { summary: "", files: {} },
@@ -289,10 +295,14 @@ export const codeAgentFunction = inngest.createFunction(
       },
     });
 
+    const maxIter =
+      complexity === "simple" ? 6 : complexity === "medium" ? 10 : 15;
+    console.log(`[AGENT] maxIter=${maxIter} for ${complexity} task`);
+
     const network = createNetwork<AgentState>({
       name: "coding-agent-network",
       agents: [codeAgent],
-      maxIter: 15,
+      maxIter,
       defaultState: state,
       router: async ({ network }) => {
         if (network.state.data.summary) return;

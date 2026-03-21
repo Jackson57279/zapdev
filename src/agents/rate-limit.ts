@@ -3,8 +3,8 @@
  * Implements exponential backoff with special handling for rate limit errors.
  */
 
-const RATE_LIMIT_WAIT_MS = 60_000; // 60 seconds wait on rate limit
-const MAX_RETRIES = 5;
+const RATE_LIMIT_WAIT_MS = 20_000; // 20 seconds wait on rate limit
+const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1_000;
 
 /**
