@@ -75,6 +75,7 @@
     "e2b": "^2.13.0",
     "embla-carousel-react": "^8.6.0",
     "eslint-config-next": "^16.1.1",
+    "exa-js": "^2.8.0",
     "firecrawl": "^4.10.0",
     "inngest": "^3.52.3",
     "input-otp": "^1.4.2",

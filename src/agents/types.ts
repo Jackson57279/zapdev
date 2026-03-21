@@ -110,17 +110,28 @@ export const MODEL_CONFIGS = {
     maxTokens: 2048,
     isSubagentOnly: true,
   },
+  "x-ai/grok-4.1-fast": {
+    name: "Grok 4.1 Fast",
+    provider: "xai",
+    description: "xAI's Grok 4.1 Fast — used internally for the research agent with Exa",
+    temperature: 0.2,
+    supportsFrequencyPenalty: false,
+    supportsSubagents: false,
+    isSpeedOptimized: true,
+    maxTokens: 4096,
+    isSubagentOnly: true,
+  },
 } as const;
 
 export type ModelId = keyof typeof MODEL_CONFIGS | "auto";
 
 export function selectModelForTask(
   prompt: string,
-  framework?: Framework
+  _framework?: Framework
 ): keyof typeof MODEL_CONFIGS {
   const promptLength = prompt.length;
   const lowercasePrompt = prompt.toLowerCase();
-  
+
   const defaultModel: keyof typeof MODEL_CONFIGS = "moonshotai/kimi-k2.5:nitro";
 
   const enterpriseComplexityPatterns = [
