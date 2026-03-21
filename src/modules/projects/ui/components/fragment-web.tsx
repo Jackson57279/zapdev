@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 
 import { Hint } from "@/components/hint";
@@ -15,7 +15,12 @@ const WEB_CONTAINER_PREVIEW_URL = "webcontainer://local";
 export function FragmentWeb({ data }: Props) {
   const [copied, setCopied] = useState(false);
   const [fragmentKey, setFragmentKey] = useState(0);
+  const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
   const isWebContainerPreview = data.sandboxUrl === WEB_CONTAINER_PREVIEW_URL;
+
+  useEffect(() => {
+    setLivePreviewUrl(null);
+  }, [data._id]);
   const normalizedFiles =
     typeof data.files === "object" && data.files !== null
       ? Object.entries(data.files as Record<string, unknown>).reduce<Record<string, string>>(
@@ -33,8 +38,11 @@ export function FragmentWeb({ data }: Props) {
     setFragmentKey((prev) => prev + 1);
   };
 
+  const copyTargetUrl = isWebContainerPreview ? livePreviewUrl : data.sandboxUrl;
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(data.sandboxUrl);
+    if (!copyTargetUrl) return;
+    navigator.clipboard.writeText(copyTargetUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -52,22 +60,24 @@ export function FragmentWeb({ data }: Props) {
             size="sm"
             variant="outline"
             onClick={handleCopy}
-            disabled={!data.sandboxUrl || copied || isWebContainerPreview}
+            disabled={!copyTargetUrl || copied}
             className="flex-1 justify-start text-start font-normal"
           >
             <span className="truncate">
-              {isWebContainerPreview ? "webcontainer://preview" : data.sandboxUrl}
+              {isWebContainerPreview
+                ? livePreviewUrl ?? "In-browser preview (starting…)"
+                : data.sandboxUrl}
             </span>
           </Button>
         </Hint>
         <Hint text="Open in a new tab" side="bottom" align="start">
           <Button
             size="sm"
-            disabled={!data.sandboxUrl || isWebContainerPreview}
+            disabled={!copyTargetUrl}
             variant="outline"
             onClick={() => {
-              if (!data.sandboxUrl) return;
-              window.open(data.sandboxUrl, "_blank");
+              if (!copyTargetUrl) return;
+              window.open(copyTargetUrl, "_blank");
             }}
           >
             <ExternalLinkIcon />
@@ -75,7 +85,11 @@ export function FragmentWeb({ data }: Props) {
         </Hint>
       </div>
       {isWebContainerPreview ? (
-        <WebContainerPreview files={normalizedFiles} refreshKey={fragmentKey} />
+        <WebContainerPreview
+          files={normalizedFiles}
+          refreshKey={fragmentKey}
+          onPreviewUrlChange={setLivePreviewUrl}
+        />
       ) : (
         <iframe
           key={fragmentKey}

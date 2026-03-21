@@ -6,6 +6,7 @@ import type { WebContainerProcess } from "@webcontainer/api";
 interface Props {
   files: Record<string, string>;
   refreshKey: number;
+  onPreviewUrlChange?: (url: string | null) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -662,7 +663,11 @@ function buildViteProjectFiles(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function WebContainerPreview({ files, refreshKey }: Props) {
+export function WebContainerPreview({
+  files,
+  refreshKey,
+  onPreviewUrlChange,
+}: Props) {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>("Booting preview...");
@@ -705,6 +710,7 @@ server.listen(3000, () => console.log("ready"))
       setLoading(true);
       setError("");
       setPreviewUrl("");
+      onPreviewUrlChange?.(null);
       setStatus("Booting WebContainer...");
 
       try {
@@ -723,6 +729,7 @@ server.listen(3000, () => console.log("ready"))
             activeTimeout = null;
           }
           setPreviewUrl(url);
+          onPreviewUrlChange?.(url);
           setLoading(false);
         });
 
@@ -852,9 +859,10 @@ server.listen(3000, () => console.log("ready"))
     return () => {
       cancelled = true;
       if (activeTimeout) clearTimeout(activeTimeout);
+      onPreviewUrlChange?.(null);
       teardown?.();
     };
-  }, [projectFiles, isViteProject, refreshKey]);
+  }, [projectFiles, isViteProject, refreshKey, onPreviewUrlChange]);
 
   if (loading) {
     return (
