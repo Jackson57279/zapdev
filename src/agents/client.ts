@@ -11,12 +11,21 @@ export const cerebras = createCerebras({
   apiKey: process.env.CEREBRAS_API_KEY || "",
 });
 
+export const fireworks = createOpenAI({
+  apiKey: process.env.FIREWORKS_API_KEY || "",
+  baseURL: "https://api.fireworks.ai/inference/v1",
+});
+
 export const gateway = createGateway({
   apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY || "",
 });
 
 // Cerebras model IDs (direct API)
 const CEREBRAS_MODELS: string[] = [];
+
+// Fireworks Firepass model IDs
+const FIREWORKS_MODELS: string[] = ["accounts/fireworks/routers/kimi-k2p5-turbo"];
+
 const GATEWAY_MODEL_ID_MAP: Record<string, string> = {};
 
 const getGatewayModelId = (modelId: string): string =>
@@ -26,27 +35,28 @@ export function isCerebrasModel(modelId: string): boolean {
   return CEREBRAS_MODELS.includes(modelId);
 }
 
+export function isFireworksModel(modelId: string): boolean {
+  return FIREWORKS_MODELS.includes(modelId);
+}
+
 export interface ClientOptions {
   useGatewayFallback?: boolean;
 }
 
-export function getModel(
-  modelId: string,
-  options?: ClientOptions
-) {
+export function getModel(modelId: string, options?: ClientOptions) {
   if (isCerebrasModel(modelId) && options?.useGatewayFallback) {
     return gateway(getGatewayModelId(modelId));
   }
   if (isCerebrasModel(modelId)) {
     return cerebras(modelId);
   }
+  if (isFireworksModel(modelId)) {
+    return fireworks(modelId);
+  }
   return openrouter(modelId);
 }
 
-export function getClientForModel(
-  modelId: string,
-  options?: ClientOptions
-) {
+export function getClientForModel(modelId: string, options?: ClientOptions) {
   if (isCerebrasModel(modelId) && options?.useGatewayFallback) {
     const gatewayModelId = getGatewayModelId(modelId);
     return {
@@ -56,6 +66,11 @@ export function getClientForModel(
   if (isCerebrasModel(modelId)) {
     return {
       chat: (_modelId: string) => cerebras(modelId),
+    };
+  }
+  if (isFireworksModel(modelId)) {
+    return {
+      chat: (_modelId: string) => fireworks(modelId),
     };
   }
   return openrouter;

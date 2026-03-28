@@ -99,6 +99,17 @@ export const MODEL_CONFIGS = {
     isSpeedOptimized: false,
     maxTokens: undefined,
   },
+  "accounts/fireworks/routers/kimi-k2p5-turbo": {
+    name: "Kimi on Crack (Firepass)",
+    provider: "fireworks",
+    description: "Kimi K2.5 Turbo via Fireworks Firepass — ultra-fast inference with extended context",
+    temperature: 0.7,
+    supportsFrequencyPenalty: true,
+    frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: true,
+    maxTokens: undefined,
+  },
   "morph/morph-v3-large": {
     name: "Morph V3 Large",
     provider: "openrouter",
