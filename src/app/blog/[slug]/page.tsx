@@ -12,12 +12,8 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export async function generateStaticParams() {
-  const posts = getAllBlogPosts();
-  return posts.map((post) => ({
-    slug: post.slug,
-  }));
-}
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;

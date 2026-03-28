@@ -12,12 +12,8 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export async function generateStaticParams() {
-  const solutions = getAllSolutions();
-  return solutions.map((solution) => ({
-    slug: solution.slug,
-  }));
-}
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;

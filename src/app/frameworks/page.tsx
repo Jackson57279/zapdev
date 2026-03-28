@@ -8,6 +8,9 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight } from 'lucide-react';
 
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = generateSEOMetadata({
   title: 'AI-Powered Development for All Frameworks | Zapdev',
   description: 'Build applications with React, Vue, Angular, Svelte, and Next.js using AI assistance. Compare frameworks and choose the best for your project.',

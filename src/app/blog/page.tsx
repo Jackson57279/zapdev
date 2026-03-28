@@ -6,6 +6,9 @@ import { StructuredData } from '@/components/seo/structured-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowRight, Clock, Calendar } from 'lucide-react';
 
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = generateSEOMetadata({
   title: 'Blog - AI Development Insights & Comparisons | Zapdev',
   description: 'Expert insights on AI-powered development. Compare Zapdev with Bolt.new, v0.dev, Lovable, Replit, Cursor, and more. Learn why developers choose Zapdev.',

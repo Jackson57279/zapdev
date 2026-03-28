@@ -6,6 +6,9 @@ import { StructuredData } from '@/components/seo/structured-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowRight } from 'lucide-react';
 
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = generateSEOMetadata({
   title: 'AI Development Solutions - Build Faster, Ship Sooner | Zapdev',
   description: 'Explore our AI-powered development solutions. From code generation to rapid prototyping, find the perfect solution for your development needs.',

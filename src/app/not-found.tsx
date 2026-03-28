@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
+
 export default function NotFound() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4">

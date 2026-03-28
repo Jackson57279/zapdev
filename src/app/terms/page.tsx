@@ -1,6 +1,9 @@
 import { Metadata } from "next";
 import Link from "next/link";
 
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: "Terms of Service | ZapDev",
   description: "Terms of Service for ZapDev AI development platform",

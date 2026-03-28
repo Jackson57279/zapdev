@@ -1,3 +1,6 @@
+// Force dynamic rendering to avoid Clerk issues during static generation
+export const dynamic = 'force-dynamic';
+
 import { Navbar } from "@/modules/home/ui/components/navbar";
 
 interface Props {
