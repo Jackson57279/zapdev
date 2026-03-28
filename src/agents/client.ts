@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createCerebras } from "@ai-sdk/cerebras";
 import { createGateway } from "ai";
+import { createFireworks } from "@ai-sdk/fireworks";
 
 export const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY!,
@@ -11,7 +12,7 @@ export const cerebras = createCerebras({
   apiKey: process.env.CEREBRAS_API_KEY || "",
 });
 
-export const fireworks = createOpenAI({
+export const fireworks = createFireworks({
   apiKey: process.env.FIREWORKS_API_KEY || "",
   baseURL: "https://api.fireworks.ai/inference/v1",
 });
