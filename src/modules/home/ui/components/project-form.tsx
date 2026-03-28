@@ -66,6 +66,7 @@ export const ProjectForm = () => {
     { id: "openai/gpt-5.1-codex" as ModelId, name: "GPT-5.1 Codex", image: "/openai.svg", description: "OpenAI's flagship model for complex tasks" },
     { id: "z-ai/glm-5" as ModelId, name: "Z-AI GLM 5", image: "/globe.svg", description: "Ultra-fast inference for speed-critical tasks" },
     { id: "moonshotai/kimi-k2.5" as ModelId, name: "Kimi K2.5", image: "/globe.svg", description: "Moonshot's advanced reasoning model for complex development tasks" },
+    { id: "accounts/fireworks/routers/kimi-k2p5-turbo" as ModelId, name: "Kimi on Crack", image: "/fireworks.svg", description: "Kimi K2.5 Turbo via Fireworks — ultra-fast inference with extended context" },
   ];
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
