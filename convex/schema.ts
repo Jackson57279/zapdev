@@ -81,6 +81,13 @@ export const subscriptionIntervalEnum = v.union(
   v.literal("yearly")
 );
 
+export const schemaProposalStatusEnum = v.union(
+  v.literal("PENDING"),
+  v.literal("APPROVED"),
+  v.literal("REJECTED"),
+  v.literal("IMPLEMENTED")
+);
+
 const polarCustomers = defineTable({
   userId: v.string(),
   polarCustomerId: v.string(),
@@ -95,6 +102,7 @@ export default defineSchema({
     userId: v.string(),
     framework: frameworkEnum,
     modelPreference: v.optional(v.string()),
+    hasBackend: v.optional(v.boolean()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })
@@ -121,6 +129,8 @@ export default defineSchema({
     files: v.any(),
     metadata: v.optional(v.any()),
     framework: frameworkEnum,
+    hasBackend: v.optional(v.boolean()),
+    backendFiles: v.optional(v.any()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })
@@ -134,6 +144,29 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
   })
     .index("by_projectId", ["projectId"]),
+
+  schemaProposals: defineTable({
+    projectId: v.id("projects"),
+    messageId: v.id("messages"),
+    userId: v.string(),
+    proposal: v.string(),
+    status: schemaProposalStatusEnum,
+    parsedTables: v.optional(v.array(v.object({
+      name: v.string(),
+      purpose: v.string(),
+      fields: v.array(v.string()),
+      indexes: v.array(v.string()),
+    }))),
+    parsedRelationships: v.optional(v.array(v.string())),
+    approvedAt: v.optional(v.number()),
+    implementedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_status", ["projectId", "status"])
+    .index("by_messageId", ["messageId"])
+    .index("by_userId", ["userId"]),
 
   attachments: defineTable({
     type: attachmentTypeEnum,
@@ -264,6 +297,7 @@ export default defineSchema({
     claimedBy: v.optional(v.string()),
     messageId: v.optional(v.id("messages")),
     fragmentId: v.optional(v.id("fragments")),
+    schemaProposalId: v.optional(v.id("schemaProposals")),
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
