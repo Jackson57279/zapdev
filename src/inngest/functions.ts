@@ -91,77 +91,124 @@ async function runResearchAgent(
   ].join("\n");
 
   try {
+    // First try: Use Grok through OpenRouter with standard chat completions
+    // Note: We avoid 'tools' and 'stopWhen' to prevent AI SDK from using Responses API
+    // which isn't fully supported by OpenRouter for all models
     if (!exaApiKey) {
       console.warn("[RESEARCH] EXA_API_KEY not set — running without web search");
+      try {
+        const { text } = await generateText({
+          model: openrouter(RESEARCH_MODEL),
+          system: RESEARCH_AGENT_PROMPT,
+          prompt: researchPrompt,
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+        });
+        console.log(`[RESEARCH] Done — ${text.length} chars (no Exa)`);
+        return text;
+      } catch (grokError) {
+        console.error("[RESEARCH] Grok API failed, falling back to Kimi:", grokError);
+        const { text } = await generateText({
+          model: openrouter("moonshotai/kimi-k2.5"),
+          system: RESEARCH_AGENT_PROMPT,
+          prompt: researchPrompt,
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+        });
+        console.log(`[RESEARCH] Done with fallback — ${text.length} chars`);
+        return text;
+      }
+    }
+
+    // With Exa: Run search first, then generate research summary
+    // We do this in two steps to avoid the Responses API issue
+    try {
+      // Step 1: Generate search queries using the research model
+      const searchQueriesPrompt = `${researchPrompt}\n\nGenerate 3-5 specific search queries to find relevant documentation and examples. Return them as a JSON array of strings.`;
+      
+      const { text: queriesText } = await generateText({
+        model: openrouter(RESEARCH_MODEL),
+        system: RESEARCH_AGENT_PROMPT,
+        prompt: searchQueriesPrompt,
+        temperature: 0.2,
+        maxOutputTokens: 500,
+      });
+
+      // Parse queries and run Exa searches
+      let searchResults: string[] = [];
+      try {
+        // Extract queries (handle both JSON array and plain text)
+        const queries = queriesText
+          .replace(/^[\s\S]*?\[/, '[') // Find start of array
+          .replace(/\][\s\S]*$/, ']')  // Find end of array
+          .split('\n')
+          .map(q => q.replace(/^["']|["']$/g, '').trim())
+          .filter(q => q.length > 10);
+
+        for (const query of queries.slice(0, 3)) {
+          try {
+            console.log(`[RESEARCH] Exa: "${query}"`);
+            const exa = new Exa(exaApiKey);
+            const results = await exa.searchAndContents(query, {
+              type: "auto",
+              numResults: 3,
+              text: { maxCharacters: 800 },
+            });
+            const formatted = results.results.map((r) => 
+              `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.text?.slice(0, 600) ?? "No content"}`
+            );
+            searchResults.push(...formatted);
+          } catch (exaErr) {
+            console.error(`[RESEARCH] Exa search failed for "${query}":`, exaErr);
+          }
+        }
+      } catch (parseErr) {
+        console.error("[RESEARCH] Failed to parse search queries:", parseErr);
+      }
+
+      // Step 2: Generate final research summary with search results
+      const finalPrompt = searchResults.length > 0
+        ? `${researchPrompt}\n\n## Search Results\n${searchResults.join("\n\n---\n\n")}\n\nSynthesize these findings into actionable implementation guidance.`
+        : researchPrompt;
+
       const { text } = await generateText({
         model: openrouter(RESEARCH_MODEL),
+        system: RESEARCH_AGENT_PROMPT,
+        prompt: finalPrompt,
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+      });
+
+      console.log(`[RESEARCH] Done — ${text.length} chars`);
+      return text;
+    } catch (grokError) {
+      console.error("[RESEARCH] Grok API with tools failed, falling back to simple mode:", grokError);
+      // Fallback: Run without tools
+      const { text } = await generateText({
+        model: openrouter("moonshotai/kimi-k2.5"),
         system: RESEARCH_AGENT_PROMPT,
         prompt: researchPrompt,
         temperature: 0.2,
         maxOutputTokens: 2048,
       });
+      console.log(`[RESEARCH] Done with fallback — ${text.length} chars`);
       return text;
     }
-
-    const { text } = await generateText({
-      model: openrouter(RESEARCH_MODEL),
-      system: RESEARCH_AGENT_PROMPT,
-      prompt: researchPrompt,
-      temperature: 0.2,
-      maxOutputTokens: 4096,
-      tools: {
-        exa_search: tool({
-          description:
-            "Search the web for technical documentation, code examples, and best practices. Use specific, targeted queries.",
-          inputSchema: z.object({
-            query: z
-              .string()
-              .describe(
-                "Specific technical search query (e.g. 'shadcn/ui combobox example 2024', 'next.js 15 server actions form')"
-              ),
-            numResults: z
-              .number()
-              .optional()
-              .describe("Number of results to return (1–8, default 5)"),
-          }),
-          execute: async ({ query, numResults = 5 }) => {
-            try {
-              console.log(`[RESEARCH] Exa: "${query}"`);
-              const exa = new Exa(exaApiKey);
-              const results = await exa.searchAndContents(query, {
-                type: "auto",
-                numResults: Math.min(numResults ?? 3, 5),
-                text: { maxCharacters: 800 },
-              });
-              const formatted = results.results.map((r) => ({
-                title: r.title,
-                url: r.url,
-                content: r.text?.slice(0, 600) ?? "",
-              }));
-              console.log(`[RESEARCH] Exa returned ${formatted.length} results`);
-              return JSON.stringify(formatted);
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              console.error("[RESEARCH] Exa error:", msg);
-              return `Search failed: ${msg}`;
-            }
-          },
-        }),
-      },
-      stopWhen: stepCountIs(3),
-    });
-
-    console.log(`[RESEARCH] Done — ${text.length} chars`);
-    return text;
   } catch (error) {
-    console.error("[RESEARCH] Error:", error);
-    return "";
+    console.error("[RESEARCH] All research methods failed:", error);
+    return ""; // Return empty to allow code agent to proceed without research
   }
 }
 
 // ─── Main Inngest Function ────────────────────────────────────────────────────
 export const codeAgentFunction = inngest.createFunction(
-  { id: "code-agent" },
+  {
+    id: "code-agent",
+    concurrency: {
+      limit: 3,
+      key: "event.data.userId",
+    },
+  },
   { event: "agent/code-agent-kit.run" },
   async ({ event, step }) => {
     const userPrompt = event.data.value as string;
@@ -176,21 +223,26 @@ export const codeAgentFunction = inngest.createFunction(
         ? Promise.resolve("")
         : step.run("planning-agent", () => runPlanningAgent(userPrompt)),
       step.run("get-previous-messages", async () => {
-        const formattedMessages: Message[] = [];
-        const convex = getConvexClient();
-        const messages = await convex.query(api.messages.listForUser, {
-          userId: event.data.userId as string,
-          projectId: event.data.projectId as Id<"projects">,
-        });
-        const recentMessages = messages.slice(-5);
-        for (const message of recentMessages) {
-          formattedMessages.push({
-            type: "text",
-            role: message.role === "ASSISTANT" ? "assistant" : "user",
-            content: message.content,
+        try {
+          const formattedMessages: Message[] = [];
+          const convex = getConvexClient();
+          const messages = await convex.query(api.messages.listForUser, {
+            userId: event.data.userId as string,
+            projectId: event.data.projectId as Id<"projects">,
           });
+          const recentMessages = messages.slice(-5);
+          for (const message of recentMessages) {
+            formattedMessages.push({
+              type: "text",
+              role: message.role === "ASSISTANT" ? "assistant" : "user",
+              content: message.content,
+            });
+          }
+          return formattedMessages;
+        } catch (error) {
+          console.error("[get-previous-messages] Failed to fetch messages:", error);
+          return [];
         }
-        return formattedMessages;
       }),
     ]);
 
