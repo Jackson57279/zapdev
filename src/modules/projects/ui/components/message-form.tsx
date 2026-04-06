@@ -126,6 +126,7 @@ export const MessageForm = ({
           projectId: result.projectId,
           value: result.value,
           model: selectedModel,
+          messageId: result.messageId,
         }),
       });
 

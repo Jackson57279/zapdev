@@ -6,3 +6,9 @@ export { VUE_PROMPT } from "./prompts/vue";
 export { SVELTE_PROMPT } from "./prompts/svelte";
 export { FRAMEWORK_SELECTOR_PROMPT } from "./prompts/framework-selector";
 export { NEXTJS_PROMPT as PROMPT } from "./prompts/nextjs";
+
+export {
+  SCHEMA_PROPOSAL_PROMPT,
+  CONVEX_BACKEND_PROMPT,
+  FULLSTACK_PROMPT,
+} from "./prompts/backend";

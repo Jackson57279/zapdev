@@ -578,6 +578,8 @@ export const createFragmentForUser = mutation({
     files: v.any(),
     metadata: v.optional(v.any()),
     framework: frameworkEnum,
+    hasBackend: v.optional(v.boolean()),
+    backendFiles: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const message = await ctx.db.get(args.messageId);
@@ -600,6 +602,8 @@ export const createFragmentForUser = mutation({
         files: args.files,
         metadata: args.metadata,
         framework: args.framework,
+        ...(args.hasBackend !== undefined && { hasBackend: args.hasBackend }),
+        ...(args.backendFiles !== undefined && { backendFiles: args.backendFiles }),
         updatedAt: now,
       });
       return existingFragment._id;
@@ -612,6 +616,8 @@ export const createFragmentForUser = mutation({
       files: args.files,
       metadata: args.metadata,
       framework: args.framework,
+      ...(args.hasBackend !== undefined && { hasBackend: args.hasBackend }),
+      ...(args.backendFiles !== undefined && { backendFiles: args.backendFiles }),
       createdAt: now,
       updatedAt: now,
     });
