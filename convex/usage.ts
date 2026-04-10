@@ -23,19 +23,18 @@ export const TIER_MULTIPLIERS: Record<string, number> = {
 // Specific model multipliers (fallback for direct model IDs)
 export const MODEL_MULTIPLIERS: Record<string, number> = {
   // Cheap tier models
-  "moonshotai/kimi-k2.5": 0.5,
+  "arcee-ai/trinity-large-thinking": 0.5,
   "z-ai/glm-5.1": 0.5,
-  "qwen/qwen3.6-plus:free": 0, // Free
   
   // Pro tier models
+  "google/gemini-3.1-pro-preview": 1,
+  "moonshotai/kimi-k2.5": 1,
   "moonshotai/kimi-k2.5:nitro": 1,
   "anthropic/claude-haiku-4.5": 1,
-  "accounts/fireworks/routers/kimi-k2p5-turbo": 1,
   
   // Best tier models
+  "anthropic/claude-sonnet-4.6": 2,
   "openai/gpt-5.1-codex": 2,
-  "anthropic/claude-sonnet-4.5": 2,
-  "openai/o3": 2,
 };
 
 /**

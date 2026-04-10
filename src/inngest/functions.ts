@@ -17,7 +17,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { FRAGMENT_TITLE_PROMPT, PROMPT, RESPONSE_PROMPT } from "@/prompt";
 import { PLANNING_AGENT_PROMPT } from "@/prompts/planning";
 import { RESEARCH_AGENT_PROMPT } from "@/prompts/research";
-import { selectModelForTask } from "@/agents/types";
+import { selectModelForTask, resolveModel } from "@/agents/types";
 import { openrouter } from "@/agents/client";
 
 import { inngest } from "./client";
@@ -41,8 +41,13 @@ const getModelForAgent = (
   requestedModel: string | undefined,
   prompt: string
 ): string => {
-  if (requestedModel && requestedModel !== "auto") return requestedModel;
-  return selectModelForTask(prompt);
+  // If no model specified, use auto-selection
+  if (!requestedModel || requestedModel === "auto") {
+    return selectModelForTask(prompt);
+  }
+  
+  // Resolve tier shortcuts (cheap/pro/best) or model IDs to actual model IDs
+  return resolveModel(requestedModel as any, prompt);
 };
 
 interface AgentState {

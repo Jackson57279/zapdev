@@ -2,27 +2,26 @@ import { selectModelForTask, MODEL_CONFIGS } from '../src/agents/types';
 import { detectResearchNeed, shouldUseSubagent } from '../src/agents/subagent';
 import { TimeoutManager, estimateComplexity, VERCEL_TIMEOUT_LIMIT } from '../src/agents/timeout-manager';
 
-describe('GLM 4.7 Model Selection', () => {
-  it('defaults to GLM 4.7 for most requests (new behavior)', () => {
+describe('Model Selection', () => {
+  it('defaults to Gemini 3.1 Pro for most requests', () => {
     const prompt = 'Build a dashboard with charts and user authentication.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('zai-glm-4.7');
-    expect(MODEL_CONFIGS[result].supportsSubagents).toBe(true);
+    expect(result).toBe('google/gemini-3.1-pro-preview');
   });
 
-  it('uses Claude Haiku only for very complex enterprise tasks', () => {
+  it('uses Gemini for complex enterprise tasks by default', () => {
     const prompt = 'Design a distributed microservices architecture with Kubernetes orchestration.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('anthropic/claude-haiku-4.5');
+    expect(result).toBe('google/gemini-3.1-pro-preview');
   });
 
-  it('uses Claude Haiku for very long prompts', () => {
+  it('uses Gemini for very long prompts by default', () => {
     const longPrompt = 'Build an application with '.repeat(200);
     const result = selectModelForTask(longPrompt);
     
-    expect(result).toBe('anthropic/claude-haiku-4.5');
+    expect(result).toBe('google/gemini-3.1-pro-preview');
   });
 
   it('respects explicit GPT-5 requests', () => {
@@ -36,7 +35,7 @@ describe('GLM 4.7 Model Selection', () => {
     const prompt = 'Use Gemini to analyze this code.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('qwen/qwen3.6-plus:free');
+    expect(result).toBe('google/gemini-3.1-pro-preview');
   });
 
   it('respects explicit Kimi requests', () => {
@@ -46,8 +45,8 @@ describe('GLM 4.7 Model Selection', () => {
     expect(result).toBe('moonshotai/kimi-k2.5');
   });
 
-  it('GLM 4.7 is the only model with subagent support', () => {
-    const glmConfig = MODEL_CONFIGS['zai-glm-4.7'];
+  it('GLM 5.1 is the only model with subagent support', () => {
+    const glmConfig = MODEL_CONFIGS['z-ai/glm-5.1'];
     expect(glmConfig.supportsSubagents).toBe(true);
     
     const claudeConfig = MODEL_CONFIGS['anthropic/claude-haiku-4.5'];
@@ -116,9 +115,9 @@ describe('Subagent Research Detection', () => {
 });
 
 describe('Subagent Integration Logic', () => {
-  it('enables subagents for GLM 4.7', () => {
+  it('enables subagents for GLM 5.1', () => {
     const prompt = 'Look up Next.js API routes documentation.';
-    const result = shouldUseSubagent('zai-glm-4.7', prompt);
+    const result = shouldUseSubagent('z-ai/glm-5.1', prompt);
     
     expect(result).toBe(true);
   });
@@ -130,9 +129,9 @@ describe('Subagent Integration Logic', () => {
     expect(result).toBe(false);
   });
 
-  it('disables subagents for simple tasks even with GLM 4.7', () => {
+  it('disables subagents for simple tasks even with GLM 5.1', () => {
     const prompt = 'Create a simple button component.';
-    const result = shouldUseSubagent('zai-glm-4.7', prompt);
+    const result = shouldUseSubagent('z-ai/glm-5.1', prompt);
     
     expect(result).toBe(false);
   });
@@ -303,8 +302,8 @@ describe('Complexity Estimation', () => {
 });
 
 describe('Model Configuration', () => {
-  it('GLM 4.7 has speed optimization enabled', () => {
-    const config = MODEL_CONFIGS['zai-glm-4.7'];
+  it('GLM 5.1 has speed optimization enabled', () => {
+    const config = MODEL_CONFIGS['z-ai/glm-5.1'];
     
     expect(config.isSpeedOptimized).toBe(true);
     expect(config.supportsSubagents).toBe(true);

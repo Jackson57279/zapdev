@@ -96,10 +96,10 @@ export interface ModelConfig {
 // ============================================
 export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   // CHEAP TIER MODELS
-  "moonshotai/kimi-k2.5": {
-    name: "Kimi K2.5",
-    provider: "moonshot",
-    description: "Moonshot's efficient model for quick tasks",
+  "arcee-ai/trinity-large-thinking": {
+    name: "Trinity Large Thinking",
+    provider: "arcee",
+    description: "Arcee AI's Trinity Large Thinking model — default for cheap tier",
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
@@ -123,21 +123,36 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     tier: "cheap",
     isDefaultForTier: false,
   },
-  "qwen/qwen3.6-plus:free": {
-    name: "Qwen 3.6 Plus",
-    provider: "openrouter",
-    description: "Alibaba's Qwen 3.6 Plus via OpenRouter — free tier model",
+
+  // PRO TIER MODELS
+  "google/gemini-3.1-pro-preview": {
+    name: "Gemini 3.1 Pro Preview",
+    provider: "google",
+    description: "Google's Gemini 3.1 Pro Preview — default for pro tier",
     temperature: 0.7,
-    supportsFrequencyPenalty: false,
+    supportsFrequencyPenalty: true,
+    frequencyPenalty: 0.5,
     supportsSubagents: false,
     isSpeedOptimized: false,
     maxTokens: undefined,
-    isFree: true,
-    tier: "cheap",
+    isFree: false,
+    tier: "pro",
+    isDefaultForTier: true,
+  },
+  "moonshotai/kimi-k2.5": {
+    name: "Kimi K2.5",
+    provider: "moonshot",
+    description: "Moonshot's efficient model for pro tier tasks",
+    temperature: 0.7,
+    supportsFrequencyPenalty: true,
+    frequencyPenalty: 0.5,
+    supportsSubagents: false,
+    isSpeedOptimized: false,
+    maxTokens: undefined,
+    isFree: false,
+    tier: "pro",
     isDefaultForTier: false,
   },
-
-  // PRO TIER MODELS
   "moonshotai/kimi-k2.5:nitro": {
     name: "Kimi K2.5 Nitro",
     provider: "moonshot",
@@ -150,7 +165,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: undefined,
     isFree: false,
     tier: "pro",
-    isDefaultForTier: true,
+    isDefaultForTier: false,
   },
   "anthropic/claude-haiku-4.5": {
     name: "Claude Haiku 4.5",
@@ -166,26 +181,12 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     tier: "pro",
     isDefaultForTier: false,
   },
-  "accounts/fireworks/routers/kimi-k2p5-turbo": {
-    name: "Kimi Turbo",
-    provider: "fireworks",
-    description: "Kimi K2.5 Turbo via Fireworks — ultra-fast inference",
-    temperature: 0.7,
-    supportsFrequencyPenalty: true,
-    frequencyPenalty: 0.5,
-    supportsSubagents: false,
-    isSpeedOptimized: true,
-    maxTokens: undefined,
-    isFree: false,
-    tier: "pro",
-    isDefaultForTier: false,
-  },
 
   // BEST TIER MODELS
-  "openai/gpt-5.1-codex": {
-    name: "GPT-5.1 Codex",
-    provider: "openai",
-    description: "OpenAI's flagship model for complex tasks",
+  "anthropic/claude-sonnet-4.6": {
+    name: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    description: "Anthropic's Claude Sonnet 4.6 — best tier default with superior reasoning",
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
@@ -196,24 +197,10 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     tier: "best",
     isDefaultForTier: true,
   },
-  "anthropic/claude-sonnet-4.5": {
-    name: "Claude Sonnet 4.5",
-    provider: "anthropic",
-    description: "Advanced reasoning for complex architecture",
-    temperature: 0.7,
-    supportsFrequencyPenalty: true,
-    frequencyPenalty: 0.5,
-    supportsSubagents: false,
-    isSpeedOptimized: false,
-    maxTokens: undefined,
-    isFree: false,
-    tier: "best",
-    isDefaultForTier: false,
-  },
-  "openai/o3": {
-    name: "o3",
+  "openai/gpt-5.1-codex": {
+    name: "GPT-5.1 Codex",
     provider: "openai",
-    description: "OpenAI's reasoning model for edge cases",
+    description: "OpenAI's flagship model for complex tasks",
     temperature: 0.7,
     supportsFrequencyPenalty: true,
     frequencyPenalty: 0.5,
@@ -396,22 +383,27 @@ export function selectModelForTask(
 ): keyof typeof MODEL_CONFIGS {
   const lowercasePrompt = prompt.toLowerCase();
 
-  const defaultModel: keyof typeof MODEL_CONFIGS = "moonshotai/kimi-k2.5:nitro";
+  const defaultModel: keyof typeof MODEL_CONFIGS = "google/gemini-3.1-pro-preview";
 
   const userExplicitlyRequestsGPT = lowercasePrompt.includes("gpt-5") || lowercasePrompt.includes("gpt5");
   const userExplicitlyRequestsGemini = lowercasePrompt.includes("gemini");
   const userExplicitlyRequestsKimi = lowercasePrompt.includes("kimi");
+  const userExplicitlyRequestsClaude = lowercasePrompt.includes("claude");
 
   if (userExplicitlyRequestsGPT) {
     return "openai/gpt-5.1-codex";
   }
 
   if (userExplicitlyRequestsGemini) {
-    return "qwen/qwen3.6-plus:free";
+    return "google/gemini-3.1-pro-preview";
   }
 
   if (userExplicitlyRequestsKimi) {
-    return "moonshotai/kimi-k2.5:nitro";
+    return "moonshotai/kimi-k2.5";
+  }
+
+  if (userExplicitlyRequestsClaude) {
+    return "anthropic/claude-sonnet-4.6";
   }
 
   return defaultModel;
@@ -437,7 +429,7 @@ export function frameworkToConvexEnum(
  * List of free models that don't consume credits
  */
 export const FREE_MODELS: ModelId[] = [
-  "qwen/qwen3.6-plus:free",
+  // No free models currently configured
 ];
 
 /**

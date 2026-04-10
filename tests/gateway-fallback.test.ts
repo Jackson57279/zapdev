@@ -3,27 +3,22 @@ import { withGatewayFallbackGenerator, isInvalidRequestError } from '../src/agen
 
 describe('Vercel AI Gateway Fallback', () => {
   describe('Client Functions', () => {
-    it('should identify Cerebras models correctly', () => {
-      expect(isCerebrasModel('zai-glm-4.7')).toBe(true);
+    it('should identify non-Cerebras models correctly (no Cerebras models currently configured)', () => {
+      // Currently no models are in the CEREBRAS_MODELS array
+      expect(isCerebrasModel('z-ai/glm-5.1')).toBe(false);
       expect(isCerebrasModel('anthropic/claude-haiku-4.5')).toBe(false);
       expect(isCerebrasModel('openai/gpt-5.1-codex')).toBe(false);
     });
 
-    it('should return direct Cerebras client by default for Cerebras models', () => {
-      const model = getModel('zai-glm-4.7');
-      expect(model).toBeDefined();
-      expect(model).not.toBeNull();
-    });
-
-    it('should return Vercel AI Gateway client when useGatewayFallback is true for Cerebras models', () => {
-      const model = getModel('zai-glm-4.7', { useGatewayFallback: true });
+    it('should return openrouter client for regular models', () => {
+      const model = getModel('z-ai/glm-5.1');
       expect(model).toBeDefined();
       expect(model).not.toBeNull();
     });
 
     it('should not use gateway for non-Cerebras models', () => {
       expect(isCerebrasModel('anthropic/claude-haiku-4.5')).toBe(false);
-      
+
       const directClient = getModel('anthropic/claude-haiku-4.5');
       const gatewayClient = getModel('anthropic/claude-haiku-4.5', { useGatewayFallback: true });
 
@@ -33,7 +28,7 @@ describe('Vercel AI Gateway Fallback', () => {
     });
 
     it('should return chat function from getClientForModel', () => {
-      const client = getClientForModel('zai-glm-4.7');
+      const client = getClientForModel('z-ai/glm-5.1');
       expect(client.chat).toBeDefined();
       expect(typeof client.chat).toBe('function');
     });
@@ -132,7 +127,7 @@ describe('Vercel AI Gateway Fallback', () => {
 
   describe('Provider Options', () => {
     it('provider options should be set correctly in code-agent implementation', () => {
-      const client = getClientForModel('zai-glm-4.7', { useGatewayFallback: true });
+      const client = getClientForModel('z-ai/glm-5.1', { useGatewayFallback: true });
       expect(client).toBeDefined();
     });
   });

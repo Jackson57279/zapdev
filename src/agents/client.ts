@@ -28,8 +28,8 @@ export const gateway = createGateway({
 // Cerebras model IDs (direct API)
 const CEREBRAS_MODELS: string[] = [];
 
-// Fireworks Firepass model IDs
-const FIREWORKS_MODELS: string[] = ["accounts/fireworks/routers/kimi-k2p5-turbo"];
+// Fireworks Firepass model IDs (none currently in use)
+const FIREWORKS_MODELS: string[] = [];
 
 const GATEWAY_MODEL_ID_MAP: Record<string, string> = {};
 
