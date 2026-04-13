@@ -164,7 +164,8 @@ export const ProjectView = ({ projectId }: Props) => {
             <TabsContent value="preview">
               {!!activeFragment && (
                 <FragmentWeb 
-                  data={activeFragment} 
+                  data={activeFragment}
+                  projectId={projectId}
                   onElementAskAI={handleElementAskAI}
                 />
               )}

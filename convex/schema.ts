@@ -273,4 +273,20 @@ export default defineSchema({
     .index("by_projectId_status", ["projectId", "status"])
     .index("by_status", ["status"])
     .index("by_projectId_createdAt", ["projectId", "createdAt"]),
+
+  // WebContainer file storage - stores code files for browser preview
+  webcontainerFiles: defineTable({
+    projectId: v.id("projects"),
+    fragmentId: v.optional(v.id("fragments")),
+    messageId: v.optional(v.id("messages")),
+    files: v.record(v.string(), v.string()), // path -> content
+    framework: v.optional(frameworkEnum),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_createdAt", ["projectId", "createdAt"])
+    .index("by_fragmentId", ["fragmentId"])
+    .index("by_messageId", ["messageId"]),
 });

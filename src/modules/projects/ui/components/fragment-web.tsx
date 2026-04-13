@@ -10,12 +10,13 @@ import { ElementEditor } from "./element-editor";
 
 interface Props {
   data: Doc<"fragments">;
+  projectId?: string;
   onElementAskAI?: (element: SelectedElement, instruction: string) => void;
 }
 
 const WEB_CONTAINER_PREVIEW_URL = "__WEBCONTAINER_PREVIEW__";
 
-export function FragmentWeb({ data, onElementAskAI }: Props) {
+export function FragmentWeb({ data, projectId, onElementAskAI }: Props) {
   const [copied, setCopied] = useState(false);
   const [fragmentKey, setFragmentKey] = useState(0);
   const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
@@ -128,6 +129,8 @@ export function FragmentWeb({ data, onElementAskAI }: Props) {
           ref={webContainerRef}
           files={normalizedFiles}
           refreshKey={fragmentKey}
+          projectId={projectId}
+          fragmentId={data._id}
           onPreviewUrlChange={setLivePreviewUrl}
         />
       ) : (
