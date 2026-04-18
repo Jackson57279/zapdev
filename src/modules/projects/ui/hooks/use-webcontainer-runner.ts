@@ -104,8 +104,7 @@ export const useWebContainerRunner = (projectId: string) => {
   const claimRun = useMutation(api.agentRuns.claimRun);
   const completeRun = useMutation(api.agentRuns.completeRun);
   const failRun = useMutation(api.agentRuns.failRun);
-  // @ts-expect-error - webcontainerFiles types are generated after Convex compile
-  const saveFiles = useMutation(api.webcontainerFiles?.saveFiles);
+  const saveFiles = useMutation(api.webcontainerFiles.saveFiles);
   
   const isProcessingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);

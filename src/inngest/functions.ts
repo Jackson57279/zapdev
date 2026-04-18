@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { generateText, tool, stepCountIs } from "ai";
+import { generateText } from "ai";
 import Exa from "exa-js";
 import {
   openai,
@@ -14,11 +14,33 @@ import { ConvexHttpClient } from "convex/browser";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { FRAGMENT_TITLE_PROMPT, PROMPT, RESPONSE_PROMPT } from "@/prompt";
+import {
+  ANGULAR_PROMPT,
+  FRAGMENT_TITLE_PROMPT,
+  NEXTJS_PROMPT,
+  REACT_PROMPT,
+  RESPONSE_PROMPT,
+  SVELTE_PROMPT,
+  VUE_PROMPT,
+} from "@/prompt";
 import { PLANNING_AGENT_PROMPT } from "@/prompts/planning";
 import { RESEARCH_AGENT_PROMPT } from "@/prompts/research";
-import { selectModelForTask, resolveModel } from "@/agents/types";
+import {
+  selectModelForTask,
+  resolveModel,
+  frameworkToConvexEnum,
+  type Framework,
+  type ModelId,
+} from "@/agents/types";
 import { openrouter } from "@/agents/client";
+import {
+  createSandbox,
+  getSandbox,
+  getSandboxUrl,
+  isValidFilePath,
+  readFileWithTimeout,
+  writeFilesBatch,
+} from "@/agents/sandbox-utils";
 
 import { inngest } from "./client";
 import {
@@ -26,6 +48,14 @@ import {
   parseAgentOutput,
 } from "./utils";
 import { estimateComplexity } from "@/agents/timeout-manager";
+
+const FRAMEWORK_PROMPTS: Record<Framework, string> = {
+  nextjs: NEXTJS_PROMPT,
+  angular: ANGULAR_PROMPT,
+  react: REACT_PROMPT,
+  vue: VUE_PROMPT,
+  svelte: SVELTE_PROMPT,
+};
 
 // Internal agent models — not user-selectable
 const PLANNING_MODEL = "moonshotai/kimi-k2.5:nitro";
@@ -37,17 +67,35 @@ function getConvexClient(): ConvexHttpClient {
   return new ConvexHttpClient(url);
 }
 
+const truncate = (value: string, maxLength = 20_000): string => {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}\n...[truncated]`;
+};
+
+function convexFrameworkToAgent(
+  fw: "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE"
+): Framework {
+  const map: Record<
+    "NEXTJS" | "ANGULAR" | "REACT" | "VUE" | "SVELTE",
+    Framework
+  > = {
+    NEXTJS: "nextjs",
+    ANGULAR: "angular",
+    REACT: "react",
+    VUE: "vue",
+    SVELTE: "svelte",
+  };
+  return map[fw] ?? "nextjs";
+}
+
 const getModelForAgent = (
   requestedModel: string | undefined,
   prompt: string
 ): string => {
-  // If no model specified, use auto-selection
   if (!requestedModel || requestedModel === "auto") {
     return selectModelForTask(prompt);
   }
-  
-  // Resolve tier shortcuts (cheap/pro/best) or model IDs to actual model IDs
-  return resolveModel(requestedModel as any, prompt);
+  return resolveModel(requestedModel as ModelId, prompt);
 };
 
 interface AgentState {
@@ -55,8 +103,13 @@ interface AgentState {
   files: { [path: string]: string };
 }
 
+function toWorkspacePath(filePath: string): string {
+  const trimmed = filePath.trim();
+  if (trimmed.startsWith("/")) return trimmed;
+  return `/home/user/${trimmed.replace(/^\.\//, "")}`;
+}
+
 // ─── Planning Agent ───────────────────────────────────────────────────────────
-// Uses kimi-k2.5 to produce a comprehensive implementation plan.
 async function runPlanningAgent(userPrompt: string): Promise<string> {
   console.log("[PLANNING] Starting with kimi-k2.5...");
   try {
@@ -76,7 +129,6 @@ async function runPlanningAgent(userPrompt: string): Promise<string> {
 }
 
 // ─── Research Agent ───────────────────────────────────────────────────────────
-// Uses grok-4.1-fast + Exa to find relevant docs, examples, and best practices.
 async function runResearchAgent(
   userPrompt: string,
   plan: string
@@ -96,9 +148,6 @@ async function runResearchAgent(
   ].join("\n");
 
   try {
-    // First try: Use Grok through OpenRouter with standard chat completions
-    // Note: We avoid 'tools' and 'stopWhen' to prevent AI SDK from using Responses API
-    // which isn't fully supported by OpenRouter for all models
     if (!exaApiKey) {
       console.warn("[RESEARCH] EXA_API_KEY not set — running without web search");
       try {
@@ -125,12 +174,9 @@ async function runResearchAgent(
       }
     }
 
-    // With Exa: Run search first, then generate research summary
-    // We do this in two steps to avoid the Responses API issue
     try {
-      // Step 1: Generate search queries using the research model
       const searchQueriesPrompt = `${researchPrompt}\n\nGenerate 3-5 specific search queries to find relevant documentation and examples. Return them as a JSON array of strings.`;
-      
+
       const { text: queriesText } = await generateText({
         model: openrouter(RESEARCH_MODEL),
         system: RESEARCH_AGENT_PROMPT,
@@ -139,16 +185,14 @@ async function runResearchAgent(
         maxOutputTokens: 500,
       });
 
-      // Parse queries and run Exa searches
       let searchResults: string[] = [];
       try {
-        // Extract queries (handle both JSON array and plain text)
         const queries = queriesText
-          .replace(/^[\s\S]*?\[/, '[') // Find start of array
-          .replace(/\][\s\S]*$/, ']')  // Find end of array
-          .split('\n')
-          .map(q => q.replace(/^["']|["']$/g, '').trim())
-          .filter(q => q.length > 10);
+          .replace(/^[\s\S]*?\[/, "[")
+          .replace(/\][\s\S]*$/, "]")
+          .split("\n")
+          .map((q) => q.replace(/^["']|["']$/g, "").trim())
+          .filter((q) => q.length > 10);
 
         for (const query of queries.slice(0, 3)) {
           try {
@@ -159,8 +203,9 @@ async function runResearchAgent(
               numResults: 3,
               text: { maxCharacters: 800 },
             });
-            const formatted = results.results.map((r) => 
-              `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.text?.slice(0, 600) ?? "No content"}`
+            const formatted = results.results.map(
+              (r) =>
+                `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.text?.slice(0, 600) ?? "No content"}`
             );
             searchResults.push(...formatted);
           } catch (exaErr) {
@@ -171,10 +216,10 @@ async function runResearchAgent(
         console.error("[RESEARCH] Failed to parse search queries:", parseErr);
       }
 
-      // Step 2: Generate final research summary with search results
-      const finalPrompt = searchResults.length > 0
-        ? `${researchPrompt}\n\n## Search Results\n${searchResults.join("\n\n---\n\n")}\n\nSynthesize these findings into actionable implementation guidance.`
-        : researchPrompt;
+      const finalPrompt =
+        searchResults.length > 0
+          ? `${researchPrompt}\n\n## Search Results\n${searchResults.join("\n\n---\n\n")}\n\nSynthesize these findings into actionable implementation guidance.`
+          : researchPrompt;
 
       const { text } = await generateText({
         model: openrouter(RESEARCH_MODEL),
@@ -187,8 +232,10 @@ async function runResearchAgent(
       console.log(`[RESEARCH] Done — ${text.length} chars`);
       return text;
     } catch (grokError) {
-      console.error("[RESEARCH] Grok API with tools failed, falling back to simple mode:", grokError);
-      // Fallback: Run without tools
+      console.error(
+        "[RESEARCH] Grok API with tools failed, falling back to simple mode:",
+        grokError
+      );
       const { text } = await generateText({
         model: openrouter("moonshotai/kimi-k2.5"),
         system: RESEARCH_AGENT_PROMPT,
@@ -201,7 +248,7 @@ async function runResearchAgent(
     }
   } catch (error) {
     console.error("[RESEARCH] All research methods failed:", error);
-    return ""; // Return empty to allow code agent to proceed without research
+    return "";
   }
 }
 
@@ -220,9 +267,6 @@ export const codeAgentFunction = inngest.createFunction(
     const complexity = estimateComplexity(userPrompt);
     console.log(`[AGENT] Task complexity: ${complexity}`);
 
-    // ── Steps 1 + 3: Planning Agent + Previous Messages (in parallel) ───────
-    // Message loading doesn't depend on planning, so run both at once.
-    // For simple tasks, skip planning entirely to save 20-40s.
     const [plan, previousMessages] = await Promise.all([
       complexity === "simple"
         ? Promise.resolve("")
@@ -251,8 +295,6 @@ export const codeAgentFunction = inngest.createFunction(
       }),
     ]);
 
-    // ── Step 2: Research Agent (only for complex tasks) ──────────────────────
-    // Simple/medium tasks don't need web research — saves 20-45s.
     const research =
       complexity === "complex" && plan
         ? await step.run("research-agent", () =>
@@ -260,13 +302,21 @@ export const codeAgentFunction = inngest.createFunction(
           )
         : "";
 
+    const project = await step.run("load-project", async () => {
+      const convex = getConvexClient();
+      return convex.query(api.projects.getForUser, {
+        userId: event.data.userId as string,
+        projectId: event.data.projectId as Id<"projects">,
+      });
+    });
+
+    const framework = convexFrameworkToAgent(project.framework);
+
     const state = createState<AgentState>(
       { summary: "", files: {} },
       { messages: previousMessages }
     );
 
-    // ── Build augmented prompt ───────────────────────────────────────────────
-    // Inject plan + research so the code agent has full context.
     const planBlock = plan
       ? `\n\n<implementation_plan>\n${plan}\n</implementation_plan>`
       : "";
@@ -278,7 +328,6 @@ export const codeAgentFunction = inngest.createFunction(
         ? "\n\nUse the implementation plan and research findings above as your blueprint. Follow the plan precisely and apply the research insights to ensure accuracy."
         : "";
 
-    // FORCE TOOL USAGE: The agent MUST use createOrUpdateFiles - never output code in text
     const forceToolUsage = `
 
 ⚠️ CRITICAL INSTRUCTION - DO NOT IGNORE:
@@ -298,157 +347,223 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
 
     const augmentedPrompt = `${userPrompt}${planBlock}${researchBlock}${contextNote}${forceToolUsage}`;
 
-    // ── Step 5: Code Agent (user-selected model) ─────────────────────────────
     const selectedModel = getModelForAgent(
       event.data.model as string | undefined,
       userPrompt
     );
-    console.log(`[CODING] Starting with ${selectedModel}...`);
+    console.log(`[CODING] Starting with ${selectedModel} (${framework})...`);
 
-    const codeAgent = createAgent<AgentState>({
-      name: "code-agent",
-      description: "An expert coding agent",
-      system: PROMPT,
-      tool_choice: "required",
-      model: openai({
-        model: selectedModel,
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-        defaultParameters: { temperature: 0.1 },
-      }),
-      tools: [
-        createTool({
-          name: "terminal",
-          description: "Use the terminal to run commands",
-          parameters: z.object({ command: z.string() }),
-          handler: async ({ command }) => {
-            console.log(`[TERMINAL] Simulated: ${command}`);
-            return "Command completed with exit code 0.";
-          },
+    const codeSystem = `${FRAMEWORK_PROMPTS[framework]}
+
+You are running inside an Inngest workflow with tool access to an E2B sandbox.
+Always implement the user's request using the available tools.
+After finishing, return a concise summary wrapped in <task_summary> tags.`;
+
+    const e2bResult = await step.run("code-agent-e2b", async () => {
+      const sandbox = await createSandbox(framework);
+      const sandboxId = sandbox.sandboxId;
+      const writtenFiles: Record<string, string> = {};
+
+      const terminalTool = createTool({
+        name: "terminal",
+        description: "Run shell commands inside the E2B sandbox.",
+        parameters: z.object({
+          command: z.string(),
         }),
-        createTool({
-          name: "createOrUpdateFiles",
-          description: "REQUIRED: Use this tool to write or update code files. Call this tool with an array of files. Each file needs a relative path and content string. This is the ONLY way to create files - do NOT output code as text.",
-          parameters: z.object({
-            files: z.array(
-              z.object({ path: z.string().describe("Relative file path, e.g., app/page.tsx"), content: z.string().describe("Full file content") })
-            ).describe("Array of files to create or update"),
-          }),
-          handler: async (
-            { files },
-            { network }: Tool.Options<AgentState>
-          ) => {
-            const updatedFiles = network.state.data.files || {};
-            for (const file of files) {
-              updatedFiles[file.path] = file.content;
-            }
-            network.state.data.files = updatedFiles;
-            const fileList = Object.keys(updatedFiles);
-            console.log(`[CODING] Files saved: ${fileList.join(", ")}`);
-            return `Successfully saved ${files.length} file(s): ${files.map(f => f.path).join(", ")}. Total files in workspace: ${fileList.length}`;
-          },
-        }),
-        createTool({
-          name: "readFiles",
-          description: "Read files from the sandbox",
-          parameters: z.object({ files: z.array(z.string()) }),
-          handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
-            const storedFiles = network.state.data.files || {};
-            const contents = files.map((f) => ({ path: f, content: storedFiles[f] ?? null }));
-            return JSON.stringify(contents);
-          },
-        }),
-      ],
-      lifecycle: {
-        onResponse: async ({ result, network }) => {
-          const lastAssistantMessageText =
-            lastAssistantTextMessageContent(result);
-          const fileCount = Object.keys(network?.state?.data?.files || {}).length;
-          console.log(`[CODING] Agent response received, messages: ${result.output.length}, text length: ${lastAssistantMessageText?.length || 0}, files: ${fileCount}`);
-          
-          if (lastAssistantMessageText && network) {
-            if (lastAssistantMessageText.includes("<task_summary>")) {
-              network.state.data.summary = lastAssistantMessageText;
-              console.log("[CODING] Task summary captured");
-            }
-          }
-          return result;
+        handler: async ({ command }) => {
+          const connectedSandbox = await getSandbox(sandboxId);
+          const buffers = {
+            stdout: "",
+            stderr: "",
+          };
+
+          const result = await connectedSandbox.commands.run(command, {
+            timeoutMs: 60_000,
+            onStdout: (chunk: string) => {
+              buffers.stdout += chunk;
+            },
+            onStderr: (chunk: string) => {
+              buffers.stderr += chunk;
+            },
+          });
+
+          const combined = `${result.stdout || buffers.stdout}${buffers.stderr ? `\n${buffers.stderr}` : ""}`;
+          return truncate(combined);
         },
-      },
-    });
+      });
 
-    const maxIter =
-      complexity === "simple" ? 6 : complexity === "medium" ? 10 : 15;
-    console.log(`[AGENT] maxIter=${maxIter} for ${complexity} task`);
+      const createOrUpdateFilesTool = createTool({
+        name: "createOrUpdateFiles",
+        description:
+          "REQUIRED: Create or update files in the E2B sandbox. This is the ONLY way to write code.",
+        parameters: z.object({
+          files: z.array(
+            z.object({
+              path: z.string(),
+              content: z.string(),
+            })
+          ),
+        }),
+        handler: async (
+          { files },
+          { network }: Tool.Options<AgentState>
+        ) => {
+          const connectedSandbox = await getSandbox(sandboxId);
+          const filesToWrite: Record<string, string> = {};
 
-    const network = createNetwork<AgentState>({
-      name: "coding-agent-network",
-      agents: [codeAgent],
-      maxIter,
-      defaultState: state,
-      router: async ({ network }) => {
-        const hasSummary = Boolean(network.state.data.summary);
-        const fileCount = Object.keys(network.state.data.files || {}).length;
+          for (const file of files) {
+            if (!isValidFilePath(file.path)) {
+              throw new Error(`Invalid file path: ${file.path}`);
+            }
+            filesToWrite[file.path] = file.content;
+            writtenFiles[file.path] = file.content;
+          }
 
-        // Stop if we have a summary (files should already be created by now)
-        if (hasSummary) return;
+          const updated = { ...(network.state.data.files || {}) };
+          for (const file of files) {
+            updated[file.path] = file.content;
+          }
+          network.state.data.files = updated;
 
-        // Continue running the code agent
-        // Note: maxIter is enforced by the network automatically
-        return codeAgent;
-      },
-    });
+          await writeFilesBatch(connectedSandbox, filesToWrite);
+          return `Updated ${files.length} file(s).`;
+        },
+      });
 
-    const result = await network.run(augmentedPrompt, { state });
-    console.log(`[CODING] Network run completed`);
+      const readFilesTool = createTool({
+        name: "readFiles",
+        description: "Read one or more files from the E2B sandbox.",
+        parameters: z.object({
+          files: z.array(z.string()),
+        }),
+        handler: async ({ files }) => {
+          const connectedSandbox = await getSandbox(sandboxId);
+          const results: Array<{ path: string; content: string | null }> = [];
 
-    // ── Resolve summary & error state ────────────────────────────────────────
-    const fileCount = Object.keys(result.state.data.files || {}).length;
-    const hasSummary = Boolean(result.state.data.summary);
+          for (const filePath of files) {
+            if (!isValidFilePath(filePath)) {
+              results.push({ path: filePath, content: null });
+              continue;
+            }
+            const fullPath = toWorkspacePath(filePath);
+            const content = await readFileWithTimeout(connectedSandbox, fullPath);
+            results.push({ path: filePath, content });
+          }
 
-    const results = result.state.results;
-    const lastResult = results.length > 0 ? results[results.length - 1] : null;
-    const output = lastResult?.output || [];
-    console.log(`[CODING] Agent finished — hasSummary=${hasSummary}, fileCount=${fileCount}, iterations used: ${results.length}`);
-    
-    // If no summary captured but we have files, create a fallback
-    if (!result.state.data.summary && fileCount > 0) {
-      result.state.data.summary = `<task_summary>Generated ${fileCount} file(s): ${Object.keys(result.state.data.files).join(", ")}</task_summary>`;
-      console.log("[CODING] Created fallback summary for files");
-    }
+          return JSON.stringify(results);
+        },
+      });
 
-    // If still no summary, try to extract from the last message
-    if (!result.state.data.summary && output.length > 0) {
-      const lastMsg = output[output.length - 1];
-      if (lastMsg?.type === 'text') {
-        const content = typeof (lastMsg as any).content === 'string' 
-          ? (lastMsg as any).content 
-          : JSON.stringify((lastMsg as any).content);
-        const summaryMatch = content?.match(/<task_summary>[\s\S]*?<\/task_summary>/);
-        if (summaryMatch) {
-          result.state.data.summary = summaryMatch[0];
-          console.log("[CODING] Extracted summary from last message");
+      const codeAgent = createAgent<AgentState>({
+        name: "code-agent",
+        description: "An expert coding agent",
+        system: codeSystem,
+        tool_choice: "required",
+        model: openai({
+          model: selectedModel,
+          baseUrl: "https://openrouter.ai/api/v1",
+          apiKey: process.env.OPENROUTER_API_KEY,
+          defaultParameters: { temperature: 0.1 },
+        }),
+        tools: [terminalTool, createOrUpdateFilesTool, readFilesTool],
+        lifecycle: {
+          onResponse: async ({ result, network }) => {
+            const lastAssistantMessageText =
+              lastAssistantTextMessageContent(result);
+            const fileCount = Object.keys(network?.state?.data?.files || {}).length;
+            console.log(
+              `[CODING] Agent response received, messages: ${result.output.length}, text length: ${lastAssistantMessageText?.length || 0}, files: ${fileCount}`
+            );
+
+            if (lastAssistantMessageText && network) {
+              if (lastAssistantMessageText.includes("<task_summary>")) {
+                network.state.data.summary = lastAssistantMessageText;
+                console.log("[CODING] Task summary captured");
+              }
+            }
+            return result;
+          },
+        },
+      });
+
+      const maxIter =
+        complexity === "simple" ? 6 : complexity === "medium" ? 10 : 15;
+      console.log(`[AGENT] maxIter=${maxIter} for ${complexity} task`);
+
+      const network = createNetwork<AgentState>({
+        name: "coding-agent-network",
+        agents: [codeAgent],
+        maxIter,
+        defaultState: state,
+        router: async ({ network: net }) => {
+          if (Boolean(net.state.data.summary)) return;
+          return codeAgent;
+        },
+      });
+
+      const result = await network.run(augmentedPrompt, { state });
+      console.log(`[CODING] Network run completed`);
+
+      const fileCount = Object.keys(result.state.data.files || {}).length;
+      const hasSummary = Boolean(result.state.data.summary);
+
+      const results = result.state.results;
+      const lastResult = results.length > 0 ? results[results.length - 1] : null;
+      const output = lastResult?.output || [];
+      console.log(
+        `[CODING] Agent finished — hasSummary=${hasSummary}, fileCount=${fileCount}, iterations used: ${results.length}`
+      );
+
+      if (!result.state.data.summary && fileCount > 0) {
+        result.state.data.summary = `<task_summary>Generated ${fileCount} file(s): ${Object.keys(result.state.data.files).join(", ")}</task_summary>`;
+        console.log("[CODING] Created fallback summary for files");
+      }
+
+      if (!result.state.data.summary && output.length > 0) {
+        const lastMsg = output[output.length - 1];
+        if (lastMsg?.type === "text") {
+          const tm = lastMsg as { type: "text"; content?: unknown };
+          const content =
+            typeof tm.content === "string"
+              ? tm.content
+              : JSON.stringify(tm.content ?? "");
+          const summaryMatch = content?.match(/<task_summary>[\s\S]*?<\/task_summary>/);
+          if (summaryMatch) {
+            result.state.data.summary = summaryMatch[0];
+            console.log("[CODING] Extracted summary from last message");
+          }
         }
       }
-    }
 
-    // Final check - if we still have no summary, create a mock summary
-    if (!result.state.data.summary) {
-      console.warn("[CODING] No <task_summary> found in any response, using mock summary");
-      
-      // Create a mock summary as final fallback
-      const fileList = Object.keys(result.state.data.files || {});
-      const fileSummary = fileList.length > 0 
-        ? `Created ${fileList.length} file(s): ${fileList.join(", ")}`
-        : "No files were generated";
-      
-      result.state.data.summary = `<task_summary>\nMock Summary\n\nThe AI agent completed ${results.length} iteration(s) but did not provide a formal summary.\n\n${fileSummary}\n\nThe task may have completed successfully. Please review the output.\n</task_summary>`;
-      console.log("[CODING] Created mock summary as final fallback");
-    }
+      if (!result.state.data.summary) {
+        console.warn("[CODING] No <task_summary> found in any response, using mock summary");
 
-    const sandboxUrl = "__WEBCONTAINER_PREVIEW__";
+        const fileList = Object.keys(writtenFiles);
+        const fileSummary =
+          fileList.length > 0
+            ? `Created ${fileList.length} file(s): ${fileList.join(", ")}`
+            : "No files were generated";
 
-    // Success path - save the result
+        result.state.data.summary = `<task_summary>\nMock Summary\n\nThe AI agent completed ${results.length} iteration(s) but did not provide a formal summary.\n\n${fileSummary}\n\nThe task may have completed successfully. Please review the output.\n</task_summary>`;
+        console.log("[CODING] Created mock summary as final fallback");
+      }
+
+      const filesOut =
+        Object.keys(writtenFiles).length > 0
+          ? writtenFiles
+          : (result.state.data.files || {});
+
+      const sandboxUrl = await getSandboxUrl(sandbox, framework);
+
+      return {
+        summary: result.state.data.summary,
+        files: filesOut,
+        sandboxUrl,
+        sandboxId,
+        framework,
+      };
+    });
+
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
       description: "A fragment title generator",
@@ -473,8 +588,8 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
 
     const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
       await Promise.all([
-        fragmentTitleGenerator.run(result.state.data.summary),
-        responseGenerator.run(result.state.data.summary),
+        fragmentTitleGenerator.run(e2bResult.summary),
+        responseGenerator.run(e2bResult.summary),
       ]);
 
     await step.run("save-result", async () => {
@@ -493,20 +608,25 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
       await convex.mutation(api.messages.createFragmentForUser, {
         userId,
         messageId: messageId as Id<"messages">,
-        sandboxUrl,
+        sandboxId: e2bResult.sandboxId,
+        sandboxUrl: e2bResult.sandboxUrl,
         title: parseAgentOutput(fragmentTitleOutput),
-        files: result.state.data.files,
-        framework: "NEXTJS",
+        files: e2bResult.files,
+        metadata: {
+          source: "inngest-agent-kit",
+          model: selectedModel,
+        },
+        framework: frameworkToConvexEnum(e2bResult.framework),
       });
 
       return messageId;
     });
 
     return {
-      url: sandboxUrl,
+      url: e2bResult.sandboxUrl,
       title: "Fragment",
-      files: result.state.data.files,
-      summary: result.state.data.summary,
+      files: e2bResult.files,
+      summary: e2bResult.summary,
     };
   }
 );

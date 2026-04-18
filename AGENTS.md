@@ -1,128 +1,107 @@
 # ZapDev - AI-Powered Code Generation Platform
 
-**Generated**: 2026-01-04
-**Commit**: [dynamic]
-**Branch**: main
-
-## OVERVIEW
-AI-powered web app development platform using Next.js 15, Convex (real-time DB), tRPC, and E2B sandboxes for isolated code generation.
+**Generated**: 2026-01-04  
+**Tech**: Next.js 15 (App Router), React 19, Convex, tRPC, Tailwind v4, Bun
 
 ## STRUCTURE
+
 ```
 ./
 ├── src/
-│   ├── app/              # Next.js 15 App Router
+│   ├── app/              # Next.js 15 App Router (pages, layouts, API routes)
 │   ├── modules/          # Feature-based: home, projects, messages, usage
+│   │   └── [feature]/
+│   │       ├── ui/       # React components for this feature
+│   │       └── server/   # tRPC procedures for this feature
 │   ├── agents/           # AI agent orchestration (primary SSE path)
 │   ├── inngest/          # Inngest + Agent Kit background workflows
-│   ├── prompts/          # Framework-specific LLM prompts
-│   ├── components/ui/    # Shadcn/ui components
-│   ├── lib/              # Utilities, framework config
-│   └── trpc/             # Type-safe API client/server
-├── convex/               # Real-time database (schema, queries, mutations)
-├── sandbox-templates/    # E2B sandbox configs (nextjs, angular, react, vue, svelte)
-├── tests/                # Jest test suite with mocks
-└── explanations/         # Documentation (ALL .md files go here)
+│   ├── prompts/          # Framework-specific LLM system prompts
+│   ├── components/ui/    # Shadcn/ui (copy/paste components, not npm package)
+│   ├── lib/              # Utilities, framework config, Convex client
+│   └── trpc/             # Type-safe API (routers/, client.ts, server.ts)
+├── convex/               # Real-time database (schema, queries, mutations, actions)
+├── sandbox-templates/    # E2B sandbox configs (nextjs template with compile_page.sh)
+├── tests/                # Jest suite with centralized mocks
+└── explanations/         # ALL documentation goes here (not root)
 ```
 
-## WHERE TO LOOK
-
-| Task | Location | Notes |
-|------|----------|-------|
-| Frontend pages | `src/app/` | App Router, pages, layouts |
-| Feature logic | `src/modules/[feature]/` | UI + server procedures per domain |
-| AI agents | `src/agents/` | Code generation orchestration |
-| LLM prompts | `src/prompts/` | Framework-specific system prompts |
-| Database schema | `convex/schema.ts` | Single source of truth |
-| tRPC API | `src/trpc/routers/` | Type-safe procedures |
-| UI components | `src/components/ui/` | Shadcn/ui (copy/paste, not library) |
-| Utilities | `src/lib/` | Framework config, Convex helpers |
-| Tests | `tests/` | Jest with dependency mocks |
-
-## CODE MAP
-
-| Symbol | Type | Location | Role |
-|--------|------|----------|------|
-| schema.ts | Module | convex/schema.ts | Database tables, indexes |
-| code-agent.ts | Module | src/agents/code-agent.ts | Main AI generation loop |
-| functions.ts | Module | convex/* | DB operations (queries/mutations) |
-| _app.ts | Module | src/trpc/routers/_app.ts | Root tRPC router |
-
-## CONVENTIONS
-
-**Package Management**: ALWAYS use `bun`, NEVER npm/pnpm/yarn
-```bash
-bun install          # Install deps
-bun run dev          # Start Next.js (Turbopack)
-bun run convex:dev   # Start Convex (separate terminal)
-bun run lint         # ESLint flat config
-bun run build        # Production build
-```
-
-**TypeScript**: Strict mode enabled, no `any` (warn only)
-**Path Aliases**: `@/*` → `src/*`, `@/convex/*` → `convex/*`
-**Auth**: Clerk with JWT, use `requireAuth(ctx)` in Convex functions
-
-**Framework Default**: Next.js 15 for web apps unless user specifies
-- Angular 19 (Material Design, enterprise)
-- React 18 (Vite, Chakra UI)
-- Vue 3 (Vuetify)
-- SvelteKit (DaisyUI)
-
-## ANTI-PATTERNS (THIS PROJECT)
-
-- **NEVER** use `npm` or `pnpm` — Bun is the package manager
-- **NEVER** use `.filter()` in Convex queries — use indexes
-- **NEVER** expose Clerk user IDs in public APIs
-- **NEVER** start dev servers in E2B sandboxes
-- **NEVER** create `.md` files in root — use `explanations/`
-- **NEVER** use absolute paths in AI-generated code (e.g., `/home/user/...`)
-- **DO NOT** load Tailwind as external stylesheet
-- **DO NOT** use 'as' or 'any' when you see a Typescript error.
-- **DO NOT** Run bun convex dev or anything equivlent without user premission ask before using.
-## UNIQUE STYLES
-
-**Feature-Based Modules**: Each module (home, projects, messages, usage) has `ui/` and `server/` subdirectories. Logic lives near its UI.
-
-**Hybrid Router**: `src/app/` for main routes, `src/pages/404.tsx` for error handling (transitional).
-
-**Mock-First Testing**: Centralized mocks in `tests/mocks/` for Convex, E2B, Inngest. Tests run in Node environment (not DOM).
-
-**Pre-Warmed Sandboxes**: Custom `sandbox-templates/nextjs/compile_page.sh` starts Next.js dev server and pings until ready before AI generation.
-
-**Lockfile Duplication**: Both `bun.lock` and `pnpm-lock.yaml` exist (technical debt — should be bun-only).
-
-## COMMANDS
+## ESSENTIAL COMMANDS
 
 ```bash
-# Development (2 terminals required)
-bun run dev              # Next.js dev server
-bun run convex:dev       # Convex backend
-
-# Building & Testing
-bun run build            # Production build
-bun run lint             # ESLint validation
-bun run test             # Jest tests
+# ALWAYS use bun (never npm/pnpm/yarn)
+bun install              # Install dependencies
+bun run dev              # Next.js dev server (Turbopack, port 3000)
+bun run convex:dev       # Convex backend (separate terminal, REQUIRED)
+bun run build            # Production build with Turbopack
+bun run lint             # ESLint (flat config)
+bun run test             # Jest (Node environment, tests/ directory)
 
 # Database
 bun run convex:deploy    # Deploy Convex to production
-
-# E2B Templates (requires Docker)
-e2b template build --name your-template-name --cmd "/compile_page.sh"
 ```
 
-## NOTES
+## CONVENTIONS
 
-**Migration Status**: Prisma/PostgreSQL → Convex (complete). Hybrid agent execution: primary custom SSE agents in `src/agents/` with Inngest Agent Kit workflows in `src/inngest/`.
+**Package Management**: Bun exclusively. Both `bun.lock` and `pnpm-lock.yaml` exist (debt) — ignore pnpm.
 
-**E2B Prerequisites**: Must build sandbox templates manually before AI code generation. Not automated in CI.
+**TypeScript**: Strict mode, `@typescript-eslint/no-explicit-any` = warn (not error).  
+**Path Aliases**: `@/*` → `src/*`, `@/convex/*` → `convex/*`
 
-**Credit System**: Free tier (5/day), Pro tier (100/day). Tracked in `convex/usage.ts` with 24-hour rolling window.
+**Framework**: Next.js 15 App Router ONLY. No pages router (except `src/pages/404.tsx` as fallback).
 
-**Framework Detection**: AI chooses based on user request, defaults to Next.js. See `src/prompts/framework-selector.ts` for priority logic.
+**Styling**: Tailwind CSS v4 (no separate config file, uses CSS-based config). Shadcn/ui components live in `src/components/ui/` as copy/paste source, NOT imported from npm.
 
-**Auto-Fix Retry**: AI agents retry build/lint failures up to 2 times with error context.
+**Auth**: Clerk with JWT. In Convex functions: `const userId = await requireAuth(ctx)` from `convex/helpers.ts`.
 
-**Security**: All user inputs validated (Zod), OAuth tokens encrypted in Convex, file paths sanitized.
+## ANTI-PATTERNS (HIGH SIGNAL)
 
-**Documentation**: All guides live in `explanations/` — `CONVEX_QUICKSTART.md`, `DEBUGGING_GUIDE.md`, etc.
+- **NEVER** use `npm` or `pnpm` — Bun only
+- **NEVER** use `.filter()` in Convex queries — use `.withIndex()` to avoid O(N) scans
+- **NEVER** expose Clerk user IDs in public APIs
+- **NEVER** create `.md` files in root — ALL docs go in `explanations/`
+- **NEVER** use absolute paths in AI-generated code (e.g., `/home/user/...`)
+- **NEVER** load Tailwind as external stylesheet (use compiled CSS)
+- **NEVER** use `as` or `any` to suppress TypeScript errors (warns allowed, errors not)
+- **NEVER** run `bun convex:dev` without user permission (ask first)
+
+## ARCHITECTURE NOTES
+
+**Dual Agent Execution**:
+- **Primary**: Custom SSE agents in `src/agents/` (streaming, real-time)
+- **Background**: Inngest + Agent Kit in `src/inngest/` (batch processing)
+
+**Feature-Based Modules**: Each module (`src/modules/[name]/`) has parallel structure:
+- `ui/` — React components, hooks, client logic
+- `server/` — tRPC procedures, server utilities
+
+**Testing**: Jest with Node environment (not DOM). Centralized mocks in `tests/mocks/` for:
+- `@/convex/_generated/api` and `/dataModel`
+- `@inngest/agent-kit`, `@e2b/code-interpreter`, `convex/browser`
+
+**E2B Sandboxes**: 
+- Template at `sandbox-templates/nextjs/` with `compile_page.sh`
+- Pre-warmed: starts Next.js dev server inside sandbox, pings until ready
+- Template name configured in `src/inngest/functions.ts`
+
+**Database**: Convex (Prisma/PostgreSQL fully migrated away).  
+**Query Pattern**: Use indexes — `ctx.db.query("table").withIndex("indexName", q => q.eq("field", value))`
+
+## FILE PATTERNS
+
+| Task | Location |
+|------|----------|
+| Database schema | `convex/schema.ts` |
+| Auth helper | `convex/helpers.ts` (requireAuth) |
+| tRPC root router | `src/trpc/routers/_app.ts` |
+| Main code agent | `src/agents/code-agent.ts` |
+| Framework prompts | `src/prompts/framework-selector.ts` |
+| Usage/credits | `convex/usage.ts` (24hr rolling window) |
+| Webhooks | `convex/http.ts` (Polar, Clerk) |
+
+## IMPORTANT CONSTRAINTS
+
+- **Lockfiles**: Both `bun.lock` and `pnpm-lock.yaml` exist — Bun is source of truth
+- **Convex migrations**: Use `bun run migrate:convex` for data migrations (rarely needed)
+- **Credit system**: Free tier (5/day), Pro (100/day), tracked in `usage.ts`
+- **Agent retries**: Auto-fix on build/lint failures up to 2 times
+- **Security**: Zod validation on all inputs, OAuth tokens encrypted in Convex

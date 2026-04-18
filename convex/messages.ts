@@ -580,6 +580,7 @@ export const createFragmentForUser = mutation({
   args: {
     userId: v.string(),
     messageId: v.id("messages"),
+    sandboxId: v.optional(v.string()),
     sandboxUrl: v.string(),
     title: v.string(),
     files: v.any(),
@@ -602,6 +603,7 @@ export const createFragmentForUser = mutation({
 
     if (existingFragment) {
       await ctx.db.patch(existingFragment._id, {
+        ...(args.sandboxId !== undefined && { sandboxId: args.sandboxId }),
         sandboxUrl: args.sandboxUrl,
         title: args.title,
         files: args.files,
@@ -614,6 +616,7 @@ export const createFragmentForUser = mutation({
 
     return await ctx.db.insert("fragments", {
       messageId: args.messageId,
+      ...(args.sandboxId !== undefined && { sandboxId: args.sandboxId }),
       sandboxUrl: args.sandboxUrl,
       title: args.title,
       files: args.files,

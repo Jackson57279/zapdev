@@ -50,9 +50,7 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
   const cancelledRef = useRef(false);
   const teardownRef = useRef<(() => void) | null>(null);
   
-  // Convex mutations for backend storage
-  // @ts-expect-error - webcontainerFiles types are generated after Convex compile
-  const saveFiles = useMutation(api.webcontainerFiles?.saveFiles);
+  const saveFiles = useMutation(api.webcontainerFiles.saveFiles);
 
   // Prepare files for WebContainer (handles Next.js -> Vite conversion)
   const projectConfig = useMemo(() => {
