@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { generateText } from "ai";
-import Exa from "exa-js";
 import {
   openai,
   createAgent,
@@ -24,8 +22,6 @@ import {
   SVELTE_PROMPT,
   VUE_PROMPT,
 } from "@/prompt";
-import { PLANNING_AGENT_PROMPT } from "@/prompts/planning";
-import { RESEARCH_AGENT_PROMPT } from "@/prompts/research";
 import {
   selectModelForTask,
   resolveModel,
@@ -33,7 +29,6 @@ import {
   type Framework,
   type ModelId,
 } from "@/agents/types";
-import { openrouter } from "@/agents/client";
 import {
   createSandbox,
   getSandbox,
@@ -42,13 +37,18 @@ import {
   readFileWithTimeout,
   writeFilesBatch,
 } from "@/agents/sandbox-utils";
+import {
+  runPreflight,
+  runPostReview,
+  appendReviewNotes,
+  type AgentPlan,
+} from "@/agents/luminaweb";
 
 import { inngest } from "./client";
 import {
   lastAssistantTextMessageContent,
   parseAgentOutput,
 } from "./utils";
-import { estimateComplexity } from "@/agents/timeout-manager";
 
 const FRAMEWORK_PROMPTS: Record<Framework, string> = {
   nextjs: NEXTJS_PROMPT,
@@ -58,9 +58,13 @@ const FRAMEWORK_PROMPTS: Record<Framework, string> = {
   svelte: SVELTE_PROMPT,
 };
 
-// Internal agent models — not user-selectable
-const PLANNING_MODEL = "moonshotai/kimi-k2.5:nitro";
-const RESEARCH_MODEL = "x-ai/grok-4.1-fast";
+function planComplexityToAgent(
+  complexity: AgentPlan["complexity"]
+): "simple" | "medium" | "complex" {
+  if (complexity === "simple") return "simple";
+  if (complexity === "complex") return "complex";
+  return "medium";
+}
 
 function getConvexClient(): ConvexHttpClient {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -108,149 +112,6 @@ function toWorkspacePath(filePath: string): string {
   const trimmed = filePath.trim();
   if (trimmed.startsWith("/")) return trimmed;
   return `/home/user/${trimmed.replace(/^\.\//, "")}`;
-}
-
-// ─── Planning Agent ───────────────────────────────────────────────────────────
-async function runPlanningAgent(userPrompt: string): Promise<string> {
-  console.log("[PLANNING] Starting with kimi-k2.5...");
-  try {
-    const { text } = await generateText({
-      model: openrouter(PLANNING_MODEL),
-      system: PLANNING_AGENT_PROMPT,
-      prompt: userPrompt,
-      temperature: 0.3,
-      maxOutputTokens: 4096,
-    });
-    console.log(`[PLANNING] Done — ${text.length} chars`);
-    return text;
-  } catch (error) {
-    console.error("[PLANNING] Error:", error);
-    return "";
-  }
-}
-
-// ─── Research Agent ───────────────────────────────────────────────────────────
-async function runResearchAgent(
-  userPrompt: string,
-  plan: string
-): Promise<string> {
-  console.log("[RESEARCH] Starting with grok-4.1-fast + Exa...");
-
-  const exaApiKey = process.env.EXA_API_KEY;
-
-  const researchPrompt = [
-    "## User Request",
-    userPrompt,
-    "",
-    "## Implementation Plan",
-    plan,
-    "",
-    "Search for documentation and code examples for the key technologies in this plan. Focus on anything version-specific, non-trivial, or easy to get wrong.",
-  ].join("\n");
-
-  try {
-    if (!exaApiKey) {
-      console.warn("[RESEARCH] EXA_API_KEY not set — running without web search");
-      try {
-        const { text } = await generateText({
-          model: openrouter(RESEARCH_MODEL),
-          system: RESEARCH_AGENT_PROMPT,
-          prompt: researchPrompt,
-          temperature: 0.2,
-          maxOutputTokens: 2048,
-        });
-        console.log(`[RESEARCH] Done — ${text.length} chars (no Exa)`);
-        return text;
-      } catch (grokError) {
-        console.error("[RESEARCH] Grok API failed, falling back to Kimi:", grokError);
-        const { text } = await generateText({
-          model: openrouter("moonshotai/kimi-k2.5"),
-          system: RESEARCH_AGENT_PROMPT,
-          prompt: researchPrompt,
-          temperature: 0.2,
-          maxOutputTokens: 2048,
-        });
-        console.log(`[RESEARCH] Done with fallback — ${text.length} chars`);
-        return text;
-      }
-    }
-
-    try {
-      const searchQueriesPrompt = `${researchPrompt}\n\nGenerate 3-5 specific search queries to find relevant documentation and examples. Return them as a JSON array of strings.`;
-
-      const { text: queriesText } = await generateText({
-        model: openrouter(RESEARCH_MODEL),
-        system: RESEARCH_AGENT_PROMPT,
-        prompt: searchQueriesPrompt,
-        temperature: 0.2,
-        maxOutputTokens: 500,
-      });
-
-      let searchResults: string[] = [];
-      try {
-        const queries = queriesText
-          .replace(/^[\s\S]*?\[/, "[")
-          .replace(/\][\s\S]*$/, "]")
-          .split("\n")
-          .map((q) => q.replace(/^["']|["']$/g, "").trim())
-          .filter((q) => q.length > 10);
-
-        for (const query of queries.slice(0, 3)) {
-          try {
-            console.log(`[RESEARCH] Exa: "${query}"`);
-            const exa = new Exa(exaApiKey);
-            const results = await exa.searchAndContents(query, {
-              type: "auto",
-              numResults: 3,
-              text: { maxCharacters: 800 },
-            });
-            const formatted = results.results.map(
-              (r) =>
-                `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.text?.slice(0, 600) ?? "No content"}`
-            );
-            searchResults.push(...formatted);
-          } catch (exaErr) {
-            console.error(`[RESEARCH] Exa search failed for "${query}":`, exaErr);
-          }
-        }
-      } catch (parseErr) {
-        console.error("[RESEARCH] Failed to parse search queries:", parseErr);
-      }
-
-      const finalPrompt =
-        searchResults.length > 0
-          ? `${researchPrompt}\n\n## Search Results\n${searchResults.join("\n\n---\n\n")}\n\nSynthesize these findings into actionable implementation guidance.`
-          : researchPrompt;
-
-      const { text } = await generateText({
-        model: openrouter(RESEARCH_MODEL),
-        system: RESEARCH_AGENT_PROMPT,
-        prompt: finalPrompt,
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-      });
-
-      console.log(`[RESEARCH] Done — ${text.length} chars`);
-      return text;
-    } catch (grokError) {
-      console.error(
-        "[RESEARCH] Grok API with tools failed, falling back to simple mode:",
-        grokError
-      );
-      const { text } = await generateText({
-        model: openrouter("moonshotai/kimi-k2.5"),
-        system: RESEARCH_AGENT_PROMPT,
-        prompt: researchPrompt,
-        temperature: 0.2,
-        maxOutputTokens: 2048,
-      });
-      console.log(`[RESEARCH] Done with fallback — ${text.length} chars`);
-      return text;
-    }
-  } catch (error) {
-    console.error("[RESEARCH] All research methods failed:", error);
-    return "";
-  }
 }
 
 /**
@@ -490,13 +351,8 @@ export const codeAgentFunction = inngest.createFunction(
   { event: "agent/code-agent-kit.run" },
   async ({ event, step }) => {
     const userPrompt = event.data.value as string;
-    const complexity = estimateComplexity(userPrompt);
-    console.log(`[AGENT] Task complexity: ${complexity}`);
 
-    const [plan, previousMessages] = await Promise.all([
-      complexity === "simple"
-        ? Promise.resolve("")
-        : step.run("planning-agent", () => runPlanningAgent(userPrompt)),
+    const [previousMessages, project] = await Promise.all([
       step.run("get-previous-messages", async () => {
         try {
           const formattedMessages: Message[] = [];
@@ -519,40 +375,55 @@ export const codeAgentFunction = inngest.createFunction(
           return [];
         }
       }),
+      step.run("load-project", async () => {
+        const convex = getConvexClient();
+        return convex.query(api.projects.getForUser, {
+          userId: event.data.userId as string,
+          projectId: event.data.projectId as Id<"projects">,
+        });
+      }),
     ]);
 
-    const research =
-      complexity === "complex" && plan
-        ? await step.run("research-agent", () =>
-            runResearchAgent(userPrompt, plan)
-          )
-        : "";
-
-    const project = await step.run("load-project", async () => {
-      const convex = getConvexClient();
-      return convex.query(api.projects.getForUser, {
-        userId: event.data.userId as string,
-        projectId: event.data.projectId as Id<"projects">,
-      });
-    });
-
     const framework = convexFrameworkToAgent(project.framework);
+
+    const baseSystemPrompt = `${FRAMEWORK_PROMPTS[framework]}
+
+You are running inside an Inngest workflow with tool access to an E2B sandbox.
+Always implement the user's request using the available tools.
+After finishing, return a concise summary wrapped in <task_summary> tags.`;
+
+    const contextSummary =
+      previousMessages
+        .slice(-3)
+        .map((m) => {
+          const text =
+            typeof m.content === "string"
+              ? m.content
+              : JSON.stringify(m.content ?? "");
+          return `${m.role}: ${text.slice(0, 200)}`;
+        })
+        .join("\n") || "No prior conversation.";
+
+    const preflight = await step.run("luminaweb-preflight", () =>
+      runPreflight({
+        userMessage: userPrompt,
+        userId: event.data.userId as string,
+        projectId: event.data.projectId as string,
+        baseSystemPrompt,
+        contextSummary,
+      })
+    );
+
+    const { plan, workingMessage, enrichedSystemPrompt } = preflight;
+    const complexity = planComplexityToAgent(plan.complexity);
+    console.log(
+      `[AGENT] plan.complexity=${plan.complexity} → agent=${complexity}, needsResearch=${plan.needsResearch}`
+    );
 
     const state = createState<AgentState>(
       { summary: "", files: {} },
       { messages: previousMessages }
     );
-
-    const planBlock = plan
-      ? `\n\n<implementation_plan>\n${plan}\n</implementation_plan>`
-      : "";
-    const researchBlock = research
-      ? `\n\n<research_findings>\n${research}\n</research_findings>`
-      : "";
-    const contextNote =
-      planBlock || researchBlock
-        ? "\n\nUse the implementation plan and research findings above as your blueprint. Follow the plan precisely and apply the research insights to ensure accuracy."
-        : "";
 
     const forceToolUsage = `
 
@@ -571,7 +442,7 @@ Your response should ONLY contain:
 DO NOT explain your code. DO NOT provide commentary. Just use the tools and output the summary.
 `;
 
-    const augmentedPrompt = `${userPrompt}${planBlock}${researchBlock}${contextNote}${forceToolUsage}`;
+    const augmentedPrompt = `${workingMessage}${forceToolUsage}`;
 
     const selectedModel = getModelForAgent(
       event.data.model as string | undefined,
@@ -579,20 +450,25 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
     );
     console.log(`[CODING] Starting with ${selectedModel} (${framework})...`);
 
-    const codeSystem = `${FRAMEWORK_PROMPTS[framework]}
-
-You are running inside an Inngest workflow with tool access to an E2B sandbox.
-Always implement the user's request using the available tools.
-After finishing, return a concise summary wrapped in <task_summary> tags.`;
-
     const e2bResult = await runE2bCodingAgent({
       framework,
       augmentedPrompt,
       complexity,
       state,
       selectedModel,
-      codeSystem,
+      codeSystem: enrichedSystemPrompt,
     });
+
+    const review = await step.run("luminaweb-review", () =>
+      runPostReview({
+        plan,
+        userMessage: workingMessage,
+        implementationSummary: e2bResult.summary,
+        files: e2bResult.files,
+      })
+    );
+
+    e2bResult.summary = appendReviewNotes(e2bResult.summary, review);
 
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
