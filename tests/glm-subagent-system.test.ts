@@ -3,25 +3,25 @@ import { detectResearchNeed, shouldUseSubagent } from '../src/agents/subagent';
 import { TimeoutManager, estimateComplexity, VERCEL_TIMEOUT_LIMIT } from '../src/agents/timeout-manager';
 
 describe('Model Selection', () => {
-  it('defaults to Kimi K2.5 Nitro for most requests', () => {
+  it('defaults to Kimi K2.6 Nitro for most requests', () => {
     const prompt = 'Build a dashboard with charts and user authentication.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('moonshotai/kimi-k2.5:nitro');
+    expect(result).toBe('moonshotai/kimi-k2.6:nitro');
   });
 
-  it('uses Kimi K2.5 Nitro for complex enterprise tasks by default', () => {
+  it('uses Kimi K2.6 Nitro for complex enterprise tasks by default', () => {
     const prompt = 'Design a distributed microservices architecture with Kubernetes orchestration.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('moonshotai/kimi-k2.5:nitro');
+    expect(result).toBe('moonshotai/kimi-k2.6:nitro');
   });
 
-  it('uses Kimi K2.5 Nitro for very long prompts by default', () => {
+  it('uses Kimi K2.6 Nitro for very long prompts by default', () => {
     const longPrompt = 'Build an application with '.repeat(200);
     const result = selectModelForTask(longPrompt);
     
-    expect(result).toBe('moonshotai/kimi-k2.5:nitro');
+    expect(result).toBe('moonshotai/kimi-k2.6:nitro');
   });
 
   it('respects explicit GPT-5 requests', () => {
@@ -35,7 +35,7 @@ describe('Model Selection', () => {
     const prompt = 'Use Kimi to refactor this component.';
     const result = selectModelForTask(prompt);
     
-    expect(result).toBe('moonshotai/kimi-k2.5');
+    expect(result).toBe('moonshotai/kimi-k2.6');
   });
 
   it('GLM 5.1 is the only model with subagent support', () => {

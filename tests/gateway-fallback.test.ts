@@ -170,18 +170,18 @@ describe('Vercel AI Gateway Fallback', () => {
 
   describe('Moonshot Provider Options', () => {
     it('correctly identifies moonshot model IDs by startsWith("moonshotai/")', () => {
-      const moonshotModel = 'moonshotai/kimi-k2.5';
+      const moonshotModel = 'moonshotai/kimi-k2.6';
       const nonMoonshotModel = 'anthropic/claude-haiku-4.5';
       
       expect(moonshotModel.startsWith('moonshotai/')).toBe(true);
       expect(nonMoonshotModel.startsWith('moonshotai/')).toBe(false);
     });
 
-    it('matches both moonshotai/kimi-k2.5 and moonshotai/kimi-k2-0905', () => {
-      const kimi25 = 'moonshotai/kimi-k2.5';
+    it('matches both moonshotai/kimi-k2.6 and moonshotai/kimi-k2-0905', () => {
+      const kimi26 = 'moonshotai/kimi-k2.6';
       const kimi0905 = 'moonshotai/kimi-k2-0905';
       
-      expect(kimi25.startsWith('moonshotai/')).toBe(true);
+      expect(kimi26.startsWith('moonshotai/')).toBe(true);
       expect(kimi0905.startsWith('moonshotai/')).toBe(true);
     });
   });

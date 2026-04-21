@@ -59,7 +59,7 @@ const FRAMEWORK_PROMPTS: Record<Framework, string> = {
 };
 
 // Internal agent models — not user-selectable
-const PLANNING_MODEL = "moonshotai/kimi-k2.5:nitro";
+const PLANNING_MODEL = "moonshotai/kimi-k2.6:nitro";
 const RESEARCH_MODEL = "x-ai/grok-4.1-fast";
 
 function getConvexClient(): ConvexHttpClient {
@@ -112,7 +112,7 @@ function toWorkspacePath(filePath: string): string {
 
 // ─── Planning Agent ───────────────────────────────────────────────────────────
 async function runPlanningAgent(userPrompt: string): Promise<string> {
-  console.log("[PLANNING] Starting with kimi-k2.5...");
+  console.log("[PLANNING] Starting with kimi-k2.6...");
   try {
     const { text } = await generateText({
       model: openrouter(PLANNING_MODEL),
@@ -164,7 +164,7 @@ async function runResearchAgent(
       } catch (grokError) {
         console.error("[RESEARCH] Grok API failed, falling back to Kimi:", grokError);
         const { text } = await generateText({
-          model: openrouter("moonshotai/kimi-k2.5"),
+          model: openrouter("moonshotai/kimi-k2.6"),
           system: RESEARCH_AGENT_PROMPT,
           prompt: researchPrompt,
           temperature: 0.2,
@@ -238,7 +238,7 @@ async function runResearchAgent(
         grokError
       );
       const { text } = await generateText({
-        model: openrouter("moonshotai/kimi-k2.5"),
+        model: openrouter("moonshotai/kimi-k2.6"),
         system: RESEARCH_AGENT_PROMPT,
         prompt: researchPrompt,
         temperature: 0.2,
