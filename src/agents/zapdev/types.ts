@@ -27,6 +27,8 @@ export interface ResearchArtifact {
   summary: string;
   relevantFiles?: RelevantFile[];
   citations?: Citation[];
+  /** If true, the artifact should be omitted from the enriched prompt. */
+  skip?: boolean;
 }
 
 export interface ReviewArtifact {

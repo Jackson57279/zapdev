@@ -1,11 +1,5 @@
 import type { AgentPlan, ResearchArtifact } from "./types";
 
-const SKIP_EXA_SUMMARIES = new Set([
-  "No external research performed.",
-  "External search returned no results.",
-  "External research synthesis failed.",
-]);
-
 /**
  * Build an enriched system prompt by layering plan + research artifacts
  * on top of a base framework system prompt.
@@ -29,7 +23,7 @@ export function buildEnrichedSystemPrompt(options: {
     prompt += `\n</repo_research>`;
   }
 
-  if (exaResearch?.summary && !SKIP_EXA_SUMMARIES.has(exaResearch.summary)) {
+  if (exaResearch?.summary && !exaResearch.skip) {
     prompt += `\n\n<external_research>\n${exaResearch.summary}`;
     if (exaResearch.citations?.length) {
       prompt += `\n\nSources:\n${exaResearch.citations

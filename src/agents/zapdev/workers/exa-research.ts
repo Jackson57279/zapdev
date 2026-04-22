@@ -17,7 +17,7 @@ export async function runExaResearch(
   const exaKey = process.env.EXA_API_KEY;
 
   if (!exaKey || searchQueries.length === 0) {
-    return { summary: "No external research performed.", citations: [] };
+    return { summary: "No external research performed.", citations: [], skip: true };
   }
 
   const exa = new Exa(exaKey);
@@ -43,7 +43,7 @@ export async function runExaResearch(
   }
 
   if (allResults.length === 0) {
-    return { summary: "External search returned no results.", citations: [] };
+    return { summary: "External search returned no results.", citations: [], skip: true };
   }
 
   const searchContext = allResults
@@ -84,6 +84,7 @@ ${searchContext}`,
     return {
       summary: "External research synthesis failed.",
       citations: allResults.map((r) => ({ url: r.url, title: r.title, content: r.text })),
+      skip: true,
     };
   }
 }

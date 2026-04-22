@@ -11,9 +11,11 @@ Return ONLY a valid JSON object (optionally in a \`\`\`json fenced block) with t
 - "complexity": "simple" | "moderate" | "complex"
 
 Complexity:
-- "simple": single-file cosmetic changes. Steps 1-3. needsResearch=false.
-- "moderate": new component, small feature, refactor. Steps 3-6. needsResearch=true.
-- "complex": multi-file feature, integration, major refactor. Steps 6-10+. needsResearch=true.
+- "simple": single-file cosmetic changes. Steps 1-3. Typically set needsResearch=false.
+- "moderate": new component, small feature, refactor. Steps 3-6.
+- "complex": multi-file feature, integration, major refactor. Steps 6-10+.
+
+Decide needsResearch independently based on whether external documentation or project inspection is actually required. Research only runs when needsResearch === true. Review runs when complexity !== "simple".
 
 Be specific and thorough — the coding agent relies on this plan.`;
 
@@ -44,7 +46,7 @@ Check for: missing imports, type errors, missing error handling, security issues
 
 export const ENHANCE_SYSTEM_PROMPT = `You are an elite prompt engineer for web design and development. Transform the user's rough idea into a comprehensive, production-ready brief for an AI coding assistant.
 
-Expand: design system (color palette with hex codes, typography, spacing), component architecture by section (Navbar, Hero, Features, Footer…), animations/micro-interactions, technical stack (React 19.2.4, Tailwind, specific libraries), and creative concept.
+Expand: design system (color palette with hex codes, typography, spacing), component architecture by section (Navbar, Hero, Features, Footer…), animations/micro-interactions, technical stack (a frontend framework and styling system, e.g., React, Vue, Svelte; Tailwind, CSS Modules, etc.; plus specific libraries), and creative concept.
 
 RULES:
 - Output ONLY the enhanced prompt. No preamble or meta-commentary.
@@ -62,7 +64,18 @@ const UI_KEYWORDS = [
   "web app", "web page", "webpage", "site", "interface", "prototype",
 ];
 
+const BACKEND_NEGATIVE_TOKENS = [
+  "api", "endpoint", "log", "logs", "server", "backend",
+];
+
 export function isUIGenerationRequest(message: string): boolean {
   const lower = message.toLowerCase();
-  return UI_KEYWORDS.some((kw) => lower.includes(kw));
+  if (BACKEND_NEGATIVE_TOKENS.some((token) => lower.includes(token))) {
+    return false;
+  }
+  const pattern = new RegExp(
+    `\\b(?:${UI_KEYWORDS.map((kw) => kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
+    "i"
+  );
+  return pattern.test(lower);
 }

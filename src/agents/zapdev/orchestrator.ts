@@ -100,15 +100,37 @@ export async function runPostReview(
   });
 }
 
+/**
+ * Appends review notes to the implementation summary when a review exists.
+ * Surfaces critical issues, needs-improvement items, and suggestions.
+ */
 export function appendReviewNotes(
   summary: string,
   review: ReviewArtifact | null
 ): string {
   if (!review) return summary;
-  if (review.quality !== "critical_issues") return summary;
-  if (review.issues.length === 0) return summary;
 
-  return `${summary}\n\n---\n**Review Notes:**\n${review.issues
-    .map((i) => `- ${i}`)
-    .join("\n")}`;
+  const sections: string[] = [];
+
+  if (review.quality === "critical_issues" && review.issues.length > 0) {
+    sections.push(
+      `**Critical Issues:**\n${review.issues.map((i) => `- ${i}`).join("\n")}`
+    );
+  }
+
+  if (review.quality === "needs_improvement" && review.issues.length > 0) {
+    sections.push(
+      `**Needs Improvement:**\n${review.issues.map((i) => `- ${i}`).join("\n")}`
+    );
+  }
+
+  if (review.suggestions.length > 0) {
+    sections.push(
+      `**Suggestions:**\n${review.suggestions.map((s) => `- ${s}`).join("\n")}`
+    );
+  }
+
+  if (sections.length === 0) return summary;
+
+  return `${summary}\n\n---\n**Review Notes:**\n${sections.join("\n\n")}`;
 }

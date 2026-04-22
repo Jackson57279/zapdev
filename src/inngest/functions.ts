@@ -405,15 +405,22 @@ After finishing, return a concise summary wrapped in <task_summary> tags.`;
         })
         .join("\n") || "No prior conversation.";
 
-    const preflight = await step.run("zapdev-preflight", () =>
-      runPreflight({
+    const preflight = await step.run("zapdev-preflight", async () => {
+      const convex = getConvexClient();
+      const latestFilesDoc = await convex.query(
+        api.webcontainerFiles.getLatestFiles,
+        { projectId: event.data.projectId as Id<"projects"> }
+      );
+      const projectFiles = latestFilesDoc?.files ?? {};
+      return runPreflight({
         userMessage: userPrompt,
         userId: event.data.userId as string,
         projectId: event.data.projectId as string,
         baseSystemPrompt,
         contextSummary,
-      })
-    );
+        projectFiles,
+      });
+    });
 
     const { plan, workingMessage, enrichedSystemPrompt } = preflight;
     const complexity = planComplexityToAgent(plan.complexity);
@@ -460,14 +467,17 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
       codeSystem: enrichedSystemPrompt,
     });
 
-    const review = await step.run("zapdev-review", () =>
-      runPostReview({
-        plan,
-        userMessage: workingMessage,
-        implementationSummary: e2bResult.summary,
-        files: e2bResult.files,
-      })
-    );
+    let review = null;
+    if (plan.complexity !== "simple") {
+      review = await step.run("zapdev-review", () =>
+        runPostReview({
+          plan,
+          userMessage: workingMessage,
+          implementationSummary: e2bResult.summary,
+          files: e2bResult.files,
+        })
+      );
+    }
 
     e2bResult.summary = appendReviewNotes(e2bResult.summary, review);
 
