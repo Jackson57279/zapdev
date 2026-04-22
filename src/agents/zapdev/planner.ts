@@ -33,14 +33,30 @@ export async function runPlanner(
 
     const parsed = safeParseAIJSON<AgentPlan>(text);
     if (parsed && typeof parsed.complexity === "string") {
+      const validComplexities: AgentPlan["complexity"][] = ["simple", "moderate", "complex"];
+      const normalizedComplexity = validComplexities.includes(parsed.complexity as AgentPlan["complexity"])
+        ? (parsed.complexity as AgentPlan["complexity"])
+        : FALLBACK_PLAN.complexity;
+
+      const toBool = (v: unknown): boolean =>
+        v === true || v === 1 || (typeof v === "string" && v.toLowerCase() === "true");
+
+      const toArray = (v: unknown): string[] => {
+        if (Array.isArray(v)) return v.filter((i): i is string => typeof i === "string");
+        if (typeof v === "string") return v ? [v] : [];
+        return [];
+      };
+
       return {
         ...FALLBACK_PLAN,
         ...parsed,
-        searchQueries: parsed.searchQueries ?? [],
-        focusAreas: parsed.focusAreas ?? [],
-        steps: parsed.steps ?? [],
-        potentialIssues: parsed.potentialIssues ?? [],
-        filesToModify: parsed.filesToModify ?? [],
+        needsResearch: toBool(parsed.needsResearch),
+        complexity: normalizedComplexity,
+        searchQueries: toArray(parsed.searchQueries),
+        focusAreas: toArray(parsed.focusAreas),
+        steps: toArray(parsed.steps),
+        potentialIssues: toArray(parsed.potentialIssues),
+        filesToModify: toArray(parsed.filesToModify),
       };
     }
 

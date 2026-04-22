@@ -36,7 +36,7 @@ describe("buildEnrichedSystemPrompt", () => {
       basePrompt: BASE,
       plan: FALLBACK_PLAN,
       repoResearch: null,
-      exaResearch: { summary: "No external research performed.", citations: [] },
+      exaResearch: { summary: "No external research performed.", citations: [], skip: true },
     });
     expect(out).not.toContain("<external_research>");
     expect(out).toBe(BASE);

@@ -18,7 +18,18 @@ export async function runRepoResearch(
 ): Promise<ResearchArtifact> {
   const { userMessage, focusAreas, projectFiles = {} } = input;
 
-  const fileEntries = Object.entries(projectFiles);
+  const SENSITIVE_SEGMENTS = new Set([".git", "node_modules", "vendor"]);
+  const SENSITIVE_FILES = new Set([".env", "env", "credentials"]);
+
+  const isSensitive = (path: string): boolean => {
+    const segments = path.split(/[/\\]/);
+    const basename = segments.at(-1) ?? "";
+    if (basename.startsWith(".")) return true;
+    if (SENSITIVE_FILES.has(basename)) return true;
+    return segments.some((s) => SENSITIVE_SEGMENTS.has(s));
+  };
+
+  const fileEntries = Object.entries(projectFiles).filter(([name]) => !isSensitive(name));
   const fileTree = fileEntries.map(([name]) => `[file] ${name}`).join("\n");
   const keySnippets = fileEntries
     .slice(0, 8)
@@ -46,9 +57,28 @@ ${keySnippets || "(no existing files)"}`,
 
     const parsed = safeParseAIJSON<ResearchArtifact>(text);
     if (parsed?.summary) {
+      let relevantFiles = parsed.relevantFiles;
+      const isValidRelevantFile = (f: unknown): f is { name: string; snippet: string } =>
+        f != null &&
+        typeof (f as Record<string, unknown>).name === "string" &&
+        typeof (f as Record<string, unknown>).snippet === "string";
+      if (Array.isArray(relevantFiles)) {
+        relevantFiles = relevantFiles.filter(isValidRelevantFile);
+      } else if (typeof relevantFiles === "string") {
+        try {
+          const parsedArr = JSON.parse(relevantFiles);
+          relevantFiles = Array.isArray(parsedArr) ? parsedArr : [];
+        } catch {
+          relevantFiles = [];
+        }
+      } else if (relevantFiles != null && typeof relevantFiles === "object") {
+        relevantFiles = [relevantFiles as { name: string; snippet: string }];
+      } else {
+        relevantFiles = [];
+      }
       return {
         summary: parsed.summary,
-        relevantFiles: parsed.relevantFiles ?? [],
+        relevantFiles,
       };
     }
     return { summary: text, relevantFiles: [] };

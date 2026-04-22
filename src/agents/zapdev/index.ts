@@ -1,7 +1,4 @@
 export { runPlanner, runEnhancer, FALLBACK_PLAN } from "./planner";
-export { runRepoResearch } from "./workers/repo-research";
-export { runExaResearch } from "./workers/exa-research";
-export { runReview } from "./workers/review";
 export { buildEnrichedSystemPrompt } from "./context-builder";
 export {
   runPreflight,

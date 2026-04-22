@@ -64,18 +64,16 @@ const UI_KEYWORDS = [
   "web app", "web page", "webpage", "site", "interface", "prototype",
 ];
 
-const BACKEND_NEGATIVE_TOKENS = [
-  "api", "endpoint", "log", "logs", "server", "backend",
-];
+const BACKEND_NEGATIVE_PATTERN = new RegExp(
+  `\\b(?:${["api", "endpoint", "log", "logs", "server", "backend"].map((kw) => kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
+  "i"
+);
 
 export function isUIGenerationRequest(message: string): boolean {
-  const lower = message.toLowerCase();
-  if (BACKEND_NEGATIVE_TOKENS.some((token) => lower.includes(token))) {
-    return false;
-  }
+  if (BACKEND_NEGATIVE_PATTERN.test(message)) return false;
   const pattern = new RegExp(
     `\\b(?:${UI_KEYWORDS.map((kw) => kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
     "i"
   );
-  return pattern.test(lower);
+  return pattern.test(message);
 }

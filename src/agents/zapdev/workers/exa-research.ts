@@ -23,7 +23,8 @@ export async function runExaResearch(
   const exa = new Exa(exaKey);
   const allResults: { url: string; title: string; text: string }[] = [];
 
-  for (const query of searchQueries.slice(0, 3)) {
+  for (let i = 0; i < searchQueries.slice(0, 3).length; i++) {
+    const query = searchQueries[i];
     try {
       const response = await exa.searchAndContents(query, {
         type: "auto",
@@ -38,7 +39,7 @@ export async function runExaResearch(
         });
       }
     } catch (err) {
-      console.error(`[EXA] search failed for "${query}":`, err);
+      console.error(`[EXA] search failed for query #${i + 1}:`, err);
     }
   }
 
@@ -66,13 +67,23 @@ ${searchContext}`,
 
     const parsed = safeParseAIJSON<ResearchArtifact>(text);
     if (parsed?.summary) {
-      return {
-        summary: parsed.summary,
-        citations: parsed.citations ?? allResults.map((r) => ({
+      let citations = parsed.citations;
+      const isValidCitation = (c: unknown): c is { url: string; title: string; content: string } =>
+        c != null &&
+        typeof (c as Record<string, unknown>).url === "string" &&
+        typeof (c as Record<string, unknown>).title === "string" &&
+        typeof (c as Record<string, unknown>).content === "string";
+
+      if (!Array.isArray(citations) || !citations.every(isValidCitation)) {
+        citations = allResults.map((r) => ({
           url: r.url,
           title: r.title,
           content: r.text,
-        })),
+        }));
+      }
+      return {
+        summary: parsed.summary,
+        citations,
       };
     }
     return {

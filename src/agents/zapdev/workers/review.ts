@@ -17,8 +17,8 @@ export async function runReview(input: ReviewInput): Promise<ReviewArtifact> {
   const { userMessage, implementationSummary, files } = input;
 
   const sourceEntries = Object.entries(files).filter(([name]) => {
-    if (name.startsWith(".")) return false;
-    if (name.includes("node_modules")) return false;
+    const segments = name.split(/[/\\]/);
+    if (segments.some((s) => s.startsWith(".") || s === "node_modules")) return false;
     return REVIEWABLE_EXTENSIONS.some((ext) => name.endsWith(ext));
   });
 
@@ -45,9 +45,16 @@ ${snippets || "(no files)"}`,
 
     const parsed = safeParseAIJSON<ReviewArtifact>(text);
     if (parsed?.quality) {
+      const toStringArray = (v: unknown): string[] => {
+        if (Array.isArray(v)) return v.filter((i): i is string => typeof i === "string" && Boolean(i));
+        if (typeof v === "string" && v) return [v];
+        if (v != null && typeof v === "object") return [JSON.stringify(v)];
+        return [];
+      };
+
       return {
-        issues: parsed.issues ?? [],
-        suggestions: parsed.suggestions ?? [],
+        issues: toStringArray(parsed.issues),
+        suggestions: toStringArray(parsed.suggestions),
         quality: parsed.quality,
       };
     }
