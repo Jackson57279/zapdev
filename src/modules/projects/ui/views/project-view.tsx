@@ -24,7 +24,6 @@ import { filterAIGeneratedFiles } from "@/lib/filter-ai-files";
 import { useWebContainerRunner } from "../hooks/use-webcontainer-runner";
 import type { SelectedElement } from "../components/visual-selector";
 
-// Dynamically import heavy components
 const FileExplorer = dynamic(() => import("@/components/file-explorer").then(m => m.FileExplorer), {
   loading: () => <p className="p-4">Loading file explorer...</p>,
   ssr: false,
@@ -58,12 +57,10 @@ export const ProjectView = ({ projectId }: Props) => {
   const explorerFiles = useMemo(() => {
     let files: Record<string, string> = {};
 
-    // Start with streaming files (real-time updates)
     if (Object.keys(streamingFiles).length > 0) {
       files = { ...streamingFiles };
     }
 
-    // Overlay with active fragment files (final state)
     if (activeFragment && typeof activeFragment.files === "object" && activeFragment.files !== null) {
       const normalizedFiles = Object.entries(activeFragment.files as Record<string, unknown>).reduce<Record<string, string>>(
         (acc, [path, content]) => {
@@ -77,19 +74,16 @@ export const ProjectView = ({ projectId }: Props) => {
       files = { ...files, ...normalizedFiles };
     }
 
-    // Filter out E2B sandbox system files - only show AI-generated code
     return filterAIGeneratedFiles(files);
   }, [activeFragment, streamingFiles]);
 
   const handleStreamingFiles = (files: Record<string, string>) => {
     setStreamingFiles(files);
-    // Auto-switch to code tab when files start streaming
     if (Object.keys(files).length > 0 && tabState === "preview") {
       setTabState("code");
     }
   };
 
-  // Clear streaming files when fragment is set (generation complete)
   useEffect(() => {
     if (activeFragment) {
       setStreamingFiles({});

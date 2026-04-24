@@ -26,24 +26,12 @@ function mapPolarStatus(polarStatus: string): SubscriptionStatus {
   return statusMap[polarStatus] ?? "active";
 }
 
-// Admin check - add your admin user IDs here or use a proper admin role system
 const ADMIN_USER_IDS = process.env.ADMIN_USER_IDS?.split(",") || [];
 
 function isAdmin(userId: string): boolean {
-  // Allow if ADMIN_USER_IDS is not set (for initial setup) or if user is in list
   return ADMIN_USER_IDS.length === 0 || ADMIN_USER_IDS.includes(userId);
 }
 
-/**
- * POST /api/admin/reconcile-subscription
- *
- * Manually reconcile a subscription for a user.
- *
- * Body options:
- * 1. { userId: string } - Fetch all subscriptions from Polar for this user's email
- * 2. { userId: string, polarSubscriptionId: string } - Link a specific subscription to a user
- * 3. { pendingSubscriptionId: string, userId: string } - Resolve a pending subscription
- */
 export async function POST(request: NextRequest) {
   try {
     const { userId: authUserId } = await auth();
@@ -66,7 +54,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Action: resolve-pending - Resolve a pending subscription
     if (action === "resolve-pending" || pendingSubscriptionId) {
       if (!polarSubscriptionId && !pendingSubscriptionId) {
         return NextResponse.json(
@@ -77,7 +64,6 @@ export async function POST(request: NextRequest) {
 
       const subId = polarSubscriptionId || pendingSubscriptionId;
 
-      // Get the pending subscription data
       const pending = await convex.query(api.webhooks.getPendingSubscriptions);
       const pendingSub = pending.find((p: any) =>
         p.polarSubscriptionId === subId || p._id === pendingSubscriptionId
@@ -90,7 +76,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // First, sync the customer
       const customerId = pendingSub.customerId;
       if (customerId && customerId !== "unknown") {
         await convex.mutation(api.polar.syncCustomer, {
@@ -99,7 +84,6 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Now create the subscription
       const subscription = pendingSub.eventData;
       const now = Date.now();
       const periodStart = subscription.currentPeriodStart || subscription.current_period_start;
@@ -133,7 +117,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Mark the pending subscription as resolved
       await convex.mutation(api.webhooks.resolvePendingSubscription, {
         polarSubscriptionId: subscription.id,
         userId,
@@ -150,7 +133,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Action: fetch-from-polar - Fetch subscription directly from Polar API
     if (action === "fetch-from-polar" && polarSubscriptionId) {
       try {
         const polar = getPolarClient();
@@ -165,7 +147,6 @@ export async function POST(request: NextRequest) {
 
         const customerId = (subscription as any).customer_id || (subscription as any).customerId;
 
-        // Sync customer
         if (customerId) {
           await convex.mutation(api.polar.syncCustomer, {
             userId,
@@ -173,7 +154,6 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Create/update subscription
         const now = Date.now();
         const periodStart = (subscription as any).current_period_start || (subscription as any).currentPeriodStart;
         const periodEnd = (subscription as any).current_period_end || (subscription as any).currentPeriodEnd;
@@ -235,11 +215,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * GET /api/admin/reconcile-subscription
- *
- * Get pending subscriptions that need reconciliation
- */
 export async function GET() {
   try {
     const { userId } = await auth();

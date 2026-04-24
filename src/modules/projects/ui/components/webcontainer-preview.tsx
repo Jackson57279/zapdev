@@ -52,9 +52,7 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
   
   const saveFiles = useMutation(api.webcontainerFiles.saveFiles);
 
-  // Prepare files for WebContainer (handles Next.js -> Vite conversion)
   const projectConfig = useMemo(() => {
-    // Serialize files to prevent DataCloneError
     const serializedFiles = serializeFilesForWebContainer(files);
     return prepareProjectFiles(serializedFiles);
   }, [files]);
@@ -71,16 +69,13 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
       setStatus("Booting WebContainer...");
 
       try {
-        // Get WebContainer instance (singleton with retry logic)
         const webcontainer = await getWebContainerInstance();
 
-        // Setup teardown handler
         teardownRef.current = () => {
           runProcessRef.current?.kill();
           runProcessRef.current = null;
         };
 
-        // Listen for server-ready event
         webcontainer.on("server-ready", (_, url) => {
           if (cancelledRef.current) return;
           if (activeTimeout) {
@@ -93,18 +88,16 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
           setLoading(false);
         });
 
-        // Write all files to WebContainer
         setStatus("Writing files...");
         await writeFilesToWebContainer(webcontainer, projectConfig.files);
 
-        // Save files to Convex backend for persistence
         if (projectId && Object.keys(projectConfig.files).length > 0) {
           try {
             void saveFiles({
               projectId: projectId as Id<"projects">,
               files: projectConfig.files,
               fragmentId: fragmentId as Id<"fragments"> | undefined,
-              framework: undefined, // Auto-detected from files
+              framework: undefined,
               metadata: {
                 source: "webcontainer-preview",
                 isViteProject: projectConfig.isViteProject,
@@ -113,13 +106,11 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
             });
           } catch (saveError) {
             console.warn("[WebContainer] Failed to save files to backend:", saveError);
-            // Non-fatal - continue with preview
           }
         }
 
         if (cancelledRef.current) return;
 
-        // Start the appropriate server based on project type
         if (projectConfig.isViteProject) {
           await startViteServer(webcontainer);
         } else if (projectConfig.isNpmProject) {
@@ -152,19 +143,16 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
         "--legacy-peer-deps",
       ]);
 
-      // Stream install output
       const writable = new WritableStream<string>({
         write(chunk) {
           if (!cancelledRef.current) {
             const text = String(chunk).trim();
-            // Show last 60 chars of progress
             setStatus(`Installing… ${text.slice(-60)}`);
           }
         },
       });
       
       installProcess.output.pipeTo(writable).catch(() => {
-        // Stream errors are non-fatal
       });
 
       const installCode = await installProcess.exit;
@@ -182,7 +170,6 @@ export const WebContainerPreview = forwardRef<HTMLIFrameElement, Props>(function
         "3000",
       ]);
 
-      // 3 minute timeout for Vite + npm install
       activeTimeout = setTimeout(() => {
         if (cancelledRef.current) return;
         setLoading(false);
@@ -270,7 +257,6 @@ server.listen(3000, () => console.log("ready"))
       onPreviewUrlChange?.(null);
       teardownRef.current?.();
       
-      // Release our reference to the WebContainer instance
       void releaseWebContainerInstance();
     };
   }, [projectConfig, projectId, fragmentId, refreshKey, onPreviewUrlChange, saveFiles]);

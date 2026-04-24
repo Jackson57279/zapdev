@@ -24,11 +24,6 @@ export interface AgentRunResult {
   framework: Framework;
 }
 
-// ============================================
-// MODEL TIER SYSTEM
-// Easy to configure which models go in which tier
-// ============================================
-
 export type ModelTier = "cheap" | "pro" | "best";
 
 export interface ModelTierConfig {
@@ -36,19 +31,18 @@ export interface ModelTierConfig {
   name: string;
   description: string;
   emoji: string;
-  creditMultiplier: number; // 0.5 = half cost, 2 = double cost
+  creditMultiplier: number;
   color: string;
   features: string[];
 }
 
-// Tier configurations - EASY TO MODIFY
 export const TIER_CONFIGS: Record<ModelTier, ModelTierConfig> = {
   cheap: {
     id: "cheap",
     name: "Cheap",
     description: "Fast & affordable for quick prototypes",
     emoji: "🟢",
-    creditMultiplier: 0.5, // 2x generations
+    creditMultiplier: 0.5,
     color: "#22c55e",
     features: ["Fast generation", "Good for simple tasks", "2x more generations"],
   },
@@ -57,7 +51,7 @@ export const TIER_CONFIGS: Record<ModelTier, ModelTierConfig> = {
     name: "Pro",
     description: "Balanced speed and quality",
     emoji: "🔵",
-    creditMultiplier: 1, // Standard cost
+    creditMultiplier: 1,
     color: "#3b82f6",
     features: ["Optimal balance", "Great for most apps", "Standard credits"],
   },
@@ -66,15 +60,11 @@ export const TIER_CONFIGS: Record<ModelTier, ModelTierConfig> = {
     name: "Best",
     description: "Maximum quality for complex tasks",
     emoji: "🟣",
-    creditMultiplier: 2, // Half the generations
+    creditMultiplier: 2,
     color: "#8b5cf6",
     features: ["Best reasoning", "Complex architecture", "Premium quality"],
   },
 };
-
-// ============================================
-// MODEL CONFIGURATIONS
-// ============================================
 
 export interface ModelConfig {
   name: string;
@@ -88,16 +78,11 @@ export interface ModelConfig {
   maxTokens?: number;
   isFree: boolean;
   isSubagentOnly?: boolean;
-  tier: ModelTier; // Which tier this model belongs to
-  isDefaultForTier?: boolean; // Is this the default model for its tier?
+  tier: ModelTier;
+  isDefaultForTier?: boolean;
 }
 
-// ============================================
-// EASY TO MODIFY: Assign models to tiers here
-// Just change the 'tier' and 'isDefaultForTier' fields
-// ============================================
 export const MODEL_CONFIGS: Record<string, ModelConfig> = {
-  // CHEAP TIER MODELS
   "arcee-ai/trinity-large-thinking": {
     name: "Trinity Large Thinking",
     provider: "arcee",
@@ -126,7 +111,6 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     isDefaultForTier: false,
   },
 
-  // PRO TIER MODELS
   "moonshotai/kimi-k2.6": {
     name: "Kimi K2.6",
     provider: "moonshot",
@@ -170,7 +154,6 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     isDefaultForTier: false,
   },
 
-  // BEST TIER MODELS
   "anthropic/claude-sonnet-4.6": {
     name: "Claude Sonnet 4.6",
     provider: "anthropic",
@@ -200,7 +183,6 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     isDefaultForTier: false,
   },
 
-  // INTERNAL/SUBAGENT ONLY MODELS (not user-selectable)
   "z-ai/glm-5": {
     name: "Z-AI GLM 5",
     provider: "openrouter",
@@ -258,22 +240,12 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
 
 export type ModelId = keyof typeof MODEL_CONFIGS | "auto" | ModelTier;
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-/**
- * Get all models for a specific tier
- */
 export function getModelsForTier(tier: ModelTier): string[] {
   return Object.entries(MODEL_CONFIGS)
     .filter(([_, config]) => config.tier === tier && !config.isSubagentOnly)
     .map(([id]) => id);
 }
 
-/**
- * Get the default model for a tier
- */
 export function getDefaultModelForTier(tier: ModelTier): string {
   const tierModels = Object.entries(MODEL_CONFIGS).filter(
     ([_, config]) => config.tier === tier && config.isDefaultForTier && !config.isSubagentOnly
@@ -283,7 +255,6 @@ export function getDefaultModelForTier(tier: ModelTier): string {
     return tierModels[0][0];
   }
   
-  // Fallback to first available model in tier
   const firstInTier = Object.entries(MODEL_CONFIGS).find(
     ([_, config]) => config.tier === tier && !config.isSubagentOnly
   );
@@ -291,16 +262,7 @@ export function getDefaultModelForTier(tier: ModelTier): string {
   return firstInTier?.[0] || "moonshotai/kimi-k2.6:nitro";
 }
 
-/**
- * Resolve a tier or model ID to an actual model ID
- * - "cheap" -> default cheap model
- * - "pro" -> default pro model  
- * - "best" -> default best model
- * - "auto" -> auto-select based on prompt
- * - model ID -> return as-is
- */
 export function resolveModel(modelId: ModelId, prompt?: string): string {
-  // Handle tier shortcuts
   if (modelId === "cheap") {
     return getDefaultModelForTier("cheap");
   }
@@ -314,57 +276,38 @@ export function resolveModel(modelId: ModelId, prompt?: string): string {
     return selectModelForTask(prompt || "");
   }
   
-  // It's already a specific model ID
   return modelId;
 }
 
-/**
- * Get credit multiplier for a model or tier
- */
 export function getCreditMultiplier(modelId: ModelId): number {
-  // If it's a tier, return the tier's multiplier
   if (modelId === "cheap") return TIER_CONFIGS.cheap.creditMultiplier;
   if (modelId === "pro") return TIER_CONFIGS.pro.creditMultiplier;
   if (modelId === "best") return TIER_CONFIGS.best.creditMultiplier;
   
-  // If it's a specific model, look up its tier
   const config = MODEL_CONFIGS[modelId];
   if (config) {
     return TIER_CONFIGS[config.tier].creditMultiplier;
   }
   
-  return 1; // Default
+  return 1;
 }
 
-/**
- * Get tier for a model
- */
 export function getModelTier(modelId: string): ModelTier | null {
   const config = MODEL_CONFIGS[modelId];
   return config?.tier || null;
 }
 
-/**
- * Check if a model is user-selectable (not subagent-only)
- */
 export function isUserSelectableModel(modelId: string): boolean {
   const config = MODEL_CONFIGS[modelId];
   return !!config && !config.isSubagentOnly;
 }
 
-/**
- * Get all user-selectable models
- */
 export function getUserSelectableModels(): Array<{ id: string; config: ModelConfig }> {
   return Object.entries(MODEL_CONFIGS)
     .filter(([_, config]) => !config.isSubagentOnly)
     .map(([id, config]) => ({ id, config }));
 }
 
-/**
- * Legacy: Auto-select model based on prompt keywords
- * Used when model is "auto" or for backward compatibility
- */
 export function selectModelForTask(
   prompt: string,
   _framework?: Framework
@@ -408,29 +351,18 @@ export function frameworkToConvexEnum(
   return mapping[framework];
 }
 
-/**
- * List of free models that don't consume credits
- */
 export const FREE_MODELS: ModelId[] = [
-  // No free models currently configured
 ];
 
-/**
- * Check if a model is free (doesn't consume credits)
- */
 export function isFreeModel(modelId: ModelId): boolean {
   if (modelId === "auto") return false;
   if (modelId === "cheap" || modelId === "pro" || modelId === "best") {
-    // Check if the default model for this tier is free
     const resolvedModel = resolveModel(modelId);
     return FREE_MODELS.includes(resolvedModel as ModelId);
   }
   return FREE_MODELS.includes(modelId);
 }
 
-/**
- * Check if a tier's default model is free
- */
 export function isTierFree(tier: ModelTier): boolean {
   const defaultModel = getDefaultModelForTier(tier);
   return FREE_MODELS.includes(defaultModel as ModelId);

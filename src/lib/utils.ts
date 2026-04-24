@@ -7,34 +7,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Convert a record of files to a tree structure.
- * @param files - Record of file paths to content
- * @returns Tree structure for TreeView component
- *
- * @example
- * Input: { "src/Button.tsx": "...", "README.md": "..." }
- * Output: [["src", "Button.tsx"], "README.md"]
- */
 export function convertFilesToTreeItems(
   files: Record<string, string>
 ): TreeItem[] {
-  // Define proper type for tree structure
   interface TreeNode {
     [key: string]: TreeNode | null;
   }
 
-  // Build a tree structure first
   const tree: TreeNode = {};
-
-  // Sort files to ensure consistent ordering
-  const sortedPaths = Object.keys(files).sort();
-
-  for (const filePath of sortedPaths) {
+  for (const filePath of Object.keys(files).sort()) {
     const parts = filePath.split("/");
     let current = tree;
 
-    // Navigate/create the tree structure
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (!current[part]) {
@@ -43,12 +27,10 @@ export function convertFilesToTreeItems(
       current = current[part];
     }
 
-    // Add the file (leaf node)
     const fileName = parts[parts.length - 1];
-    current[fileName] = null; // null indicates it's a file
+    current[fileName] = null;
   }
 
-  // Convert tree structure to TreeItem format
   function convertNode(node: TreeNode, name?: string): TreeItem[] | TreeItem {
     const entries = Object.entries(node);
 
@@ -60,10 +42,8 @@ export function convertFilesToTreeItems(
 
     for (const [key, value] of entries) {
       if (value === null) {
-        // It's a file
         children.push(key);
       } else {
-        // It's a folder
         const subTree = convertNode(value, key);
         if (Array.isArray(subTree)) {
           children.push([key, ...subTree]);
@@ -80,41 +60,20 @@ export function convertFilesToTreeItems(
   return Array.isArray(result) ? result : [result];
 };
 
-/**
- * Sanitizes text by removing NULL bytes (\u0000) which are not supported by PostgreSQL TEXT fields.
- * PostgreSQL will throw error code "22P05" (unsupported Unicode escape sequence) when trying to store NULL bytes.
- *
- * @param text - The text to sanitize
- * @returns The sanitized text with NULL bytes removed
- *
- * @example
- * sanitizeTextForDatabase("Hello\u0000World") // returns "HelloWorld"
- */
 export function sanitizeTextForDatabase(text: string): string {
-  if (typeof text !== 'string') {
-    return '';
+  if (typeof text !== "string") {
+    return "";
   }
-  // Remove all NULL bytes from the string
-  return text.replace(/\u0000/g, '');
+
+  return text.replace(/\u0000/g, "");
 }
 
-/**
- * Recursively sanitizes a JSON object by removing NULL bytes from all string values.
- * This handles nested objects and arrays to ensure PostgreSQL compatibility.
- *
- * @param obj - The object to sanitize
- * @returns A new object with all string values sanitized
- *
- * @example
- * sanitizeJsonForDatabase({ name: "Hello\u0000World", nested: { value: "Test\u0000" } })
- * // returns { name: "HelloWorld", nested: { value: "Test" } }
- */
 export function sanitizeJsonForDatabase<T>(obj: T): T {
   if (obj === null || obj === undefined) {
     return obj;
   }
 
-  if (typeof obj === 'string') {
+  if (typeof obj === "string") {
     return sanitizeTextForDatabase(obj) as T;
   }
 
@@ -122,7 +81,7 @@ export function sanitizeJsonForDatabase<T>(obj: T): T {
     return obj.map(item => sanitizeJsonForDatabase(item)) as T;
   }
 
-  if (typeof obj === 'object') {
+  if (typeof obj === "object") {
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
       sanitized[key] = sanitizeJsonForDatabase(value);
@@ -133,28 +92,16 @@ export function sanitizeJsonForDatabase<T>(obj: T): T {
   return obj;
 }
 
-/**
- * Universal sanitizer that handles any data type - strings, objects, arrays, or primitives.
- * Automatically detects the type and applies appropriate sanitization.
- *
- * @param value - Any value to sanitize
- * @returns The sanitized value
- *
- * @example
- * sanitizeAnyForDatabase("text\u0000") // returns "text"
- * sanitizeAnyForDatabase({ files: { "app.ts": "code\u0000" } }) // sanitizes nested object
- * sanitizeAnyForDatabase(123) // returns 123 unchanged
- */
 export function sanitizeAnyForDatabase<T>(value: T): T {
   if (value === null || value === undefined) {
     return value;
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return sanitizeTextForDatabase(value) as T;
   }
 
-  if (typeof value === 'object') {
+  if (typeof value === "object") {
     return sanitizeJsonForDatabase(value);
   }
 
