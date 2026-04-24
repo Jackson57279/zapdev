@@ -61,6 +61,27 @@ const FRAMEWORK_PROMPTS: Record<Framework, string> = {
 // Internal agent models — not user-selectable
 const PLANNING_MODEL = "moonshotai/kimi-k2.6:nitro";
 const RESEARCH_MODEL = "x-ai/grok-4.1-fast";
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+function toErrorDetails(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return { value: error };
+}
+
+function logProviderDebug(context: string, details: Record<string, unknown>): void {
+  console.error(`[PROVIDER_DEBUG] ${context}`, {
+    timestamp: new Date().toISOString(),
+    hasOpenRouterApiKey: Boolean(process.env.OPENROUTER_API_KEY),
+    ...details,
+  });
+}
 
 function getConvexClient(): ConvexHttpClient {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -124,6 +145,12 @@ async function runPlanningAgent(userPrompt: string): Promise<string> {
     console.log(`[PLANNING] Done — ${text.length} chars`);
     return text;
   } catch (error) {
+    logProviderDebug("planning-agent.generateText.failed", {
+      provider: "openrouter",
+      model: PLANNING_MODEL,
+      promptLength: userPrompt.length,
+      error: toErrorDetails(error),
+    });
     console.error("[PLANNING] Error:", error);
     return "";
   }
@@ -162,6 +189,13 @@ async function runResearchAgent(
         console.log(`[RESEARCH] Done — ${text.length} chars (no Exa)`);
         return text;
       } catch (grokError) {
+        logProviderDebug("research-agent.generateText.no-exa.failed", {
+          provider: "openrouter",
+          model: RESEARCH_MODEL,
+          hasExaApiKey: Boolean(exaApiKey),
+          promptLength: researchPrompt.length,
+          error: toErrorDetails(grokError),
+        });
         console.error("[RESEARCH] Grok API failed, falling back to Kimi:", grokError);
         const { text } = await generateText({
           model: openrouter("moonshotai/kimi-k2.6"),
@@ -233,6 +267,13 @@ async function runResearchAgent(
       console.log(`[RESEARCH] Done — ${text.length} chars`);
       return text;
     } catch (grokError) {
+      logProviderDebug("research-agent.generateText.with-tools.failed", {
+        provider: "openrouter",
+        model: RESEARCH_MODEL,
+        hasExaApiKey: Boolean(exaApiKey),
+        promptLength: researchPrompt.length,
+        error: toErrorDetails(grokError),
+      });
       console.error(
         "[RESEARCH] Grok API with tools failed, falling back to simple mode:",
         grokError
@@ -248,6 +289,13 @@ async function runResearchAgent(
       return text;
     }
   } catch (error) {
+    logProviderDebug("research-agent.all-methods.failed", {
+      provider: "openrouter",
+      model: RESEARCH_MODEL,
+      hasExaApiKey: Boolean(exaApiKey),
+      promptLength: researchPrompt.length,
+      error: toErrorDetails(error),
+    });
     console.error("[RESEARCH] All research methods failed:", error);
     return "";
   }
@@ -578,6 +626,17 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
       userPrompt
     );
     console.log(`[CODING] Starting with ${selectedModel} (${framework})...`);
+    console.log("[PROVIDER_DEBUG] Inngest model/provider config", {
+      selectedModel,
+      framework,
+      openRouterBaseUrl: OPENROUTER_BASE_URL,
+      hasOpenRouterApiKey: Boolean(process.env.OPENROUTER_API_KEY),
+      hasExaApiKey: Boolean(process.env.EXA_API_KEY),
+      userPromptLength: userPrompt.length,
+      planLength: plan.length,
+      researchLength: research.length,
+      previousMessagesCount: previousMessages.length,
+    });
 
     const codeSystem = `${FRAMEWORK_PROMPTS[framework]}
 
@@ -585,14 +644,29 @@ You are running inside an Inngest workflow with tool access to an E2B sandbox.
 Always implement the user's request using the available tools.
 After finishing, return a concise summary wrapped in <task_summary> tags.`;
 
-    const e2bResult = await runE2bCodingAgent({
-      framework,
-      augmentedPrompt,
-      complexity,
-      state,
-      selectedModel,
-      codeSystem,
-    });
+    let e2bResult: Awaited<ReturnType<typeof runE2bCodingAgent>>;
+    try {
+      e2bResult = await runE2bCodingAgent({
+        framework,
+        augmentedPrompt,
+        complexity,
+        state,
+        selectedModel,
+        codeSystem,
+      });
+    } catch (error) {
+      logProviderDebug("coding-agent.network.run.failed", {
+        provider: "openrouter",
+        model: selectedModel,
+        framework,
+        complexity,
+        augmentedPromptLength: augmentedPrompt.length,
+        codeSystemLength: codeSystem.length,
+        previousMessagesCount: previousMessages.length,
+        error: toErrorDetails(error),
+      });
+      throw error;
+    }
 
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
@@ -616,11 +690,23 @@ After finishing, return a concise summary wrapped in <task_summary> tags.`;
       }),
     });
 
-    const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
-      await Promise.all([
-        fragmentTitleGenerator.run(e2bResult.summary),
-        responseGenerator.run(e2bResult.summary),
-      ]);
+    let fragmentTitleOutput: unknown;
+    let responseOutput: unknown;
+    try {
+      [{ output: fragmentTitleOutput }, { output: responseOutput }] =
+        await Promise.all([
+          fragmentTitleGenerator.run(e2bResult.summary),
+          responseGenerator.run(e2bResult.summary),
+        ]);
+    } catch (error) {
+      logProviderDebug("post-process.generators.failed", {
+        provider: "openrouter",
+        model: "anthropic/claude-haiku-4.5",
+        summaryLength: e2bResult.summary.length,
+        error: toErrorDetails(error),
+      });
+      throw error;
+    }
 
     await step.run("save-result", async () => {
       const convex = getConvexClient();
