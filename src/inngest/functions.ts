@@ -46,6 +46,7 @@ import { inngest } from "./client";
 import { lastAssistantTextMessageContent } from "./utils";
 import { estimateComplexity } from "@/agents/timeout-manager";
 import { resolveCodingModelPlan } from "./model-routing";
+import { isProviderReturnedError } from "./provider-errors";
 
 const FRAMEWORK_PROMPTS: Record<Framework, string> = {
   nextjs: NEXTJS_PROMPT,
@@ -70,12 +71,6 @@ const openrouterAgentModel = (
     apiKey: process.env.OPENROUTER_API_KEY,
     defaultParameters,
   });
-};
-
-const isProviderReturnedError = (error: unknown): boolean => {
-  const message =
-    error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return /provider returned error/i.test(message);
 };
 
 function getErrorField(error: unknown, field: string): unknown {
@@ -248,6 +243,137 @@ const getModelForAgent = (
 interface AgentState {
   summary: string;
   files: { [path: string]: string };
+}
+
+interface ConversationContextMessage {
+  role: "USER" | "ASSISTANT";
+  type: string;
+  status: string;
+  content: string;
+  createdAt?: number;
+}
+
+const MAX_CONTEXT_MESSAGES = 8;
+const RECENT_MESSAGE_COUNT = 2;
+const MAX_CONTEXT_MESSAGE_CHARS = 1_200;
+const MAX_CONTEXT_SUMMARY_CHARS = 3_500;
+const MAX_PLAN_CONTEXT_CHARS = 4_000;
+const MAX_RESEARCH_CONTEXT_CHARS = 6_000;
+
+function trimPromptBlock(value: string, maxLength: number): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength).trimEnd()}\n...[truncated for context budget]`;
+}
+
+function toMessageRole(role: "USER" | "ASSISTANT"): "user" | "assistant" {
+  return role === "ASSISTANT" ? "assistant" : "user";
+}
+
+function isConversationContextMessage(value: unknown): value is ConversationContextMessage {
+  if (typeof value !== "object" || value === null) return false;
+  return (
+    "role" in value &&
+    "type" in value &&
+    "status" in value &&
+    "content" in value &&
+    (value.role === "USER" || value.role === "ASSISTANT") &&
+    typeof value.type === "string" &&
+    typeof value.status === "string" &&
+    typeof value.content === "string" &&
+    (!("createdAt" in value) || typeof value.createdAt === "number")
+  );
+}
+
+function toConversationContextMessages(value: unknown): ConversationContextMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isConversationContextMessage);
+}
+
+function formatConversationContext(messages: ConversationContextMessage[]): {
+  recentMessages: Message[];
+  conversationSummary: string;
+} {
+  if (messages.length === 0) {
+    return { recentMessages: [], conversationSummary: "No prior conversation." };
+  }
+
+  const normalized = messages.map((message) => ({
+    ...message,
+    content: trimPromptBlock(message.content, MAX_CONTEXT_MESSAGE_CHARS),
+  }));
+
+  const recentSource = normalized.slice(-RECENT_MESSAGE_COUNT);
+  const olderSource = normalized.slice(0, -RECENT_MESSAGE_COUNT);
+
+  const recentMessages: Message[] = recentSource.map((message) => ({
+    type: "text",
+    role: toMessageRole(message.role),
+    content: message.content,
+  }));
+
+  if (olderSource.length === 0) {
+    return {
+      recentMessages,
+      conversationSummary: "No earlier conversation beyond the most recent turns.",
+    };
+  }
+
+  const summary = olderSource
+    .map((message, index) => {
+      const turnNumber = index + 1;
+      return `${turnNumber}. ${message.role}: ${message.content}`;
+    })
+    .join("\n");
+
+  return {
+    recentMessages,
+    conversationSummary: trimPromptBlock(summary, MAX_CONTEXT_SUMMARY_CHARS),
+  };
+}
+
+function buildCodingSystemPrompt(input: {
+  frameworkPrompt: string;
+  conversationSummary: string;
+  plan: string;
+  research: string;
+}): string {
+  const sections = [input.frameworkPrompt.trim()];
+
+  sections.push(`You are running inside an Inngest workflow with tool access to an E2B sandbox.
+Always implement the user's current request using the available tools.
+Treat the conversation summary, implementation plan, and research as reference context for the current turn.
+After finishing, return a concise summary wrapped in <task_summary> tags.`);
+
+  sections.push(`<conversation_summary>\n${input.conversationSummary || "No prior conversation."}\n</conversation_summary>`);
+
+  if (input.plan.trim()) {
+    sections.push(
+      `<implementation_plan>\n${trimPromptBlock(input.plan, MAX_PLAN_CONTEXT_CHARS)}\n</implementation_plan>`
+    );
+  }
+
+  if (input.research.trim()) {
+    sections.push(
+      `<research_findings>\n${trimPromptBlock(input.research, MAX_RESEARCH_CONTEXT_CHARS)}\n</research_findings>`
+    );
+  }
+
+  sections.push(`⚠️ CRITICAL INSTRUCTION - DO NOT IGNORE:
+You have access to the "/createOrUpdateFiles" tool. You MUST use this tool to write ALL code files.
+- NEVER output code directly in your response text
+- NEVER wrap code in markdown code blocks (\`\`\`)
+- ALWAYS call the createOrUpdateFiles tool with the complete file contents
+- If you output code as text instead of using the tool, the task will FAIL
+
+Your response should ONLY contain:
+1. Tool calls to createOrUpdateFiles (with all necessary files)
+2. Any terminal commands if needed (npm install, npm run build)
+3. The <task_summary> tag at the very end
+
+DO NOT explain your code. DO NOT provide commentary. Just use the tools and output the summary.`);
+
+  return sections.join("\n\n");
 }
 
 function toWorkspacePath(filePath: string): string {
@@ -778,29 +904,25 @@ export const codeAgentFunction = inngest.createFunction(
       !shouldPlan
         ? Promise.resolve("")
         : step.run("planning-agent", () => runPlanningAgent(userPrompt)),
-      step.run("get-previous-messages", async () => {
+      step.run("get-conversation-context", async () => {
         try {
-          const formattedMessages: Message[] = [];
           const convex = getConvexClient();
-          const messages = await convex.query(api.messages.listForUser, {
+          const messages = await convex.query(api.messages.listContextForUser, {
             userId: event.data.userId as string,
             projectId: event.data.projectId as Id<"projects">,
+            limit: MAX_CONTEXT_MESSAGES,
           });
-          const recentMessages = messages.slice(-5);
-          for (const message of recentMessages) {
-            formattedMessages.push({
-              type: "text",
-              role: message.role === "ASSISTANT" ? "assistant" : "user",
-              content: message.content,
-            });
-          }
-          return formattedMessages;
+          return messages;
         } catch (error) {
-          console.error("[get-previous-messages] Failed to fetch messages:", error);
+          console.error("[get-conversation-context] Failed to fetch messages:", error);
           return [];
         }
       }),
     ]);
+
+    const { recentMessages, conversationSummary } = formatConversationContext(
+      toConversationContextMessages(previousMessages)
+    );
 
     const research =
       complexity === "complex" && plan
@@ -818,36 +940,6 @@ export const codeAgentFunction = inngest.createFunction(
     });
 
     const framework = convexFrameworkToAgent(project.framework);
-
-    const planBlock = plan
-      ? `\n\n<implementation_plan>\n${plan}\n</implementation_plan>`
-      : "";
-    const researchBlock = research
-      ? `\n\n<research_findings>\n${research}\n</research_findings>`
-      : "";
-    const contextNote =
-      planBlock || researchBlock
-        ? "\n\nUse the implementation plan and research findings above as your blueprint. Follow the plan precisely and apply the research insights to ensure accuracy."
-        : "";
-
-    const forceToolUsage = `
-
-⚠️ CRITICAL INSTRUCTION - DO NOT IGNORE:
-You have access to the "/createOrUpdateFiles" tool. You MUST use this tool to write ALL code files.
-- NEVER output code directly in your response text
-- NEVER wrap code in markdown code blocks (\`\`\`)
-- ALWAYS call the createOrUpdateFiles tool with the complete file contents
-- If you output code as text instead of using the tool, the task will FAIL
-
-Your response should ONLY contain:
-1. Tool calls to createOrUpdateFiles (with all necessary files)
-2. Any terminal commands if needed (npm install, npm run build)
-3. The <task_summary> tag at the very end
-
-DO NOT explain your code. DO NOT provide commentary. Just use the tools and output the summary.
-`;
-
-    const augmentedPrompt = `${userPrompt}${planBlock}${researchBlock}${contextNote}${forceToolUsage}`;
 
     const selectedModel = getModelForAgent(
       event.data.model as string | undefined,
@@ -869,7 +961,8 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
       userPromptLength: userPrompt.length,
       planLength: plan.length,
       researchLength: research.length,
-      previousMessagesCount: previousMessages.length,
+      previousMessagesCount: recentMessages.length,
+      conversationSummaryLength: conversationSummary.length,
     });
     if (codingPlan.toolCallingModel !== selectedModel) {
       console.warn("[PROVIDER_DEBUG] Normalized tool-calling model selection", {
@@ -885,19 +978,20 @@ DO NOT explain your code. DO NOT provide commentary. Just use the tools and outp
       });
     }
 
-    const codeSystem = `${FRAMEWORK_PROMPTS[framework]}
-
-You are running inside an Inngest workflow with tool access to an E2B sandbox.
-Always implement the user's request using the available tools.
-After finishing, return a concise summary wrapped in <task_summary> tags.`;
+    const codeSystem = buildCodingSystemPrompt({
+      frameworkPrompt: FRAMEWORK_PROMPTS[framework],
+      conversationSummary,
+      plan,
+      research,
+    });
 
     let e2bResult: CodingAgentRunResult;
     try {
       e2bResult = await runE2bCodingAgentWithFallbacks({
         framework,
-        augmentedPrompt,
+        augmentedPrompt: userPrompt,
         complexity,
-        previousMessages,
+        previousMessages: recentMessages,
         requestedModel: selectedModel,
         retryModels: codingPlan.retryModels,
         codeSystem,
@@ -912,9 +1006,9 @@ After finishing, return a concise summary wrapped in <task_summary> tags.`;
         providerReturnedError: isProviderReturnedError(error),
         framework,
         complexity,
-        augmentedPromptLength: augmentedPrompt.length,
+        augmentedPromptLength: userPrompt.length,
         codeSystemLength: codeSystem.length,
-        previousMessagesCount: previousMessages.length,
+        previousMessagesCount: recentMessages.length,
         error: toErrorDetails(error),
       });
       await persistAgentFailure({

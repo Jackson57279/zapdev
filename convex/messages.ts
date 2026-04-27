@@ -574,6 +574,41 @@ export const listForUser = query({
 });
 
 /**
+ * Lightweight conversation context for background agent runs.
+ * Avoids loading fragments and attachments when only chat history is needed.
+ */
+export const listContextForUser = query({
+  args: {
+    userId: v.string(),
+    projectId: v.id("projects"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== args.userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_projectId_createdAt", (q) => q.eq("projectId", args.projectId))
+      .order("asc")
+      .collect();
+
+    const limit = Math.max(1, Math.floor(args.limit ?? 8));
+
+    return messages.slice(-limit).map((message) => ({
+      _id: message._id,
+      role: message.role,
+      type: message.type,
+      status: message.status,
+      content: message.content,
+      createdAt: message.createdAt ?? message._creationTime,
+    }));
+  },
+});
+
+/**
  * Create a fragment for a specific user (for use from background jobs/Inngest)
  */
 export const createFragmentForUser = mutation({
