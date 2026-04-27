@@ -40,6 +40,7 @@ import {
   readFileWithTimeout,
   writeFilesBatch,
 } from "@/agents/sandbox-utils";
+import type { Sandbox } from "@e2b/code-interpreter";
 
 import { inngest } from "./client";
 import { lastAssistantTextMessageContent } from "./utils";
@@ -436,6 +437,7 @@ async function runE2bCodingAgent(input: {
   state: State<AgentState>;
   selectedModel: string;
   codeSystem: string;
+  sandbox?: Sandbox;
 }): Promise<{
   summary: string;
   files: Record<string, string>;
@@ -446,7 +448,7 @@ async function runE2bCodingAgent(input: {
   const { framework, augmentedPrompt, complexity, state, selectedModel, codeSystem } =
     input;
 
-  const sandbox = await createSandbox(framework);
+  const sandbox = input.sandbox ?? (await createSandbox(framework));
   const sandboxId = sandbox.sandboxId;
   const writtenFiles: Record<string, string> = {};
 
@@ -663,6 +665,11 @@ async function runE2bCodingAgentWithFallbacks(input: {
 }): Promise<CodingAgentRunResult> {
   let lastError: unknown;
 
+  // Create ONE sandbox and reuse it across all retry attempts
+  console.log(`[DEBUG] Creating sandbox for coding agent (will reuse across ${input.retryModels.length} retry models)...`);
+  const sandbox = await createSandbox(input.framework);
+  console.log(`[DEBUG] Created sandbox ${sandbox.sandboxId} for reuse across retries`);
+
   for (const [index, attemptModel] of input.retryModels.entries()) {
     try {
       if (index > 0) {
@@ -671,6 +678,7 @@ async function runE2bCodingAgentWithFallbacks(input: {
           attemptModel,
           attempt: index + 1,
           totalAttempts: input.retryModels.length,
+          sandboxId: sandbox.sandboxId,
         });
       }
 
@@ -684,6 +692,7 @@ async function runE2bCodingAgentWithFallbacks(input: {
         ),
         selectedModel: attemptModel,
         codeSystem: input.codeSystem,
+        sandbox,
       });
       return {
         ...result,
@@ -701,6 +710,7 @@ async function runE2bCodingAgentWithFallbacks(input: {
         attempt: index + 1,
         totalAttempts: input.retryModels.length,
         providerReturnedError: isProviderReturnedError(error),
+        sandboxId: sandbox.sandboxId,
         error: toErrorDetails(error),
       });
 
@@ -755,7 +765,7 @@ export const codeAgentFunction = inngest.createFunction(
       limit: 3,
       key: "event.data.userId",
     },
-    triggers: { event: "agent/code-agent-kit.run" },
+    triggers: [{ event: "agent/code-agent-kit.run" }],
   },
   async ({ event, step }) => {
     const userPrompt = event.data.value as string;
