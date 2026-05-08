@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next'
 import { getAllFrameworks } from '@/lib/frameworks'
 import { getAllSolutions } from '@/lib/solutions'
+import { getAllBlogPosts } from '@/lib/blog'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://zapdev.link'
@@ -15,6 +16,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'daily' as const,
       priority: 1.0,
+    },
+    {
+      url: `${baseUrl}/alternatives`,
+      lastModified: now,
+      changeFrequency: 'daily' as const,
+      priority: 0.99,
+    },
+    {
+      url: `${baseUrl}/alternatives/lovable`,
+      lastModified: now,
+      changeFrequency: 'daily' as const,
+      priority: 0.98,
+    },
+    {
+      url: `${baseUrl}/blog`,
+      lastModified: now,
+      changeFrequency: 'daily' as const,
+      priority: 0.97,
     },
     {
       url: `${baseUrl}/frameworks`,
@@ -72,9 +91,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.85,
   }));
 
+  // Blog posts - comparison content drives high-intent traffic
+  const blogPosts = getAllBlogPosts();
+  const blogPages: MetadataRoute.Sitemap = blogPosts.map(post => ({
+    url: `${baseUrl}/blog/${post.slug}`,
+    lastModified: new Date(post.updatedAt),
+    changeFrequency: 'weekly' as const,
+    priority: post.category === 'Comparisons' ? 0.92 : 0.75,
+  }));
+
   // Combine all pages with high-value content first
   return [
     ...staticPages,
+    ...blogPages,
     ...frameworkPages,
     ...solutionPages,
   ];

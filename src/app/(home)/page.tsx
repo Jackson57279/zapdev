@@ -9,9 +9,21 @@ import { StructuredData } from "@/components/seo/structured-data";
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = generateSEOMetadata({
-  title: 'Zapdev - AI-Powered Development Platform | Build Apps 10x Faster',
-  description: 'Create production-ready web applications with AI assistance. Support for React, Vue, Angular, Svelte, and Next.js. Build, test, and deploy in minutes, not days.',
+  title: 'Zapdev - #1 AI Website Builder | Best Lovable Alternative 2026',
+  description: 'The #1 AI website builder and top Lovable alternative. Build full-stack web apps, SaaS products, and production sites from a single prompt. Better than Bolt.new, v0, and Replit for real applications.',
   canonical: '/',
+  keywords: [
+    'AI website builder',
+    'Lovable alternative',
+    'best AI app builder',
+    'Bolt.new vs Lovable',
+    'v0.dev alternative',
+    'Replit Agent alternative',
+    'full stack AI builder',
+    'AI SaaS builder',
+    'vibe coding tool',
+    'AI startup builder'
+  ]
 });
 
 const Page = () => {
@@ -50,6 +62,22 @@ const Page = () => {
       {
         question: 'Is Zapdev suitable for production applications?',
         answer: 'Absolutely! Zapdev generates clean, maintainable code following industry best practices. Many companies use Zapdev to build and deploy production applications.'
+      },
+      {
+        question: 'What is the best Lovable alternative?',
+        answer: 'Zapdev is the top-rated Lovable alternative for developers who need full-stack applications with real backend logic, databases, authentication, and API endpoints. While Lovable excels at frontend demos and landing pages, Zapdev generates complete production-ready SaaS applications.'
+      },
+      {
+        question: 'Is Zapdev better than Bolt.new?',
+        answer: 'Zapdev offers faster deployment, cleaner architecture, and more robust backend generation than Bolt.new. While Bolt.new provides developer control, Zapdev delivers a more complete full-stack experience with automated build validation and multi-framework support.'
+      },
+      {
+        question: 'How does Zapdev compare to v0 by Vercel?',
+        answer: 'v0.dev generates excellent React UI components. Zapdev builds complete applications including frontend, backend, database, auth, and deployment. If you need more than a component library, Zapdev is the full-stack solution.'
+      },
+      {
+        question: 'Why choose Zapdev over Replit Agent?',
+        answer: 'Replit Agent is powerful but requires more setup and locks you into the Replit ecosystem. Zapdev gives you exportable code that runs anywhere, with faster iteration and better deployment integration.'
       }
     ])
   ];
